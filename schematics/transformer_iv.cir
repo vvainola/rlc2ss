@@ -1,0 +1,8 @@
+Vs V1 0
+R1 V1 V2 
+L1 V2 V3
+L2 V3 0 Vc
+
+H1 V4 V5 I_R1 Vc
+L3 V5 V6 VcVpVn
+R2 V6 V4

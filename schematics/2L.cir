@@ -1,0 +1,6 @@
+V1 V1 0 
+R1 V1 V2 IVp 
+L1 V2 V3
+S1 V3 0
+R2 V3 V4
+L2 V4 0

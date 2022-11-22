@@ -1,0 +1,6 @@
+<Project>
+    <PropertyGroup>
+            <LocalDebuggerEnvironment>PATH=@conan_bin@;%PATH%</LocalDebuggerEnvironment>
+            <TrackFileAccess>false</TrackFileAccess>
+    </PropertyGroup>
+</Project>

@@ -1,0 +1,28 @@
+V_a V1_a Vn1
+V_b V1_b Vn1
+V_c V1_c Vn1
+
+Rc_a V1_a V2_a
+Rc_b V1_b V2_b
+Rc_c V1_c V2_c
+Lc_a V2_a V3_a VcI
+Lc_b V2_b V3_b VcI
+Lc_c V2_c V3_c VcI
+
+C_a V3_a V4_a Vp
+C_b V3_b V4_b Vp
+C_c V3_c V4_c Vp
+Rf_a V4_a Vn2
+Rf_b V4_b Vn2
+Rf_c V4_c Vn2
+
+Lg_a V3_a V5_a I
+Lg_b V3_b V5_b I
+Lg_c V3_c V5_c I
+Rg_a V5_a V7_a
+Rg_b V5_b V7_b
+Rg_c V5_c V7_c
+
+Vs_a V7_a 0
+Vs_b V7_b 0
+Vs_c V7_c 0

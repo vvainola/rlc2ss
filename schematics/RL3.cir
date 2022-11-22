@@ -1,0 +1,9 @@
+V_a N1_a 0
+V_b N1_b 0
+V_c N1_c 0
+R_a N1_a N2_a
+R_b N1_b N2_b
+R_c N1_c N2_c
+L_a N2_a Nn IVc
+L_b N2_b Nn IVc
+L_c N2_c Nn IVc

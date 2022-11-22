@@ -1,0 +1,15 @@
+[requires]
+boost/1.78.0
+eigen/3.4.0
+
+[generators]
+pkg_config
+
+[options]
+boost:header_only=True
+boost:without_locale=True
+boost:without_log=True
+
+[imports]
+bin, *.dll -> ./bin
+lib, *.dll -> ./bin

@@ -1,0 +1,47 @@
+V_a V1_a Vn1 Vp
+V_b V1_b Vn1 Vp
+V_c V1_c Vn1 Vp
+
+Rc_a V1_a V2_a
+Rc_b V1_b V2_b
+Rc_c V1_c V2_c
+Lc_a V2_a V3_a I
+Lc_b V2_b V3_b I
+Lc_c V2_c V3_c I
+
+C_a V3_a V4_a VpI
+C_b V3_b V4_b VpI
+C_c V3_c V4_c VpI
+Rf_a V4_a Vn2
+Rf_b V4_b Vn2
+Rf_c V4_c Vn2
+
+Rg_a V3_a V5_a 
+Rg_b V3_b V5_b
+Rg_c V3_c V5_c
+Lg_a V5_a V6_a I
+Lg_b V5_b V6_b I
+Lg_c V5_c V6_c I
+
+Rmcb_a V6_a V7_a VpVn
+Rmcb_b V6_b V7_b VpVn
+Rmcb_c V6_c V7_c VpVn
+
+Lfault_a V7_a V8_a I
+Lfault_b V7_b V8_b I
+Lfault_c V7_c V8_c I
+Rfault_a V8_a Vfault_n
+Rfault_b V8_b Vfault_n
+Rfault_c V8_c Vfault_n
+Rfault_neutral_to_ground Vfault_n 0
+
+Ls_a V7_a V9_a I
+Ls_b V7_b V9_b I
+Ls_c V7_c V9_c I
+Rs_a V9_a V10_a
+Rs_b V9_b V10_b
+Rs_c V9_c V10_c
+
+Vs_a V10_a 0 Vp
+Vs_b V10_b 0 Vp
+Vs_c V10_c 0 Vp
