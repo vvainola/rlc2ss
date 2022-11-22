@@ -150,7 +150,7 @@ class Plant {
         m_ss = calculateStateSpace(c, m_switches.to_ullong());
     }
 
-    Eigen::Vector<double, int(State::NUM_STATES)> operator()(Eigen::Vector<double, int(State::NUM_STATES)> const& x, double /*t*/) {
+    Eigen::Vector<double, int(State::NUM_STATES)> dxdt(Eigen::Vector<double, int(State::NUM_STATES)> const& x, double /*t*/) {
         return m_ss.A * x + m_ss.B * m_inputs;
     }
 

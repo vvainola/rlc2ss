@@ -133,7 +133,7 @@ public:
         m_ss = calculateStateSpace(c);
     }
 
-    Eigen::Vector<double, int(State::NUM_STATES)> operator()(Eigen::Vector<double, int(State::NUM_STATES)> const& x, double /*t*/)
+    Eigen::Vector<double, int(State::NUM_STATES)> dxdt(Eigen::Vector<double, int(State::NUM_STATES)> const& x, double /*t*/)
     {
         return m_ss.A * x + m_ss.B * m_inputs;
     }

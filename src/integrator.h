@@ -1,17 +1,17 @@
 // MIT License
-// 
+//
 // Copyright (c) 2022 vvainola
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -61,14 +61,14 @@ class Integrator {
         }
 
         // apply first Newton step
-        vector_t dxdt = system(x0, t);
+        vector_t dxdt = system.dxdt(x0, t);
         vector_t diff = m_gradient_inv * (-dt * dxdt);
         vector_t x = x0 - diff;
 
         // iterate Newton until some precision is reached
         size_t iterations = 0;
         while (diff.norm() > m_epsilon && iterations < m_max_iterations) {
-            dxdt = system(x, t);
+            dxdt = system.dxdt(x, t);
             diff = m_gradient_inv * (x - x0 - dt * dxdt);
             x -= diff;
             ++iterations;
@@ -88,14 +88,14 @@ class Integrator {
         }
 
         // apply first Newton step
-        vector_t dxdt0 = system(x0, t);
+        vector_t dxdt0 = system.dxdt(x0, t);
         vector_t diff = m_gradient_inv * (-0.5 * dt * dxdt0);
         vector_t x = x0 - diff;
 
         // iterate Newton until some precision is reached
         size_t iterations = 0;
         while (diff.norm() > m_epsilon && iterations < m_max_iterations) {
-            vector_t dxdt = system(x, t);
+            vector_t dxdt = system.dxdt(x, t);
             diff = m_gradient_inv * (x - x0 - 0.5 * dt * (dxdt0 + dxdt));
             x -= diff;
             ++iterations;
