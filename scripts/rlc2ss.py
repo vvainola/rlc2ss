@@ -20,6 +20,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Form state-space matrices of an RLC circuit from a netlist using proper tree
+# method explained in http://circuit-simulation.net/equation_generation.html
+
 import os
 import sympy as sy
 from sympy import Symbol, Matrix
