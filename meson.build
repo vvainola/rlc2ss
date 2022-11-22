@@ -33,3 +33,8 @@ lcl = executable('lcl',
     sources : 'src/lcl.cpp',
     dependencies : deps
 )
+
+transformer = executable('transformer',
+    sources : 'src/transformer.cpp',
+    dependencies : deps
+)

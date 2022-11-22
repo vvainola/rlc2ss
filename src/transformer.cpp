@@ -23,17 +23,18 @@
 #define BOOST_ALLOW_DEPRECATED_HEADERS
 #include "integrator.h"
 
-#include "helpers.h"
-#include <array>
 #include <complex>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include "..\schematics\transformer_matrices.h"
-#include <bitset>
 
 
-using complex = std::complex<double>;
+struct abc {
+    double a;
+    double b;
+    double c;
+};
 
 constexpr double PI = 3.141592652;
 
@@ -44,13 +45,15 @@ public:
     Transformer()
     {
         double L1 = 1e-6;
-        double R1 = 1;
-        double R2 = 1;
+        double R1 = 1e-6;
+        double R2 = 5;
 
         Components c;
         c.L1 = L1;
         c.R1 = R1;
         c.R2 = R2;
+        c.E1 = 10;
+        c.F1 = 1.0 / c.E1;
         m_ss = calculateStateSpace(c);
     }
 
@@ -94,7 +97,7 @@ int main()
     abc u_conv;
     abc u_grid;
     double t_step = 10e-6;
-    std::ofstream fout("odeint.csv");
+    std::ofstream fout("temp.csv");
     double t = 0;
     for (; t < 0.2; t += t_step)
     {
@@ -103,13 +106,11 @@ int main()
 
         double i_a = plant.m_outputs[int(Output::I_L1)];
         double i_b = plant.m_outputs[int(Output::I_R2)];
-        double i_c = plant.m_outputs[int(Output::I_L1)] * 0;
+        double i_c = plant.m_outputs[int(Output::V_R2)];
         fout << t << "," << i_a << "," << i_b << "," << i_c << "\n";
     }
     fout.close();
-
-    std::cout << "Done!\n";
-    std::cout << std::endl;
-
-    system("python C:\\Projects\\RLC_circuit_solver\\plot.py");
+    std::cout << "Done!\n"
+              << std::endl;
+    system("python ..\\scripts\\plot.py");
 }
