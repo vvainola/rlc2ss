@@ -33,5 +33,6 @@ The script will make a C++ header {netlist_name}_matrices.h that contains the ma
 - Current controlled current source (F)
 - Voltage controlled current source (G)
 - Current controlled voltage source (H)
+- Switch (S). All 2^n combinations of switches are created.
 
 - Mutual inductance (K). Mutual inductances have to be given after all other components in the netlist. The syntax is K{name} {inductor 1 name} {inductor 2 name}
