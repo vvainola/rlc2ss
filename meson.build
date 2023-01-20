@@ -38,3 +38,8 @@ transformer = executable('transformer',
     sources : 'src/transformer.cpp',
     dependencies : deps
 )
+
+transformer = executable('inverter',
+    sources : ['src/inverter.cpp'],
+    dependencies : deps
+)

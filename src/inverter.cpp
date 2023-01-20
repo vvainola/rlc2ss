@@ -23,7 +23,7 @@
 #define BOOST_ALLOW_DEPRECATED_HEADERS
 #include "integrator.h"
 
-#include "..\schematics\diode_bridge_matrices.h"
+#include "../qucs/2L_matrices.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -73,28 +73,32 @@ class Plant {
     void setSwitches(SwitchPositions switches) {
         m_switches = switches;
         Components c;
-        c.L_a = 100e-6;
-        c.L_b = 100e-6;
-        c.L_c = 100e-6;
-        c.C_dpos_a = 1e-9;
-        c.C_dpos_b = 1e-9;
-        c.C_dpos_c = 1e-9;
-        c.C_dneg_a = 1e-9;
-        c.C_dneg_b = 1e-9;
-        c.C_dneg_c = 1e-9;
-        c.R_dpos_a = 1e-9;
-        c.R_dpos_b = 1e-9;
-        c.R_dpos_c = 1e-9;
-        c.R_dneg_a = 1e-9;
-        c.R_dneg_b = 1e-9;
-        c.R_dneg_c = 1e-9;
-
+        c.L_conv_a = 100e-5;
+        c.L_conv_b = 100e-5;
+        c.L_conv_c = 100e-5;
+        c.L_grid_a = 100e-5;
+        c.L_grid_b = 100e-5;
+        c.L_grid_c = 100e-5;
+        c.L_src_a = 100e-5;
+        c.L_src_b = 100e-5;
+        c.L_src_c = 100e-5;
         c.C_dc = 10e-3;
-        c.R_a = 1e-3;
-        c.R_b = 1e-3;
-        c.R_c = 1e-3;
+        c.C_f_a = 1e-6;
+        c.C_f_b = 1e-6;
+        c.C_f_c = 1e-6;
+        c.R_conv_a = 1e-3;
+        c.R_conv_b = 1e-3;
+        c.R_conv_c = 1e-3;
+        c.R_grid_a = 1e-3;
+        c.R_grid_b = 1e-3;
+        c.R_grid_c = 1e-3;
+        c.R_f_a = 1e-3;
+        c.R_f_b = 1e-3;
+        c.R_f_c = 1e-3;
+        c.R_src_a = 1e-3;
+        c.R_src_b = 1e-3;
+        c.R_src_c = 1e-3;
         c.R_dc = 1e-6;
-        c.R_load = 1;
 
         m_ss = calculateStateSpace(c, m_switches.to_ullong());
     }
@@ -111,22 +115,23 @@ class Plant {
     void step(double dt, abc ugrid) {
         checkDiodes();
 
-        m_inputs(int(Input::V_a)) = ugrid.a;
-        m_inputs(int(Input::V_b)) = ugrid.b;
-        m_inputs(int(Input::V_c)) = ugrid.c;
+        m_inputs(int(Input::I_load)) = 100;
+        m_inputs(int(Input::V_src_a)) = ugrid.a;
+        m_inputs(int(Input::V_src_b)) = ugrid.b;
+        m_inputs(int(Input::V_src_c)) = ugrid.c;
         m_x = m_solver.step(*this, m_x, 0.0, dt);
 
         m_outputs = m_ss.C * m_x + m_ss.D * m_inputs;
-        m_out.I_L_a = m_outputs[int(Output::I_L_a)];
-        m_out.I_L_b = m_outputs[int(Output::I_L_b)];
-        m_out.I_L_c = m_outputs[int(Output::I_L_c)];
+        m_out.I_L_a = m_outputs[int(Output::I_L_conv_a)];
+        m_out.I_L_b = m_outputs[int(Output::I_L_conv_b)];
+        m_out.I_L_c = m_outputs[int(Output::I_L_conv_c)];
 
-        m_out.V3_a = m_outputs[int(Output::V3_a)];
-        m_out.V3_b = m_outputs[int(Output::V3_b)];
-        m_out.V3_c = m_outputs[int(Output::V3_c)];
+        m_out.V3_a = m_outputs[int(Output::N_conv_a)];
+        m_out.V3_b = m_outputs[int(Output::N_conv_b)];
+        m_out.V3_c = m_outputs[int(Output::N_conv_c)];
 
-        m_out.Vdc_p = m_outputs[int(Output::Vdc_p)];
-        m_out.Vdc_n = m_outputs[int(Output::Vdc_n)];
+        m_out.Vdc_p = m_outputs[int(Output::N_dc_p)];
+        m_out.Vdc_n = m_outputs[int(Output::N_dc_n)];
     }
 
     StateSpaceMatrices m_ss;
@@ -142,46 +147,46 @@ class Plant {
         double u_dc = m_out.Vdc_p - m_out.Vdc_n;
         // A pos
         if (m_out.V3_a - m_out.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dpos_a), 1);
+            switches.set(int(Switch::S_p_a), 1);
         }
         if (m_out.Vdc_n - m_out.V3_a > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dneg_a), 1);
+            switches.set(int(Switch::S_n_a), 1);
         }
         if (m_out.I_L_a > 0) {
-            switches.set(int(Switch::S_dneg_a), 0);
+            switches.set(int(Switch::S_n_a), 0);
         }
         if (m_out.I_L_a < 0) {
-            switches.set(int(Switch::S_dpos_a), 0);
+            switches.set(int(Switch::S_p_a), 0);
         }
 
         if (m_out.V3_b - m_out.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dpos_b), 1);
+            switches.set(int(Switch::S_p_b), 1);
         }
         if (m_out.Vdc_n - m_out.V3_b > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dneg_b), 1);
+            switches.set(int(Switch::S_n_b), 1);
         }
         if (m_out.I_L_b > 0) {
-            switches.set(int(Switch::S_dneg_b), 0);
+            switches.set(int(Switch::S_n_b), 0);
         }
         if (m_out.I_L_b < 0) {
-            switches.set(int(Switch::S_dpos_b), 0);
+            switches.set(int(Switch::S_p_b), 0);
         }
 
         if (m_out.V3_c - m_out.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dpos_c), 1);
+            switches.set(int(Switch::S_p_c), 1);
         }
         if (m_out.Vdc_n - m_out.V3_c > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dneg_c), 1);
+            switches.set(int(Switch::S_n_c), 1);
         }
         if (m_out.I_L_c > 0) {
-            switches.set(int(Switch::S_dneg_c), 0);
+            switches.set(int(Switch::S_n_c), 0);
         }
         if (m_out.I_L_c < 0) {
-            switches.set(int(Switch::S_dpos_c), 0);
+            switches.set(int(Switch::S_p_c), 0);
         }
-        ASSERT((switches[int(Switch::S_dpos_a)] && switches[int(Switch::S_dneg_a)]));
-        ASSERT((switches[int(Switch::S_dpos_b)] && switches[int(Switch::S_dneg_b)]));
-        ASSERT((switches[int(Switch::S_dpos_c)] && switches[int(Switch::S_dneg_c)]));
+        ASSERT((switches[int(Switch::S_p_a)] && switches[int(Switch::S_n_a)]));
+        ASSERT((switches[int(Switch::S_p_b)] && switches[int(Switch::S_n_b)]));
+        ASSERT((switches[int(Switch::S_p_c)] && switches[int(Switch::S_n_c)]));
 
         if (switches != m_switches) {
             setSwitches(switches);
@@ -202,6 +207,12 @@ int main() {
     abc u_grid;
     double t_step = 10e-6;
     std::ofstream fout("temp.csv");
+    //fout << "time,a,b,c" << "\n";
+
+    /*SwitchPositions switches{};
+    switches[int(Switch::S_p_a)] = 1;
+    switches[int(Switch::S_n_b)] = 1;
+    plant.setSwitches(switches);*/
 
     for (; t < 0.1; t += t_step) {
         u_grid.a = amplitude * sin(freq * t + angle);
@@ -213,12 +224,21 @@ int main() {
         double i_b = plant.m_x[int(State::V_C_dc)];
         double i_c = 0;*/
 
-        double i_a = plant.m_outputs[int(Output::I_L_a)];
-        double i_b = plant.m_outputs[int(Output::I_L_b)];
-        double i_c = plant.m_outputs[int(Output::I_L_c)];
-        fout << t << "," << i_a << "," << i_b << "," << i_c << "\n";
+        double i_a = plant.m_out.V3_a;
+        double i_b = plant.m_out.V3_b;
+        double i_c = plant.m_out.V3_c;
+        fout << t << ","
+             << plant.m_out.V3_a << ","
+             << plant.m_out.V3_b << ","
+             << plant.m_out.V3_c << ","
+             << plant.m_out.I_L_a << ","
+             << plant.m_out.I_L_b << ","
+             << plant.m_out.I_L_c << ","
+             << plant.m_out.Vdc_n << ","
+             << plant.m_out.Vdc_p << ","
+             << plant.m_out.Vdc_p - plant.m_out.Vdc_n << ","
+            << "\n";
     }
     fout.close();
     std::cout << "Done!\n" << std::endl;
-    system("python ..\\scripts\\plot.py");
 }
