@@ -172,12 +172,31 @@ def get_component(all_components, component_name):
     assert False, "Tried to access non-existent component"
 
 def lines_with_switches(netlist):
+    lines_w_switches = []
     switches = []
+    xor_switches = []
     for line in netlist:
-        line_split = line.split(' ')
+        line_split = line.strip().split(' ')
         if line_split[0][0] == 'S':
-            switches.append(line)
-    return switches
+            lines_w_switches.append(line)
+            switches.append(line_split[0])
+        if line_split[0][0] == 'X':
+            xor_switch_combination = line_split[1:]
+            xor_switches.append(xor_switch_combination)
+            # Check for invalid switches
+            if set(switches).intersection(set(xor_switch_combination)) != set(xor_switch_combination):
+                sys.exit(f'Invalid switch in {xor_switch_combination}')
+    return lines_w_switches, switches, xor_switches
+
+def is_invalid_switch_combination(combination, switches, xor_switches):
+    active_switches = set()
+    for i, v in enumerate(combination):
+        if v == 1:
+            active_switches.add(switches[i])
+    for xor_combination in xor_switches:
+        if len(active_switches.intersection(set(xor_combination))) > 1:
+            return True
+    return False
 
 def get_xv_voltage(vv_src : Component, components : T.List[Component], full_tree):
     full_tree = full_tree.copy()
@@ -225,7 +244,7 @@ def form_state_space_matrices(parsed_netlist):
     mutual_inductors = []
     for line in netlist:
         s = line.split()
-        if s[NAME][0] == 'K':
+        if s[NAME][0] == 'K' or s[NAME][0] == 'X':
             continue
         node_pos = Node(s[POS_NODE])
         node_neg = Node(s[NEG_NODE])
@@ -239,6 +258,7 @@ def form_state_space_matrices(parsed_netlist):
             L1 = get_component(components, s[1])
             L2 = get_component(components, s[2])
             mutual_inductors.append([s[NAME], L1, L2])
+        elif s[NAME][0] == 'X':
             continue
 
         pos_node = nodes[nodes.index(Node(s[POS_NODE]))]
@@ -603,19 +623,18 @@ def form_state_space_matrices(parsed_netlist):
 def main():
     filename = os.path.splitext(sys.argv[1])[0]
     netlist = parse_netlist(sys.argv[1])
-    lines_w_switches = lines_with_switches(netlist)
-    switches = []
+    lines_w_switches, switches, xor_switches = lines_with_switches(netlist)
+
+    out = {}
     if len(lines_w_switches) == 0:
-        out = form_state_space_matrices(netlist)
-        state_matrices_to_cpp.matrices_to_cpp(f'{filename}_matrices.h', [out], switches)
+        out[0] = form_state_space_matrices(netlist)
+        state_matrices_to_cpp.matrices_to_cpp(f'{filename}_matrices.h', out, switches)
         sys.exit(0)
     else:
-        for line in lines_w_switches:
-            switches.append(line.split(' ')[0])
-
         combinations = list(itertools.product([0, 1], repeat=len(lines_w_switches)))
-        out = [None] * len(combinations)
         for i, combination in enumerate(combinations):
+            if is_invalid_switch_combination(combination, switches, xor_switches):
+                continue
             print(f'{i} = {combination}')
             netlist_wo_switches = netlist.copy()
             for j, line in enumerate(lines_w_switches):

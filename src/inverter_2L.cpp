@@ -82,7 +82,7 @@ class Plant {
         c.L_src_a = 100e-5;
         c.L_src_b = 100e-5;
         c.L_src_c = 100e-5;
-        c.C_dc = 10e-3;
+        c.C_dc = 5e-3;
         c.C_f_a = 1e-6;
         c.C_f_b = 1e-6;
         c.C_f_c = 1e-6;
@@ -227,7 +227,7 @@ int main() {
         double i_a = plant.m_out.V3_a;
         double i_b = plant.m_out.V3_b;
         double i_c = plant.m_out.V3_c;
-        fout << t << ","
+       fout << t << ","
              << plant.m_out.V3_a << ","
              << plant.m_out.V3_b << ","
              << plant.m_out.V3_c << ","

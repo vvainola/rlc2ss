@@ -22,7 +22,6 @@
 
 import math
 def matrices_to_cpp(filename, circuit_combinations, switches):
-
     f = open(filename, 'w')
     (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = circuit_combinations[0]
 
@@ -97,7 +96,8 @@ enum Switch
 }};
 
 ''')
-    for i, combination in enumerate(circuit_combinations):
+    for i in sorted(circuit_combinations):
+        combination = circuit_combinations[i]
         f.write(f'StateSpaceMatrices calculateStateSpace_{i}(Components const& c);\n')
 
     f.write(f'''
@@ -108,7 +108,7 @@ StateSpaceMatrices calculateStateSpace(Components const& components, uint64_t sw
 ''')
     f.write(f'\n\tswitch (switches) {{')
 
-    for i, combination in enumerate(circuit_combinations):
+    for i in sorted(circuit_combinations):
         f.write(f'\n\t\tcase {i}: return calculateStateSpace_{i}(components);')
 
     f.write(f'''
@@ -123,7 +123,8 @@ StateSpaceMatrices calculateStateSpace(Components const& components, uint64_t sw
     for component in component_names:
         write_components += f'\tdouble {component} = c.{component};\n'
     
-    for i, combination in enumerate(circuit_combinations):
+    for i in sorted(circuit_combinations):
+        combination = circuit_combinations[i]
         switch_combination = ''
         for j in range(len(switches)):
             if i & pow(2, j):
