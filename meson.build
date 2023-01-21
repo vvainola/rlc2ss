@@ -39,7 +39,12 @@ transformer = executable('transformer',
     dependencies : deps
 )
 
-transformer = executable('inverter',
-    sources : ['src/inverter.cpp'],
+inverter_2L = executable('inverter_2L',
+    sources : ['src/inverter_2L.cpp'],
+    dependencies : deps
+)
+
+inverter_3L = executable('inverter_3L',
+    sources : ['src/inverter_3L.cpp'],
     dependencies : deps
 )
