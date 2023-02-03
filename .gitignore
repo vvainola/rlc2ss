@@ -1,2 +1,5 @@
 schematics/*.h
-build
+build*
+**/slprj
+**/*.slxc
+**/*.pyc

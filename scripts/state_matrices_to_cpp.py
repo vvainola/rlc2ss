@@ -37,43 +37,65 @@ struct Components
 {{
 {component_fields}
 }};
-''')
 
-    state_fields = ['\t' + str(state) for state in states]
-    state_fields = ",\n".join(state_fields)
+inline constexpr size_t NUM_STATES = {len(states)};
+inline constexpr size_t NUM_INPUTS = {len(inputs)};
+inline constexpr size_t NUM_OUTPUTS = {len(outputs)};
+''')
+    
+    state_fields = [f'\t\tdouble {str(state)};' for state in states]
+    state_fields = "\n".join(state_fields)
     f.write(f'''
-enum class State
-{{
-{state_fields},
-\tNUM_STATES
+union States {{
+    States() {{
+        data.setZero();
+    }}
+    struct {{
+{state_fields}
+    }};
+    Eigen::Vector<double, NUM_STATES> data;
 }};
 ''')
 
-    inputs = ['\t' + str(input) for input in inputs]
-    inputs = ",\n".join(inputs)
+    inputs = [f'\t\tdouble {str(input)};' for input in inputs]
+    inputs = "\n".join(inputs)
     f.write(f'''
-enum class Input
-{{
-{inputs},
-\tNUM_INPUTS
+union Inputs {{
+    Inputs() {{
+        data.setZero();
+    }}
+    struct {{
+{inputs}
+    }};
+    Eigen::Vector<double, NUM_INPUTS> data;
 }};
 ''')
 
-    outputs = ['\t' + str(output) for output in outputs]
-    outputs = ",\n".join(outputs)
+    outputs = [f'\t\tdouble {str(output)};' for output in outputs]
+    outputs = "\n".join(outputs)
     f.write(f'''
-enum class Output
-{{
-{outputs},
-\tNUM_OUTPUTS
+union Outputs {{
+    Outputs() {{
+        data.setZero();
+    }}
+    struct {{
+{outputs}
+    }};
+    Eigen::Vector<double, NUM_OUTPUTS> data;
 }};
 
-struct StateSpaceMatrices
-{{
-    Eigen::Matrix<double, int(State::NUM_STATES), int(State::NUM_STATES)> A;
-    Eigen::Matrix<double, int(State::NUM_STATES), int(Input::NUM_INPUTS)> B;
-    Eigen::Matrix<double, int(Output::NUM_OUTPUTS), int(State::NUM_STATES)> C;
-    Eigen::Matrix<double, int(Output::NUM_OUTPUTS), int(Input::NUM_INPUTS)> D;
+static_assert(sizeof(States) == sizeof(Eigen::Vector<double, NUM_STATES>));
+static_assert(sizeof(Inputs) == sizeof(Eigen::Vector<double, NUM_INPUTS>));
+static_assert(sizeof(Outputs) == sizeof(Eigen::Vector<double, NUM_OUTPUTS>));
+''')
+            
+    f.write(f'''
+
+struct StateSpaceMatrices {{
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES> A;
+    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B;
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C;
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D;
 }};
 ''')
     if len(switches) > 0:
@@ -133,13 +155,12 @@ StateSpaceMatrices calculateStateSpace(Components const& components, uint64_t sw
 StateSpaceMatrices calculateStateSpace_{i}(Components const& c) // {switch_combination}
 {{
 {write_components}
-
-    Eigen::Matrix<double, int(State::NUM_STATES), int(State::NUM_STATES)> K1;
-    Eigen::Matrix<double, int(State::NUM_STATES), int(State::NUM_STATES)> A1;
-    Eigen::Matrix<double, int(State::NUM_STATES), int(Input::NUM_INPUTS)> B1;
-    Eigen::Matrix<double, int(Output::NUM_OUTPUTS), int(State::NUM_STATES)> K2;
-    Eigen::Matrix<double, int(Output::NUM_OUTPUTS), int(State::NUM_STATES)> C1;
-    Eigen::Matrix<double, int(Output::NUM_OUTPUTS), int(Input::NUM_INPUTS)> D1;
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES> K1;
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES> A1;
+    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B1;
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> K2;
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C1;
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D1;
         ''')
         
         (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = combination

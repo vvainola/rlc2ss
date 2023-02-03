@@ -49,7 +49,7 @@ class Integrator {
     /// <param name="t">Current time</param>
     /// <returns>New state</returns>
     template <class System>
-    vector_t step(System system, vector_t const& x0, double t, double dt) {
+    vector_t step(System const& system, vector_t const& x0, double t, double dt) {
         t += dt;
         // Update 1 / (1 - dt * J) term if dt or jacobian has changed
         matrix_t jacobi = system.jacobian(x0, t);
@@ -77,7 +77,7 @@ class Integrator {
     }
 
     template <class System>
-    vector_t step_trapezoidal(System system, vector_t const& x0, double t, double dt) {
+    vector_t step_trapezoidal(System const& system, vector_t const& x0, double t, double dt) {
         t += dt;
         // Update 1 / (1 - 0.5 * dt * J) term if dt or jacobian has changed
         matrix_t jacobi = system.jacobian(x0, t);

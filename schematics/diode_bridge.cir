@@ -18,20 +18,6 @@ S_dneg_a V3_a Vdc_n
 S_dneg_b V3_b Vdc_n
 S_dneg_c V3_c Vdc_n
 
-C_dpos_a V3_a Vpos_a
-C_dpos_b V3_b Vpos_b
-C_dpos_c V3_c Vpos_c
-R_dpos_a Vpos_a Vdc_p
-R_dpos_b Vpos_b Vdc_p
-R_dpos_c Vpos_c Vdc_p
-
-C_dneg_a V3_a Vneg_a
-C_dneg_b V3_b Vneg_b
-C_dneg_c V3_c Vneg_c
-R_dneg_a Vneg_a Vdc_n
-R_dneg_b Vneg_b Vdc_n
-R_dneg_c Vneg_c Vdc_n
-
 C_dc Vdc_p Vdc_0 Vp
 R_dc Vdc_0 Vdc_n Vn
 

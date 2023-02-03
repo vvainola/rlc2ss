@@ -57,30 +57,30 @@ public:
         m_ss = calculateStateSpace(c);
     }
 
-    Eigen::Vector<double, int(State::NUM_STATES)> dxdt(Eigen::Vector<double, int(State::NUM_STATES)> const& x, double /*t*/)
+    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& x, double /*t*/) const
     {
-        return m_ss.A * x + m_ss.B * m_inputs;
+        return m_ss.A * x + m_ss.B * m_inputs.data;
     }
 
-    using matrix_t = Eigen::Matrix<double, int(State::NUM_STATES), int(State::NUM_STATES)>;
-    matrix_t jacobian(const Eigen::Vector<double, int(State::NUM_STATES)>& /*x*/, const double& /*t*/) const
+    using matrix_t = Eigen::Matrix<double, NUM_STATES, NUM_STATES>;
+    matrix_t jacobian(const Eigen::Vector<double, NUM_STATES>& /*x*/, const double& /*t*/) const
     {
         return m_ss.A;
     }
 
     void step(double dt, double Vs)
     {
-        m_inputs(int(Input::Vs)) = Vs;
-        m_x = m_solver.step_trapezoidal(*this, m_x, 0.0, dt);
+        m_inputs.Vs = Vs;
+        m_x.data = m_solver.step_trapezoidal(*this, m_x.data, 0.0, dt);
 
-        m_outputs = m_ss.C * m_x + m_ss.D * m_inputs;
+        m_outputs.data = m_ss.C * m_x.data + m_ss.D * m_inputs.data;
     }
 
     StateSpaceMatrices m_ss;
-    Eigen::Vector<double, int(State::NUM_STATES)> m_x;
-    Eigen::Vector<double, int(Input::NUM_INPUTS)> m_inputs;
-    Eigen::Vector<double, int(Output::NUM_OUTPUTS)> m_outputs;
-    Integrator<Eigen::Vector<double, int(State::NUM_STATES)>, matrix_t> m_solver;
+    States m_x;
+    Inputs m_inputs;
+    Outputs m_outputs;
+    Integrator<Eigen::Vector<double, NUM_STATES>, matrix_t> m_solver;
 };
 
 int main()
@@ -104,13 +104,12 @@ int main()
         double Vs = amplitude * sin(freq * t);
         plant.step(t_step, Vs);
 
-        double i_a = plant.m_outputs[int(Output::I_L1)];
-        double i_b = plant.m_outputs[int(Output::I_R2)];
-        double i_c = plant.m_outputs[int(Output::V_R2)];
+        double i_a = plant.m_outputs.I_L1;
+        double i_b = plant.m_outputs.I_R2;
+        double i_c = plant.m_outputs.V_R2;
         fout << t << "," << i_a << "," << i_b << "," << i_c << "\n";
     }
     fout.close();
     std::cout << "Done!\n"
               << std::endl;
-    system("python ..\\scripts\\plot.py");
 }

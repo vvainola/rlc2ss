@@ -1,17 +1,17 @@
 // MIT License
-// 
+//
 // Copyright (c) 2022 vvainola
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -29,7 +29,6 @@
 #include "..\schematics\LCL_matrices.h"
 #include <bitset>
 
-
 struct abc {
     double a;
     double b;
@@ -38,12 +37,9 @@ struct abc {
 
 constexpr double PI = 3.141592652;
 
-class Plant
-{
-public:
-
-    Plant()
-    {
+class Plant {
+  public:
+    Plant() {
         double Lc_a = 0.1;
         double Lc_b = 0.1;
         double Lc_c = 0.1;
@@ -129,43 +125,39 @@ public:
         c.Rg_a = Rg_a;
         c.Rg_b = Rg_b;
         c.Rg_c = Rg_c;
-        
+
         m_ss = calculateStateSpace(c);
     }
 
-    Eigen::Vector<double, int(State::NUM_STATES)> dxdt(Eigen::Vector<double, int(State::NUM_STATES)> const& x, double /*t*/)
-    {
-        return m_ss.A * x + m_ss.B * m_inputs;
+    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& x, double /*t*/) const {
+        return m_ss.A * x + m_ss.B * m_inputs.data;
     }
 
-    using matrix_t = Eigen::Matrix<double, int(State::NUM_STATES), int(State::NUM_STATES)>;
-    matrix_t jacobian(const Eigen::Vector<double, int(State::NUM_STATES)>& /*x*/, const double& /*t*/) const
-    {
+    using matrix_t = Eigen::Matrix<double, NUM_STATES, NUM_STATES>;
+    matrix_t jacobian(const Eigen::Vector<double, NUM_STATES>& /*x*/, const double& /*t*/) const {
         return m_ss.A;
     }
 
-    void step(double dt, abc uconv, abc ugrid)
-    {
-        m_inputs(int(Input::V_a)) = uconv.a;
-        m_inputs(int(Input::V_b)) = uconv.b;
-        m_inputs(int(Input::V_c)) = uconv.c;
-        m_inputs(int(Input::Vs_a)) = ugrid.a;
-        m_inputs(int(Input::Vs_b)) = ugrid.b;
-        m_inputs(int(Input::Vs_c)) = ugrid.c;
-        m_x = m_solver.step_trapezoidal(*this, m_x, 0.0, dt);
+    void step(double dt, abc uconv, abc ugrid) {
+        m_inputs.V_a = uconv.a;
+        m_inputs.V_b = uconv.b;
+        m_inputs.V_c = uconv.c;
+        m_inputs.Vs_a = ugrid.a;
+        m_inputs.Vs_b = ugrid.b;
+        m_inputs.Vs_c = ugrid.c;
+        m_x.data = m_solver.step_trapezoidal(*this, m_x.data, 0.0, dt);
 
-        m_outputs = m_ss.C * m_x + m_ss.D * m_inputs;
+        m_outputs.data = m_ss.C * m_x.data + m_ss.D * m_inputs.data;
     }
 
     StateSpaceMatrices m_ss;
-    Eigen::Vector<double, int(State::NUM_STATES)> m_x;
-    Eigen::Vector<double, int(Input::NUM_INPUTS)> m_inputs;
-    Eigen::Vector<double, int(Output::NUM_OUTPUTS)> m_outputs;
-    Integrator<Eigen::Vector<double, int(State::NUM_STATES)>, matrix_t> m_solver;
+    States m_x;
+    Inputs m_inputs;
+    Outputs m_outputs;
+    Integrator<Eigen::Vector<double, NUM_STATES>, matrix_t> m_solver;
 };
 
-int main()
-{
+int main() {
     Plant plant;
 
     double amplitude = 400;
@@ -180,8 +172,8 @@ int main()
     double t_step = 10e-6;
     std::ofstream fout("temp.csv");
     double t = 0;
-    for (; t < 0.2; t += t_step)
-    {
+    fout << "time,a,b,c\n";
+    for (; t < 0.2; t += t_step) {
         u_conv.a = amplitude * sin(freq * t);
         u_conv.b = amplitude * sin(freq * t + b_offset);
         u_conv.c = amplitude * sin(freq * t + c_offset);
@@ -190,9 +182,9 @@ int main()
         u_grid.c = amplitude * sin(freq * t + angle + c_offset);
         plant.step(t_step, u_conv, u_grid);
 
-        double i_a = plant.m_outputs[int(Output::V3_a)];
-        double i_b = plant.m_outputs[int(Output::V3_b)];
-        double i_c = plant.m_outputs[int(Output::V3_c)];
+        double i_a = plant.m_outputs.V3_a;
+        double i_b = plant.m_outputs.V3_b;
+        double i_c = plant.m_outputs.V3_c;
         fout << t << "," << i_a << "," << i_b << "," << i_c << "\n";
     }
     fout.close();
