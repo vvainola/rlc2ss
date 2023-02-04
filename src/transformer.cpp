@@ -42,45 +42,25 @@ class Transformer
 {
 public:
 
-    Transformer()
+    Transformer() : 
+        m_model(Model_transformer::Components{
+            .L1 = 1e-6,
+            .R1 = 1e-6,
+            .R2 = 5,
+            .E1 = 10,
+            .F1 = 1.0 / 10
+        })
     {
-        double L1 = 1e-6;
-        double R1 = 1e-6;
-        double R2 = 5;
-
-        Components c;
-        c.L1 = L1;
-        c.R1 = R1;
-        c.R2 = R2;
-        c.E1 = 10;
-        c.F1 = 1.0 / c.E1;
-        m_ss = calculateStateSpace(c);
-    }
-
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& x, double /*t*/) const
-    {
-        return m_ss.A * x + m_ss.B * m_inputs.data;
-    }
-
-    using matrix_t = Eigen::Matrix<double, NUM_STATES, NUM_STATES>;
-    matrix_t jacobian(const Eigen::Vector<double, NUM_STATES>& /*x*/, const double& /*t*/) const
-    {
-        return m_ss.A;
     }
 
     void step(double dt, double Vs)
     {
-        m_inputs.Vs = Vs;
-        m_x.data = m_solver.step_trapezoidal(*this, m_x.data, 0.0, dt);
-
-        m_outputs.data = m_ss.C * m_x.data + m_ss.D * m_inputs.data;
+        Model_transformer::Inputs inputs;
+        inputs.Vs = Vs;
+        m_model.step(dt, inputs);
     }
 
-    StateSpaceMatrices m_ss;
-    States m_x;
-    Inputs m_inputs;
-    Outputs m_outputs;
-    Integrator<Eigen::Vector<double, NUM_STATES>, matrix_t> m_solver;
+    Model_transformer m_model;
 };
 
 int main()
@@ -104,9 +84,9 @@ int main()
         double Vs = amplitude * sin(freq * t);
         plant.step(t_step, Vs);
 
-        double i_a = plant.m_outputs.I_L1;
-        double i_b = plant.m_outputs.I_R2;
-        double i_c = plant.m_outputs.V_R2;
+        double i_a = plant.m_model.outputs.I_L1;
+        double i_b = plant.m_model.outputs.I_R2;
+        double i_c = plant.m_model.outputs.V_R2;
         fout << t << "," << i_a << "," << i_b << "," << i_c << "\n";
     }
     fout.close();

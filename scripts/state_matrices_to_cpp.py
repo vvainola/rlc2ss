@@ -19,132 +19,223 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+import os
 
-import math
 def matrices_to_cpp(filename, circuit_combinations, switches):
     f = open(filename, 'w')
     (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = circuit_combinations[0]
 
-    component_fields = [f'\tdouble {c};' for c in component_names]
-    component_fields = "\n".join(component_fields)
-    f.write(f'''
+    class_name = 'Model_' + os.path.basename(filename).replace('.', '_')[0:-11]
+    components_list = "\n".join([f'\t\tdouble {str(component)} = -1;' for component in component_names])
+    components_compare = " &&\n".join([f'\t\t\t\t{str(component)} == other.{str(component)}' for component in component_names])
+    verify_components = "\n".join([f'\tassert(components.{str(component)} != -1);' for component in component_names])
+    states_list = "\n".join([f'\t\t\tdouble {str(state)};' for state in states])
+    inputs_list = "\n".join([f'\t\t\tdouble {str(input)};' for input in inputs])
+    outputs_list = "\n".join([f'\t\t\tdouble {str(output)};' for output in outputs])
+    switches_list = "\n".join([f'\t\t\tuint32_t {str(switch)} : 1;' for switch in switches])
+    update_states = "\n".join([f'\t\tstates.{state} = outputs.{state};' for state in states])
+        
+    template = '''
 #include <Eigen/Dense>
 #include <Eigen/Core>
 #include <Eigen/LU>
-#include <bitset>
+#include "integrator.h"
+#include <assert.h>
 
-struct Components
-{{
-{component_fields}
-}};
+class {class_name} {{
+  public:
+    struct Components;
+    union Inputs;
+    union Outputs;
+    union States;
+    union Switches;
+    struct StateSpaceMatrices;
+    StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
-inline constexpr size_t NUM_STATES = {len(states)};
-inline constexpr size_t NUM_INPUTS = {len(inputs)};
-inline constexpr size_t NUM_OUTPUTS = {len(outputs)};
-''')
-    
-    state_fields = [f'\t\tdouble {str(state)};' for state in states]
-    state_fields = "\n".join(state_fields)
-    f.write(f'''
-union States {{
-    States() {{
-        data.setZero();
+    {class_name}(Components const& c);
+
+    static inline constexpr size_t NUM_INPUTS = {num_inputs};
+    static inline constexpr size_t NUM_OUTPUTS = {num_outputs};
+    static inline constexpr size_t NUM_STATES = {num_states};
+    static inline constexpr size_t NUM_SWITCHES = {num_switches};
+
+    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {{
+        return m_ss.A * state + m_Bu;
     }}
-    struct {{
-{state_fields}
-    }};
-    Eigen::Vector<double, NUM_STATES> data;
-}};
-''')
 
-    inputs = [f'\t\tdouble {str(input)};' for input in inputs]
-    inputs = "\n".join(inputs)
-    f.write(f'''
-union Inputs {{
-    Inputs() {{
-        data.setZero();
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES> const& jacobian(const Eigen::Vector<double, NUM_STATES>& /*state*/, const double& /*t*/) const {{
+        return m_ss.A;
     }}
-    struct {{
-{inputs}
-    }};
-    Eigen::Vector<double, NUM_INPUTS> data;
-}};
-''')
 
-    outputs = [f'\t\tdouble {str(output)};' for output in outputs]
-    outputs = "\n".join(outputs)
-    f.write(f'''
-union Outputs {{
-    Outputs() {{
-        data.setZero();
+    void step(double dt, Inputs const& inputs) {{
+        // Update state-space matrices if needed
+        if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {{
+            m_components_DO_NOT_TOUCH = components;
+            m_switches_DO_NOT_TOUCH.all = switches.all;
+            m_ss = calculateStateSpace(components, switches);
+        }}
+        m_inputs.data = inputs.data;
+        m_Bu = m_ss.B * m_inputs.data;
+
+        // Solve one step
+        states.data = m_solver.step_trapezoidal(*this, states.data, 0.0, dt);
+
+        // Update output
+        outputs.data = m_ss.C * states.data + m_ss.D * m_inputs.data;
+
+        // Update states from outputs to have correct values for dependent states
+{update_states}
     }}
-    struct {{
-{outputs}
+
+    struct Components {{
+{components_list}
+
+        bool operator==(Components const& other) const {{
+            return 
+{components_compare};
+        }}
+
+        bool operator!=(Components const& other) const {{
+            return !(*this == other);
+        }}
     }};
-    Eigen::Vector<double, NUM_OUTPUTS> data;
+
+    union States {{
+        States() {{
+            data.setZero();
+        }}
+        struct {{
+{states_list}
+        }};
+        Eigen::Vector<double, NUM_STATES> data;
+    }};
+
+    union Inputs {{
+        Inputs() {{
+            data.setZero();
+        }}
+        struct {{
+{inputs_list}
+        }};
+        Eigen::Vector<double, NUM_INPUTS> data;
+    }};
+
+    union Outputs {{
+        Outputs() {{
+            data.setZero();
+        }}
+        struct {{
+{outputs_list}
+        }};
+        Eigen::Vector<double, NUM_OUTPUTS> data;
+    }};
+
+    union Switches {{
+        struct {{
+{switches_list}
+        }};
+        uint32_t all;
+    }};
+
+    struct StateSpaceMatrices {{
+        Eigen::Matrix<double, NUM_STATES, NUM_STATES> A;
+        Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B;
+        Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C;
+        Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D;
+    }};
+
+    Components components;
+    States states;
+    Outputs outputs;
+    Switches switches = {{.all = 0}};
+
+  private:
+    Inputs m_inputs;
+    Integrator<Eigen::Vector<double, NUM_STATES>, 
+               Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
+        m_solver;
+    StateSpaceMatrices m_ss;
+    Components m_components_DO_NOT_TOUCH;
+    Switches m_switches_DO_NOT_TOUCH = {{.all = 0}};
+    Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
+
+    static_assert(sizeof(double) * NUM_STATES == sizeof(States));
+    static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));
+    static_assert(sizeof(double) * NUM_OUTPUTS == sizeof(Outputs));
 }};
 
-static_assert(sizeof(States) == sizeof(Eigen::Vector<double, NUM_STATES>));
-static_assert(sizeof(Inputs) == sizeof(Eigen::Vector<double, NUM_INPUTS>));
-static_assert(sizeof(Outputs) == sizeof(Eigen::Vector<double, NUM_OUTPUTS>));
-''')
-            
-    f.write(f'''
+{class_name}::{class_name}(Components const& c)
+    : components(c),
+      m_components_DO_NOT_TOUCH(c) {{
+    m_ss = calculateStateSpace(components, switches);
+{verify_components}
+}}
 
-struct StateSpaceMatrices {{
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES> A;
-    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B;
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C;
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D;
-}};
-''')
-    if len(switches) > 0:
-        switches_str = ['\t' + str(switch) for switch in switches]
-        switches_str = ",\n".join(switches_str)
-        f.write(f'''
-enum Switch
-{{
-{switches_str},
-\tNUM_SWITCHES
-}};
+'''
+    f.write(template.format(
+        class_name = class_name,
+        num_inputs = len(inputs),
+        num_outputs = len(outputs),
+        num_states = len(states),
+        num_switches = len(switches),
+        components_list = components_list,
+        components_compare = components_compare,
+        verify_components = verify_components,
+        states_list = states_list,
+        inputs_list = inputs_list,
+        outputs_list = outputs_list,
+        switches_list = switches_list,
+        update_states = update_states,
+    ).replace('\t', '    '))
 
-''')
-    else:
-            f.write(f'''
-enum Switch
-{{
-\tNO_SWITCHES,
-\tNUM_SWITCHES
-}};
-
-''')
     for i in sorted(circuit_combinations):
         combination = circuit_combinations[i]
-        f.write(f'StateSpaceMatrices calculateStateSpace_{i}(Components const& c);\n')
+        f.write(f'{class_name}::StateSpaceMatrices calculateStateSpace_{i}({class_name}::Components const& c);\n')
 
     f.write(f'''
-using SwitchPositions = std::bitset<int(Switch::NUM_SWITCHES)>;
-
-StateSpaceMatrices calculateStateSpace(Components const& components, uint64_t switches = 0)
+struct Topology {{
+    {class_name}::Components components;
+    {class_name}::Switches switches;
+    {class_name}::StateSpaceMatrices state_space;
+}};
+    
+{class_name}::StateSpaceMatrices {class_name}::calculateStateSpace({class_name}::Components const& components, {class_name}::Switches switches)
 {{
+    static std::vector<Topology> state_space_cache;
+    auto it = std::find_if(
+        state_space_cache.begin(), state_space_cache.end(), [&](Topology const& t) {{
+        return t.components == components && t.switches.all == switches.all;
+    }});
+    if (it != state_space_cache.end()) {{
+        return it->state_space;
+    }}
+    {class_name}::StateSpaceMatrices state_space;
+
+    switch (switches.all) {{
 ''')
-    f.write(f'\n\tswitch (switches) {{')
 
     for i in sorted(circuit_combinations):
-        f.write(f'\n\t\tcase {i}: return calculateStateSpace_{i}(components);')
+        f.write(f'\n\t\tcase {i}: state_space = calculateStateSpace_{i}(components); break;')
 
     f.write(f'''
     default:
         assert(0);
     }}
+    state_space_cache.push_back(Topology{{
+        .components = components,
+        .switches = switches,
+        .state_space = state_space}});
 
-    return {{}};
+    return state_space;
 }}
 ''')
+    
+
+    
+
     write_components = ''
     for component in component_names:
         write_components += f'\tdouble {component} = c.{component};\n'
-    
     for i in sorted(circuit_combinations):
         combination = circuit_combinations[i]
         switch_combination = ''
@@ -152,15 +243,15 @@ StateSpaceMatrices calculateStateSpace(Components const& components, uint64_t sw
             if i & pow(2, j):
                 switch_combination += f" {switches[j]}"
         f.write(f'''
-StateSpaceMatrices calculateStateSpace_{i}(Components const& c) // {switch_combination}
+{class_name}::StateSpaceMatrices calculateStateSpace_{i}({class_name}::Components const& c) // {switch_combination}
 {{
 {write_components}
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES> K1;
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES> A1;
-    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B1;
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> K2;
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C1;
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D1;
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> K1;
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> A1;
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS> B1;
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> K2;
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> C1;
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> D1;
         ''')
         
         (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = combination
@@ -178,7 +269,7 @@ StateSpaceMatrices calculateStateSpace_{i}(Components const& c) // {switch_combi
     C1 <<\n\t\t\t {C1};
     D1 <<\n\t\t\t {D1};
 
-    StateSpaceMatrices ss;
+    {class_name}::StateSpaceMatrices ss;
     ss.A = K1.partialPivLu().solve(A1);
     ss.B = K1.partialPivLu().solve(B1);
     ss.C = (C1 + K2 * ss.A);

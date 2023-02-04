@@ -27,6 +27,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include "dbg_gui_wrapper.h"
 
 #define ASSERT(cond)    \
     if (cond) {         \
@@ -60,132 +61,148 @@ template <typename T>
 int sign(T val) {
     return (T(0) < val) - (val < T(0));
 }
+struct XY {
+    double x;
+    double y;
+};
 
+struct ABC {
+    double a;
+    double b;
+    double c;
+};
+
+XY abc_to_xy(ABC const& in) {
+    return XY{
+        2.0 / 3.0 * in.a - 1.0 / 3.0 * in.b - 1.0 / 3.0 * in.c,
+        sqrt(3) / 3.0 * in.b - sqrt(3) / 3.0 * in.c};
+}
+
+ABC xy_to_abc(XY in) {
+    return ABC{
+        in.x,
+        -0.5 * in.x + 0.5 * sqrt(3) * in.y,
+        -0.5 * in.x - 0.5 * sqrt(3) * in.y};
+}
+
+double v_dc = 500;
 class Plant {
   public:
-    Plant() {
-        setSwitches(0);
-    }
-
-    void setSwitches(SwitchPositions switches) {
-        m_switches = switches;
-        Components c;
-        c.L_conv_a = 100e-5;
-        c.L_conv_b = 100e-5;
-        c.L_conv_c = 100e-5;
-        c.L_grid_a = 100e-5;
-        c.L_grid_b = 100e-5;
-        c.L_grid_c = 100e-5;
-        c.L_src_a = 100e-5;
-        c.L_src_b = 100e-5;
-        c.L_src_c = 100e-5;
-        c.C_dc_p = 10e-3;
-        c.C_dc_n = 10e-3;
-        c.C_f_a = 1e-6;
-        c.C_f_b = 1e-6;
-        c.C_f_c = 1e-6;
-        c.R_conv_a = 1e-3;
-        c.R_conv_b = 1e-3;
-        c.R_conv_c = 1e-3;
-        c.R_grid_a = 1e-3;
-        c.R_grid_b = 1e-3;
-        c.R_grid_c = 1e-3;
-        c.R_f_a = 1e-3;
-        c.R_f_b = 1e-3;
-        c.R_f_c = 1e-3;
-        c.R_src_a = 1e-3;
-        c.R_src_b = 1e-3;
-        c.R_src_c = 1e-3;
-        c.R_dc_p = 1e-6;
-        c.R_dc_n = 1e-6;
-        c.R_dc_src = 1;
-        c.L_dc_src = 1e-5;
-
-        m_ss = calculateStateSpace(c, m_switches.to_ullong());
-    }
-
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& x, double /*t*/) const {
-        return m_ss.A * x + m_ss.B * m_inputs.data;
-    }
-
-    using matrix_t = Eigen::Matrix<double, NUM_STATES, NUM_STATES>;
-    matrix_t jacobian(const Eigen::Vector<double, NUM_STATES>& /*x*/, const double& /*t*/) const {
-        return m_ss.A;
+    Plant()
+        : m_model(Model_3L::Components{
+            .L_conv_a = 100e-5,
+            .L_conv_b = 100e-5,
+            .L_conv_c = 100e-5,
+            .L_dc_src = 1e-5,
+            .L_grid_a = 100e-5,
+            .L_grid_b = 100e-5,
+            .L_grid_c = 100e-5,
+            .L_src_a = 100e-5,
+            .L_src_b = 100e-5,
+            .L_src_c = 100e-5,
+            .C_dc_n = 10e-3,
+            .C_dc_p = 10e-3,
+            .C_f_a = 1e-6,
+            .C_f_b = 1e-6,
+            .C_f_c = 1e-6,
+            .R_conv_a = 1e-3,
+            .R_conv_b = 1e-3,
+            .R_conv_c = 1e-3,
+            .R_dc_n = 1e-6,
+            .R_dc_p = 1e-6,
+            .R_dc_src = 10,
+            .R_f_a = 1e-3,
+            .R_f_b = 1e-3,
+            .R_f_c = 1e-3,
+            .R_grid_a = 1e-3,
+            .R_grid_b = 1e-3,
+            .R_grid_c = 1e-3,
+            .R_src_a = 1e-3,
+            .R_src_b = 1e-3,
+            .R_src_c = 1e-3,
+        }) {
     }
 
     void step(double dt, abc ugrid) {
         checkDiodes();
 
-        m_inputs.V_dc_src = 500;
+        m_inputs.V_dc_src = v_dc;
         m_inputs.V_src_a = ugrid.a;
         m_inputs.V_src_b = ugrid.b;
         m_inputs.V_src_c = ugrid.c;
-        m_x.data = m_solver.step(*this, m_x.data, 0.0, dt);
+        m_model.step(dt, m_inputs);
 
-        m_outputs.data = m_ss.C * m_x.data + m_ss.D * m_inputs.data;
     }
-
-    StateSpaceMatrices m_ss;
-    States m_x;
-    Inputs m_inputs;
-    Outputs m_outputs;
-    Integrator<Eigen::Vector<double, NUM_STATES>, matrix_t> m_solver;
-    SwitchPositions m_switches = 0;
 
     void checkDiodes() {
-        SwitchPositions switches = m_switches;
-        double u_dc = m_outputs.N_dc_p - m_outputs.N_dc_n;
+        double u_dc = m_model.outputs.N_dc_p - m_model.outputs.N_dc_n;
+        Model_3L::Switches switches = m_model.switches;
         // A pos
-        if (m_outputs.N_conv_a - m_outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_p_a), 1);
+        if (m_model.outputs.N_conv_a - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_p_a = 1;
         }
-        if (m_outputs.N_dc_n - m_outputs.N_conv_a > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_n_a), 1);
+        if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_a > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_n_a = 1;
         }
-        if (m_outputs.I_L_conv_a > 0) {
-            switches.set(int(Switch::S_n_a), 0);
+        if (m_model.outputs.I_L_conv_a > 0) {
+            m_model.switches.S_n_a = 0;
         }
-        if (m_outputs.I_L_conv_a < 0) {
-            switches.set(int(Switch::S_p_a), 0);
-        }
-
-        if (m_outputs.N_conv_b - m_outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_p_b), 1);
-        }
-        if (m_outputs.N_dc_n - m_outputs.N_conv_b > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_n_b), 1);
-        }
-        if (m_outputs.I_L_conv_b > 0) {
-            switches.set(int(Switch::S_n_b), 0);
-        }
-        if (m_outputs.I_L_conv_b < 0) {
-            switches.set(int(Switch::S_p_b), 0);
+        if (m_model.outputs.I_L_conv_a < 0) {
+            m_model.switches.S_p_a = 0;
         }
 
-        if (m_outputs.N_conv_c - m_outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_p_c), 1);
+        if (m_model.outputs.N_conv_b - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_p_b = 1;
         }
-        if (m_outputs.N_dc_n - m_outputs.N_conv_c > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_n_c), 1);
+        if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_b > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_n_b = 1;
         }
-        if (m_outputs.I_L_conv_c > 0) {
-            switches.set(int(Switch::S_n_c), 0);
+        if (m_model.outputs.I_L_conv_b > 0) {
+            m_model.switches.S_n_b = 0;
         }
-        if (m_outputs.I_L_conv_c < 0) {
-            switches.set(int(Switch::S_p_c), 0);
+        if (m_model.outputs.I_L_conv_b < 0) {
+            m_model.switches.S_p_b = 0;
         }
-        ASSERT((switches[int(Switch::S_p_a)] && switches[int(Switch::S_n_a)]));
-        ASSERT((switches[int(Switch::S_p_b)] && switches[int(Switch::S_n_b)]));
-        ASSERT((switches[int(Switch::S_p_c)] && switches[int(Switch::S_n_c)]));
 
-        if (switches != m_switches) {
-            setSwitches(switches);
+        if (m_model.outputs.N_conv_c - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_p_c = 1;
         }
+        if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_c > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_n_c = 1;
+        }
+        if (m_model.outputs.I_L_conv_c > 0) {
+            m_model.switches.S_n_c = 0;
+        }
+        if (m_model.outputs.I_L_conv_c < 0) {
+            m_model.switches.S_p_c = 0;
+        }
+        ASSERT((m_model.switches.S_p_a && m_model.switches.S_n_a));
+        ASSERT((m_model.switches.S_p_b && m_model.switches.S_n_b));
+        ASSERT((m_model.switches.S_p_c && m_model.switches.S_n_c));
+
+        // clang-format off
+        // Keep always one switch on so that the DC is connected to ground
+        if (m_model.switches.all == 0) {
+            if (m_model.switches.all == 0 && switches.S_0_a) m_model.switches.S_0_a = 1;
+            if (m_model.switches.all == 0 && switches.S_0_b) m_model.switches.S_0_b = 1;
+            if (m_model.switches.all == 0 && switches.S_0_c) m_model.switches.S_0_c = 1;
+            if (m_model.switches.all == 0 && switches.S_n_a) m_model.switches.S_n_a = 1;
+            if (m_model.switches.all == 0 && switches.S_n_b) m_model.switches.S_n_b = 1;
+            if (m_model.switches.all == 0 && switches.S_n_c) m_model.switches.S_n_c = 1;
+            if (m_model.switches.all == 0 && switches.S_p_a) m_model.switches.S_p_a = 1;
+            if (m_model.switches.all == 0 && switches.S_p_b) m_model.switches.S_p_b = 1;
+            if (m_model.switches.all == 0 && switches.S_p_c) m_model.switches.S_p_c = 1;
+        }
+        // clang-format on
     }
+
+    Model_3L::Inputs m_inputs;
+    Model_3L m_model;
 };
 
+Plant plant;
+XY i_conv;
 int main() {
-    Plant plant;
 
     double amplitude = 400;
 
@@ -204,33 +221,41 @@ int main() {
     switches[int(Switch::S_n_b)] = 1;
     plant.setSwitches(switches);*/
 
-    for (; t < 0.1; t += t_step) {
+    DbgGui_create(t_step);
+    DbgGui_startUpdateLoop();
+    for (; t < 0.2; t += t_step) {
+        DbgGui_sample();
         u_grid.a = amplitude * sin(freq * t + angle);
         u_grid.b = amplitude * sin(freq * t + angle + b_offset);
         u_grid.c = amplitude * sin(freq * t + angle + c_offset);
         plant.step(t_step, u_grid);
 
-        /*double i_a = abs(plant.m_outputs.Vdc_p - plant.m_outputs.Vdc_n);
+        /*double i_a = abs(plant.m_model.outputs.Vdc_p - plant.m_model.outputs.Vdc_n);
         double i_b = plant.m_x[V_C_dc];
         double i_c = 0;*/
 
+
         fout << t << ","
-             << plant.m_outputs.N_conv_a << ","
-             << plant.m_outputs.N_conv_b << ","
-             << plant.m_outputs.N_conv_c << ","
-             << plant.m_outputs.I_L_conv_a << ","
-             << plant.m_outputs.I_L_conv_b << ","
-             << plant.m_outputs.I_L_conv_c << ","
-             << plant.m_outputs.N_dc_n << ","
-             << plant.m_outputs.N_dc_p << ","
-             << plant.m_switches.test(3) << ","
-             << plant.m_switches.test(4) << ","
-             << plant.m_switches.test(5) << ","
-             << plant.m_switches.test(6) << ","
-             << plant.m_switches.test(7) << ","
-             << plant.m_switches.test(8) << ","
-             << plant.m_outputs.N_dc_p - plant.m_outputs.N_dc_n << ","
+             << plant.m_model.outputs.N_conv_a << ","
+             << plant.m_model.outputs.N_conv_b << ","
+             << plant.m_model.outputs.N_conv_c << ","
+             << plant.m_model.outputs.I_L_conv_a << ","
+             << plant.m_model.outputs.I_L_conv_b << ","
+             << plant.m_model.outputs.I_L_conv_c << ","
+             << plant.m_model.outputs.N_dc_n << ","
+             << plant.m_model.outputs.N_dc_p << ","
+             << plant.m_model.switches.S_n_a << ","
+             << plant.m_model.switches.S_n_b << ","
+             << plant.m_model.switches.S_n_c << ","
+             << plant.m_model.switches.S_p_a << ","
+             << plant.m_model.switches.S_p_b << ","
+             << plant.m_model.switches.S_p_c << ","
+             << plant.m_model.outputs.N_dc_p - plant.m_model.outputs.N_dc_n << ","
              << "\n";
+        i_conv = abc_to_xy({plant.m_model.outputs.I_L_conv_a,
+                            plant.m_model.outputs.I_L_conv_b,
+                            plant.m_model.outputs.I_L_conv_c});
+        fout.flush();
     }
     fout.close();
     std::cout << "Done!\n"

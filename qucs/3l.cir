@@ -1,23 +1,24 @@
 C_dc_n _net28 N_dc_0
-C_dc_p N_dc_0 _net29 Vp
+C_dc_p N_dc_0 _net29 Vp;
 C_f_a _net24 N_cap_a
 C_f_b _net25 N_cap_b
 C_f_c _net26 N_cap_c
-I_load N_dc_p N_dc_n
-L_conv_a N_cap_a V2_a I
-L_conv_b N_cap_b V2_b I
-L_conv_c N_cap_c V2_c I
+L_conv_a N_cap_a V2_a
+L_conv_b N_cap_b V2_b
+L_conv_c N_cap_c V2_c
+L_dc_src _net36 _net37
 L_grid_a _net19 _net15
 L_grid_b _net21 _net16
 L_grid_c _net23 _net17
 L_src_a _net0 _net18
 L_src_b _net1 _net20
 L_src_c _net2 _net22
-R_conv_a V2_a N_conv_a Vn
-R_conv_b V2_b N_conv_b Vn
-R_conv_c V2_c N_conv_c Vn
-R_dc_n _net28 N_dc_n Vn
-R_dc_p N_dc_p _net29 Vp
+R_conv_a V2_a N_conv_a Vn;
+R_conv_b V2_b N_conv_b Vn;
+R_conv_c V2_c N_conv_c Vn;
+R_dc_n _net28 N_dc_n Vn;
+R_dc_p N_dc_p _net29 Vp;
+R_dc_src N_dc_p _net36
 R_f_a _net27 _net24
 R_f_b _net27 _net25
 R_f_c _net27 _net26
@@ -36,6 +37,7 @@ S_n_c N_dc_n  N_conv_c
 S_p_a N_conv_a  N_dc_p
 S_p_b N_conv_b  N_dc_p
 S_p_c N_conv_c  N_dc_p
+V_dc_src _net37 N_dc_n
 V_src_a _net0 0
 V_src_b _net1 0
 V_src_c _net2 0

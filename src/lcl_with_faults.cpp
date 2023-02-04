@@ -39,143 +39,56 @@ constexpr double PI = 3.141592652;
 
 class Plant {
   public:
-    Plant() {
-        setSwitches(0);
-    }
-
-    void setSwitches(SwitchPositions switches) {
-        m_switches = switches;
-        double Lc_a = 0.1;
-        double Lc_b = 0.1;
-        double Lc_c = 0.1;
-        double Lc = Lc_a;
-        double Rc = 1;
-        double Rc_a = 1;
-        double Rc_b = 1;
-        double Rc_c = 1;
-        double Rcp_a = 1;
-        double Rcp_b = 1;
-        double Rcp_c = 1;
-
-        double Rf = 0.1;
-        double Rf_a = 0.1;
-        double Rf_b = 0.1;
-        double Rf_c = 0.1;
-        double C = 1e-3;
-        double C_a = 1e-3;
-        double C_b = 1e-3;
-        double C_c = 1e-3;
-
-        double Lg = 1;
-        double Lg_a = 1;
-        double Lg_b = 1;
-        double Lg_c = 1;
-        double Rg = 1;
-        double Rg_a = 1;
-        double Rg_b = 1;
-        double Rg_c = 1;
-        double Rgp_a = 1;
-        double Rgp_b = 1;
-        double Rgp_c = 1;
-
-        double Rmcb = 1;
-        double R_mcb_a = 1;
-        double R_mcb_b = 1;
-        double R_mcb_c = 1;
-
-        double Lfault = 1;
-        double Lfault_a = 1;
-        double Lfault_b = 1;
-        double Lfault_c = 1;
-        double Rfault = 1;
-        double R_fault_a = 1;
-        double R_fault_b = 1;
-        double R_fault_c = 1;
-        double Rfault_neutral_to_ground = 10;
-
-        double Ls = 1;
-        double Ls_a = 1;
-        double Ls_b = 1;
-        double Ls_c = 1;
-        double Rs = 1;
-        double Rs_a = 1;
-        double Rs_b = 1;
-        double Rs_c = 1;
-
-        double R = 1;
-        double R_a = 1;
-        double R_b = 1;
-        double R_c = 1;
-        double L = 1;
-        double L_a = 1;
-        double L_b = 1;
-        double L_c = 1;
-
-        Components c;
-        c.Lc_a = Lc_a;
-        c.Lc_b = Lc_b;
-        c.Lc_c = Lc_c;
-        c.Lg_a = Lg_a;
-        c.Lg_b = Lg_b;
-        c.Lg_c = Lg_c;
-        c.L_fault_a = Lfault_a;
-        c.L_fault_b = Lfault_b;
-        c.L_fault_c = Lfault_c;
-        c.Ls_a = Ls_a;
-        c.Ls_b = Ls_b;
-        c.Ls_c = Ls_c;
-        c.C_a = C_a;
-        c.C_b = C_b;
-        c.C_c = C_c;
-        c.Rc_a = Rc_a;
-        c.Rc_b = Rc_b;
-        c.Rc_c = Rc_c;
-        c.Rf_a = Rf_a;
-        c.Rf_b = Rf_b;
-        c.Rf_c = Rf_c;
-        c.Rg_a = Rg_a;
-        c.Rg_b = Rg_b;
-        c.Rg_c = Rg_c;
-        c.R_mcb_a = R_mcb_a;
-        c.R_mcb_b = R_mcb_b;
-        c.R_mcb_c = R_mcb_c;
-        c.R_fault_a = R_fault_a;
-        c.R_fault_b = R_fault_b;
-        c.R_fault_c = R_fault_c;
-        c.Rs_a = Rs_a;
-        c.Rs_b = Rs_b;
-        c.Rs_c = Rs_c;
-
-        m_ss = calculateStateSpace(c, m_switches.to_ullong());
-    }
-
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& x, double /*t*/) const {
-        return m_ss.A * x + m_ss.B * m_inputs.data;
-    }
-
-    using matrix_t = Eigen::Matrix<double, NUM_STATES, NUM_STATES>;
-    matrix_t jacobian(const Eigen::Vector<double, NUM_STATES>& /*x*/, const double& /*t*/) const {
-        return m_ss.A;
+    Plant()
+        : m_model(Model_LCL_with_faults_S::Components{
+            .Lc_a = 0.1,
+            .Lc_b = 0.1,
+            .Lc_c = 0.1,
+            .Lg_a = 1,
+            .Lg_b = 1,
+            .Lg_c = 1,
+            .L_fault_a = 1,
+            .L_fault_b = 1,
+            .L_fault_c = 1,
+            .Ls_a = 1,
+            .Ls_b = 1,
+            .Ls_c = 1,
+            .C_a = 1e-3,
+            .C_b = 1e-3,
+            .C_c = 1e-3,
+            .Rc_a = 1,
+            .Rc_b = 1,
+            .Rc_c = 1,
+            .Rf_a = 0.1,
+            .Rf_b = 0.1,
+            .Rf_c = 0.1,
+            .Rg_a = 1,
+            .Rg_b = 1,
+            .Rg_c = 1,
+            .R_mcb_a = 1,
+            .R_mcb_b = 1,
+            .R_mcb_c = 1,
+            .R_fault_a = 1,
+            .R_fault_b = 1,
+            .R_fault_c = 1,
+            .Rs_a = 1,
+            .Rs_b = 1,
+            .Rs_c = 1,
+        }) {
     }
 
     void step(double dt, abc uconv, abc ugrid) {
-        m_inputs.V_a = uconv.a;
-        m_inputs.V_b = uconv.b;
-        m_inputs.V_c = uconv.c;
-        m_inputs.Vs_a = ugrid.a;
-        m_inputs.Vs_b = ugrid.b;
-        m_inputs.Vs_c = ugrid.c;
-        m_x.data = m_solver.step_trapezoidal(*this, m_x.data, 0.0, dt);
-
-        m_outputs.data = m_ss.C * m_x.data + m_ss.D * m_inputs.data;
+        Model_LCL_with_faults_S::Inputs inputs;
+        inputs.V_a = uconv.a;
+        inputs.V_b = uconv.b;
+        inputs.V_c = uconv.c;
+        inputs.Vs_a = ugrid.a;
+        inputs.Vs_b = ugrid.b;
+        inputs.Vs_c = ugrid.c;
+        m_model.step(dt, inputs);
     }
 
-    StateSpaceMatrices m_ss;
-    States m_x;
-    Inputs m_inputs;
-    Outputs m_outputs;
-    Integrator<Eigen::Vector<double, NUM_STATES>, matrix_t> m_solver;
-    SwitchPositions m_switches = 0;
+    Model_LCL_with_faults_S m_model;
 };
 
 int main() {
@@ -187,12 +100,10 @@ int main() {
     double b_offset = -2.0 * PI / 3.0;
     double c_offset = -4.0 * PI / 3.0;
     double angle = PI;
-    SwitchPositions s = 0;
-    s.set(Switch::S_fault_a, 1);
-    s.set(Switch::S_fault_b, 1);
-    s.set(Switch::S_fault_c, 1);
-    s.set(Switch::S_fault_neutral_to_ground, 1);
-    plant.setSwitches(s);
+    plant.m_model.switches.S_fault_a = 1;
+    plant.m_model.switches.S_fault_b = 1;
+    plant.m_model.switches.S_fault_c = 1;
+    plant.m_model.switches.S_fault_neutral_to_ground = 1;
 
     abc u_conv;
     abc u_grid;
@@ -210,9 +121,9 @@ int main() {
 
         plant.step(t_step, u_conv, u_grid);
 
-        double i_a = plant.m_outputs.V3_a;
-        double i_b = plant.m_outputs.V3_b;
-        double i_c = plant.m_outputs.V3_c;
+        double i_a = plant.m_model.outputs.V3_a;
+        double i_b = plant.m_model.outputs.V3_b;
+        double i_c = plant.m_model.outputs.V3_c;
         fout << t << "," << i_a << "," << i_b << "," << i_c << "\n";
     }
     fout.close();

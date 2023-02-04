@@ -39,12 +39,8 @@ transformer = executable('transformer',
     dependencies : deps
 )
 
-inverter_2L = executable('inverter_2L',
-    sources : ['src/inverter_2L.cpp'],
-    dependencies : deps
-)
-
+gui = subproject('gui').get_variable('lib_gui_dep')
 inverter_3L = executable('inverter_3L',
     sources : ['src/inverter_3L.cpp'],
-    dependencies : deps
+    dependencies : deps + [gui]
 )

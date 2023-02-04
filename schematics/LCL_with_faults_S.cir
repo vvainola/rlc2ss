@@ -5,13 +5,13 @@ V_c V1_c Vn1 Vp
 Rc_a V1_a V2_a
 Rc_b V1_b V2_b
 Rc_c V1_c V2_c
-Lc_a V2_a V3_a I
-Lc_b V2_b V3_b I
-Lc_c V2_c V3_c I
+Lc_a V2_a V3_a I;
+Lc_b V2_b V3_b I;
+Lc_c V2_c V3_c I;
 
-C_a V3_a V4_a Vp
-C_b V3_b V4_b Vp
-C_c V3_c V4_c Vp
+C_a V3_a V4_a Vp;
+C_b V3_b V4_b Vp;
+C_c V3_c V4_c Vp;
 Rf_a V4_a Vn2
 Rf_b V4_b Vn2
 Rf_c V4_c Vn2
@@ -19,13 +19,13 @@ Rf_c V4_c Vn2
 Rg_a V3_a V5_a 
 Rg_b V3_b V5_b
 Rg_c V3_c V5_c
-Lg_a V5_a V6_a I
-Lg_b V5_b V6_b I
-Lg_c V5_c V6_c I
+Lg_a V5_a V6_a I;
+Lg_b V5_b V6_b I;
+Lg_c V5_c V6_c I;
 
-R_mcb_a V6_a V7_a VpVn
-R_mcb_b V6_b V7_b VpVn
-R_mcb_c V6_c V7_c VpVn
+R_mcb_a V6_a V7_a Vp;Vn;
+R_mcb_b V6_b V7_b Vp;Vn;
+R_mcb_c V6_c V7_c Vp;Vn;
 
 L_fault_a V7_a V8_a
 L_fault_b V7_b V8_b
@@ -38,9 +38,9 @@ S_fault_b V11_b Vfault_n
 S_fault_c V11_c Vfault_n
 S_fault_neutral_to_ground Vfault_n 0
 
-Ls_a V7_a V9_a I
-Ls_b V7_b V9_b I
-Ls_c V7_c V9_c I
+Ls_a V7_a V9_a I;
+Ls_b V7_b V9_b I;
+Ls_c V7_c V9_c I;
 Rs_a V9_a V10_a
 Rs_b V9_b V10_b
 Rs_c V9_c V10_c

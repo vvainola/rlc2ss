@@ -32,7 +32,7 @@ template <class vector_t,
           class matrix_t>
 class Integrator {
   public:
-    Integrator(double epsilon = 1e-6)
+    Integrator(double epsilon = 1e-8)
         : m_epsilon(epsilon),
           m_dt_prev(0) {
     }

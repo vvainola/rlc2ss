@@ -6,19 +6,23 @@ V_c V1_c 0
 R_a V1_a V2_a
 R_b V1_b V2_b
 R_c V1_c V2_c
-L_a V2_a V3_a IVn
-L_b V2_b V3_b IVn
-L_c V2_c V3_c IVn
+L_a V2_a V3_a I;Vn;
+L_b V2_b V3_b I;Vn;
+L_c V2_c V3_c I;Vn;
 
-S_dpos_a V3_a Vdc_p
-S_dpos_b V3_b Vdc_p
-S_dpos_c V3_c Vdc_p
+S_p_a V3_a Vdc_p
+S_p_b V3_b Vdc_p
+S_p_c V3_c Vdc_p
 
-S_dneg_a V3_a Vdc_n
-S_dneg_b V3_b Vdc_n
-S_dneg_c V3_c Vdc_n
+S_n_a V3_a Vdc_n
+S_n_b V3_b Vdc_n
+S_n_c V3_c Vdc_n
 
-C_dc Vdc_p Vdc_0 Vp
-R_dc Vdc_0 Vdc_n Vn
+C_dc Vdc_p Vdc_0 Vp;
+R_dc Vdc_0 Vdc_n Vn;
 
 R_load Vdc_p Vdc_n
+
+X S_p_a S_n_a
+X S_p_b S_n_b
+X S_p_c S_n_c

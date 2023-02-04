@@ -227,7 +227,6 @@ def form_state_space_matrices(parsed_netlist):
     DEP_V_SRC_POS = 3
     DEP_V_SRC_NEG = 4
     DEP_I_SRC = 3
-    OUTPUTS = 3
     netlist = parsed_netlist
     nodes: T.List[Node] = []
     components: T.List[Component] = []
@@ -243,28 +242,28 @@ def form_state_space_matrices(parsed_netlist):
     ii_sources: T.List[Component] = []
     mutual_inductors = []
     for line in netlist:
-        s = line.split()
-        if s[NAME][0] == 'K' or s[NAME][0] == 'X':
+        line_split = line.split()
+        if line_split[NAME][0] == 'K' or line_split[NAME][0] == 'X':
             continue
-        node_pos = Node(s[POS_NODE])
-        node_neg = Node(s[NEG_NODE])
+        node_pos = Node(line_split[POS_NODE])
+        node_neg = Node(line_split[NEG_NODE])
         if node_pos not in nodes:
             nodes.append(node_pos)
         if node_neg not in nodes:
             nodes.append(node_neg)
     for line in netlist:
-        s = line.split()
-        if s[NAME][0] == 'K':
-            L1 = get_component(components, s[1])
-            L2 = get_component(components, s[2])
-            mutual_inductors.append([s[NAME], L1, L2])
-        elif s[NAME][0] == 'X':
+        line_split = line.split()
+        if line_split[NAME][0] == 'K':
+            L1 = get_component(components, line_split[1])
+            L2 = get_component(components, line_split[2])
+            mutual_inductors.append([line_split[NAME], L1, L2])
+        elif line_split[NAME][0] == 'X':
             continue
 
-        pos_node = nodes[nodes.index(Node(s[POS_NODE]))]
-        neg_node = nodes[nodes.index(Node(s[NEG_NODE]))]
+        pos_node = nodes[nodes.index(Node(line_split[POS_NODE]))]
+        neg_node = nodes[nodes.index(Node(line_split[NEG_NODE]))]
 
-        component = Component(s[NAME], pos_node, neg_node)
+        component = Component(line_split[NAME], pos_node, neg_node)
         neg_node.connections.append(component)
         pos_node.connections.append(component)
         components.append(component)
@@ -277,49 +276,50 @@ def form_state_space_matrices(parsed_netlist):
             resistors.append(component)
         elif component.name[0] == 'L':
             inductors.append(component)
+            outputs.append((f'I_{component.name}'))
         elif component.name[0] == 'C':
             capacitors.append(component)
+            outputs.append((f'V_{component.name}'))
         elif component.name[0] == 'E':
             vv_sources.append(component)
-            pos = Symbol(s[DEP_V_SRC_POS])
-            neg = Symbol(s[DEP_V_SRC_NEG])
+            pos = Symbol(line_split[DEP_V_SRC_POS])
+            neg = Symbol(line_split[DEP_V_SRC_NEG])
             component.update_src(pos, neg)
-            component.update_voltage(Symbol(s[NAME]) * (pos - neg))
+            component.update_voltage(Symbol(line_split[NAME]) * (pos - neg))
         elif component.name[0] == 'F':
             ii_sources.append(component)
-            src = Symbol(s[DEP_I_SRC])
+            src = Symbol(line_split[DEP_I_SRC])
             component.update_src(src)
-            component.update_current(Symbol(s[NAME]) * src)
+            component.update_current(Symbol(line_split[NAME]) * src)
         elif component.name[0] == 'G':
-            pos = Symbol(s[DEP_V_SRC_POS])
-            neg = Symbol(s[DEP_V_SRC_NEG])
+            pos = Symbol(line_split[DEP_V_SRC_POS])
+            neg = Symbol(line_split[DEP_V_SRC_NEG])
             component.update_src(pos, neg)
-            component.update_current(Symbol(s[NAME]) * (pos - neg))
+            component.update_current(Symbol(line_split[NAME]) * (pos - neg))
             vi_sources.append(component)
         elif component.name[0] == 'H':
-            src = Symbol(s[DEP_I_SRC])
+            src = Symbol(line_split[DEP_I_SRC])
             component.update_src(src)
-            component.update_voltage(Symbol(s[NAME]) * src)
+            component.update_voltage(Symbol(line_split[NAME]) * src)
             iv_sources.append(component)
         else:
             assert False, f"Unknown component type {component.name}"
 
-        if len(s) > OUTPUTS:
-            comp_outputs = s[-1]
-            if 'Vp' in comp_outputs:
-                outputs.append((pos_node.name))
-            if 'Vn' in comp_outputs:
-                outputs.append((neg_node.name))
-            if 'Vc' in comp_outputs:
-                if component.name[0] == 'V':
-                    outputs.append((component.name))
-                else:
-                    outputs.append((f'V_{component.name}'))
-            if 'I' in comp_outputs:
-                if component.name[0] == 'I':
-                    outputs.append((component.name))
-                else:
-                    outputs.append((f'I_{component.name}'))
+        comp_outputs = line_split[-1]
+        if 'Vp;' in comp_outputs:
+            outputs.append((pos_node.name))
+        if 'Vn;' in comp_outputs:
+            outputs.append((neg_node.name))
+        if 'Vc;' in comp_outputs:
+            if component.name[0] == 'V':
+                outputs.append((component.name))
+            else:
+                outputs.append((f'V_{component.name}'))
+        if 'I;' in comp_outputs:
+            if component.name[0] == 'I':
+                outputs.append((component.name))
+            else:
+                outputs.append((f'I_{component.name}'))
     outputs = list(set(outputs))
     outputs.sort()
     outputs = [Symbol(output) for output in outputs]

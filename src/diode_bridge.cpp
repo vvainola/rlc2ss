@@ -50,124 +50,93 @@ int sign(T val) {
     return (T(0) < val) - (val < T(0));
 }
 
-class Plant {
+class DiodeBridge {
   public:
-    Plant() {
-        setSwitches(0);
-    }
-
-    void setSwitches(SwitchPositions switches) {
-        m_switches = switches;
-        Components c;
-        c.L_a = 100e-5;
-        c.L_b = 100e-5;
-        c.L_c = 100e-5;
-        /*c.C_dpos_a = 1e-9;
-        c.C_dpos_b = 1e-9;
-        c.C_dpos_c = 1e-9;
-        c.C_dneg_a = 1e-9;
-        c.C_dneg_b = 1e-9;
-        c.C_dneg_c = 1e-9;
-        c.R_dpos_a = 1e-9;
-        c.R_dpos_b = 1e-9;
-        c.R_dpos_c = 1e-9;
-        c.R_dneg_a = 1e-9;
-        c.R_dneg_b = 1e-9;
-        c.R_dneg_c = 1e-9;*/
-        // c.R_dc_n_0 = 1e6;
-        // c.R_dc_p_0 = 1e6;
-
-        c.C_dc = 10e-3;
-        c.R_a = 1e-3;
-        c.R_b = 1e-3;
-        c.R_c = 1e-3;
-        c.R_dc = 1e-6;
-        c.R_load = 1;
-
-        m_ss = calculateStateSpace(c, m_switches.to_ullong());
-    }
-
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& x, double /*t*/) const {
-        return m_ss.A * x + m_ss.B * m_inputs.data;
-    }
-
-    using matrix_t = Eigen::Matrix<double, NUM_STATES, NUM_STATES>;
-    matrix_t jacobian(const Eigen::Vector<double, NUM_STATES>& /*x*/, const double& /*t*/) const {
-        return m_ss.A;
+    DiodeBridge()
+        : m_model(Model_diode_bridge::Components {
+              .L_a = 100e-5,
+              .L_b = 100e-5,
+              .L_c = 100e-5,
+              .C_dc = 10e-3,
+              .R_a = 1e-3,
+              .R_b = 1e-3,
+              .R_c = 1e-3,
+              .R_dc = 1e-6,
+              .R_load = 1
+    }){
     }
 
     void step(double dt, abc ugrid) {
+
+        Model_diode_bridge::Inputs inputs;
+        inputs.V_a = ugrid.a;
+        inputs.V_b = ugrid.b;
+        inputs.V_c = ugrid.c;
+        m_model.step(dt, inputs);
         checkDiodes();
-
-        m_inputs.V_a = ugrid.a;
-        m_inputs.V_b = ugrid.b;
-        m_inputs.V_c = ugrid.c;
-        m_x.data = m_solver.step(*this, m_x.data, 0.0, dt);
-
-        m_outputs.data = m_ss.C * m_x.data + m_ss.D * m_inputs.data;
     }
 
-    StateSpaceMatrices m_ss;
-    States m_x;
-    Inputs m_inputs;
-    Outputs m_outputs;
-    Integrator<Eigen::Vector<double, NUM_STATES>, matrix_t> m_solver;
-    SwitchPositions m_switches = 0;
+    Model_diode_bridge m_model;
 
     void checkDiodes() {
-        SwitchPositions switches = m_switches;
-        double u_dc = m_outputs.Vdc_p - m_outputs.Vdc_n;
+        double u_dc = m_model.outputs.Vdc_p - m_model.outputs.Vdc_n;
+        Model_diode_bridge::Switches switches = m_model.switches;
         // A pos
-        if (m_outputs.V3_a - m_outputs.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dpos_a), 1);
+        if (m_model.outputs.V3_a - m_model.outputs.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_p_a = 1;
         }
-        if (m_outputs.Vdc_n - m_outputs.V3_a > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dneg_a), 1);
+        if (m_model.outputs.Vdc_n - m_model.outputs.V3_a > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_n_a = 1;
         }
-        if (m_outputs.I_L_a > 0) {
-            switches.set(int(Switch::S_dneg_a), 0);
+        if (m_model.outputs.I_L_a > 0) {
+            m_model.switches.S_n_a = 0;
         }
-        if (m_outputs.I_L_a < 0) {
-            switches.set(int(Switch::S_dpos_a), 0);
-        }
-
-        if (m_outputs.V3_b - m_outputs.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dpos_b), 1);
-        }
-        if (m_outputs.Vdc_n - m_outputs.V3_b > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dneg_b), 1);
-        }
-        if (m_outputs.I_L_b > 0) {
-            switches.set(int(Switch::S_dneg_b), 0);
-        }
-        if (m_outputs.I_L_b < 0) {
-            switches.set(int(Switch::S_dpos_b), 0);
+        if (m_model.outputs.I_L_a < 0) {
+            m_model.switches.S_p_a = 0;
         }
 
-        if (m_outputs.V3_c - m_outputs.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dpos_c), 1);
+        if (m_model.outputs.V3_b - m_model.outputs.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_p_b = 1;
         }
-        if (m_outputs.Vdc_n - m_outputs.V3_c > DIODE_ON_THRESHOLD_VOLTAGE) {
-            switches.set(int(Switch::S_dneg_c), 1);
+        if (m_model.outputs.Vdc_n - m_model.outputs.V3_b > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_n_b = 1;
         }
-        if (m_outputs.I_L_c > 0) {
-            switches.set(int(Switch::S_dneg_c), 0);
+        if (m_model.outputs.I_L_b > 0) {
+            m_model.switches.S_n_b = 0;
         }
-        if (m_outputs.I_L_c < 0) {
-            switches.set(int(Switch::S_dpos_c), 0);
+        if (m_model.outputs.I_L_b < 0) {
+            m_model.switches.S_p_b = 0;
         }
-        ASSERT((switches[int(Switch::S_dpos_a)] && switches[int(Switch::S_dneg_a)]));
-        ASSERT((switches[int(Switch::S_dpos_b)] && switches[int(Switch::S_dneg_b)]));
-        ASSERT((switches[int(Switch::S_dpos_c)] && switches[int(Switch::S_dneg_c)]));
 
-        if (switches != m_switches) {
-            setSwitches(switches);
+        if (m_model.outputs.V3_c - m_model.outputs.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_p_c = 1;
         }
+        if (m_model.outputs.Vdc_n - m_model.outputs.V3_c > DIODE_ON_THRESHOLD_VOLTAGE) {
+            m_model.switches.S_n_c = 1;
+        }
+        if (m_model.outputs.I_L_c > 0) {
+            m_model.switches.S_n_c = 0;
+        }
+        if (m_model.outputs.I_L_c < 0) {
+            m_model.switches.S_p_c = 0;
+        }
+
+        // clang-format off
+        // Keep always one switch on so that the DC is connected to ground
+        if (m_model.switches.all == 0) {
+            if (m_model.switches.all == 0 && switches.S_n_a) m_model.switches.S_n_a = 1;
+            if (m_model.switches.all == 0 && switches.S_n_b) m_model.switches.S_n_b = 1;
+            if (m_model.switches.all == 0 && switches.S_n_c) m_model.switches.S_n_c = 1;
+            if (m_model.switches.all == 0 && switches.S_p_a) m_model.switches.S_p_a = 1;
+            if (m_model.switches.all == 0 && switches.S_p_b) m_model.switches.S_p_b = 1;
+            if (m_model.switches.all == 0 && switches.S_p_c) m_model.switches.S_p_c = 1;
+        }
+        // clang-format on
     }
 };
 
 int main() {
-    Plant plant;
+    DiodeBridge diode_bridge;
 
     double amplitude = 400;
 
@@ -186,15 +155,15 @@ int main() {
         u_grid.a = amplitude * sin(freq * t + angle);
         u_grid.b = amplitude * sin(freq * t + angle + b_offset);
         u_grid.c = amplitude * sin(freq * t + angle + c_offset);
-        plant.step(t_step, u_grid);
+        diode_bridge.step(t_step, u_grid);
 
-        /*double i_a = abs(plant.m_outputs.Vdc_p - plant.m_outputs.Vdc_n);
+        /*double i_a = abs(plant.m_plant.outputs.Vdc_p - plant.m_plant.outputs.Vdc_n);
         double i_b = plant.m_x[V_C_dc];
         double i_c = 0;*/
 
-        double i_a = plant.m_outputs.I_L_a;
-        double i_b = plant.m_outputs.I_L_b;
-        double i_c = plant.m_outputs.I_L_c;
+        double i_a = diode_bridge.m_model.outputs.I_L_a;
+        double i_b = diode_bridge.m_model.outputs.I_L_b;
+        double i_c = diode_bridge.m_model.outputs.I_L_c;
         fout << t << "," << i_a << "," << i_b << "," << i_c << "\n";
     }
     fout.close();
