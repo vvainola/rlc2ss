@@ -68,17 +68,21 @@ class {class_name} {{
     }}
 
     void step(double dt, Inputs const& inputs) {{
+        m_inputs.data = inputs.data;
         // Update state-space matrices if needed
         if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {{
             m_components_DO_NOT_TOUCH = components;
             m_switches_DO_NOT_TOUCH.all = switches.all;
             m_ss = calculateStateSpace(components, switches);
+            // Solve one step with backward euler to reduce numerical oscillations
+            m_Bu = m_ss.B * m_inputs.data;
+            states.data = m_solver.step(*this, states.data, 0.0, dt);
+        }} else {{
+            // Solve with Tustin for better accuracy
+            m_Bu = m_ss.B * m_inputs.data;
+            states.data = m_solver.step_trapezoidal(*this, states.data, 0.0, dt);
         }}
-        m_inputs.data = inputs.data;
-        m_Bu = m_ss.B * m_inputs.data;
 
-        // Solve one step
-        states.data = m_solver.step_trapezoidal(*this, states.data, 0.0, dt);
 
         // Update output
         outputs.data = m_ss.C * states.data + m_ss.D * m_inputs.data;
