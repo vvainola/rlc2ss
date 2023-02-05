@@ -34,28 +34,9 @@
         __debugbreak(); \
     }
 
-struct abc {
-    double a;
-    double b;
-    double c;
-};
-
 constexpr double DIODE_ON_THRESHOLD_VOLTAGE = 0.8;
-
-double t = 0;
-
 constexpr double PI = 3.141592652;
 
-struct Out {
-    double I_L_a;
-    double I_L_b;
-    double I_L_c;
-    double V3_a;
-    double V3_b;
-    double V3_c;
-    double Vdc_n;
-    double Vdc_p;
-};
 
 template <typename T>
 int sign(T val) {
@@ -102,9 +83,9 @@ class Plant {
             .L_src_c = 100e-5,
             .C_dc_n = 10e-3,
             .C_dc_p = 10e-3,
-            .C_f_a = 1e-6,
-            .C_f_b = 1e-6,
-            .C_f_c = 1e-6,
+            .C_f_a = 1e-5,
+            .C_f_b = 1e-5,
+            .C_f_c = 1e-5,
             .R_conv_a = 1e-3,
             .R_conv_b = 1e-3,
             .R_conv_c = 1e-3,
@@ -124,15 +105,16 @@ class Plant {
         }) {
     }
 
-    void step(double dt, abc ugrid) {
+    void step(double dt, ABC ugrid) {
         checkDiodes();
 
-        m_inputs.V_dc_src = v_dc;
-        m_inputs.V_src_a = ugrid.a;
-        m_inputs.V_src_b = ugrid.b;
-        m_inputs.V_src_c = ugrid.c;
-        m_model.step(dt, m_inputs);
-
+        Model_3L::Inputs inputs;
+        inputs.V_dc_src = v_dc;
+        inputs.V_src_a = ugrid.a;
+        inputs.V_src_b = ugrid.b;
+        inputs.V_src_c = ugrid.c;
+        m_model.step(dt, inputs);
+        dc_voltage = m_model.outputs.N_dc_p - m_model.outputs.N_dc_n;
     }
 
     void checkDiodes() {
@@ -180,29 +162,15 @@ class Plant {
         ASSERT((m_model.switches.S_p_a && m_model.switches.S_n_a));
         ASSERT((m_model.switches.S_p_b && m_model.switches.S_n_b));
         ASSERT((m_model.switches.S_p_c && m_model.switches.S_n_c));
-
-        // clang-format off
-        // Keep always one switch on so that the DC is connected to ground
-        if (m_model.switches.all == 0) {
-            if (m_model.switches.all == 0 && switches.S_0_a) m_model.switches.S_0_a = 1;
-            if (m_model.switches.all == 0 && switches.S_0_b) m_model.switches.S_0_b = 1;
-            if (m_model.switches.all == 0 && switches.S_0_c) m_model.switches.S_0_c = 1;
-            if (m_model.switches.all == 0 && switches.S_n_a) m_model.switches.S_n_a = 1;
-            if (m_model.switches.all == 0 && switches.S_n_b) m_model.switches.S_n_b = 1;
-            if (m_model.switches.all == 0 && switches.S_n_c) m_model.switches.S_n_c = 1;
-            if (m_model.switches.all == 0 && switches.S_p_a) m_model.switches.S_p_a = 1;
-            if (m_model.switches.all == 0 && switches.S_p_b) m_model.switches.S_p_b = 1;
-            if (m_model.switches.all == 0 && switches.S_p_c) m_model.switches.S_p_c = 1;
-        }
-        // clang-format on
     }
 
-    Model_3L::Inputs m_inputs;
     Model_3L m_model;
+    double dc_voltage;
 };
 
 Plant plant;
 XY i_conv;
+double t = 0;
 int main() {
 
     double amplitude = 400;
@@ -212,15 +180,9 @@ int main() {
     double c_offset = -4.0 * PI / 3.0;
     double angle = PI;
 
-    abc u_grid;
+    ABC u_grid;
     double t_step = 10e-6;
     std::ofstream fout("temp.csv");
-    // fout << "time,a,b,c" << "\n";
-
-    /*SwitchPositions switches{};
-    switches[int(Switch::S_p_a)] = 1;
-    switches[int(Switch::S_n_b)] = 1;
-    plant.setSwitches(switches);*/
 
     DbgGui_create(t_step);
     DbgGui_startUpdateLoop();
@@ -230,11 +192,6 @@ int main() {
         u_grid.b = amplitude * sin(freq * t + angle + b_offset);
         u_grid.c = amplitude * sin(freq * t + angle + c_offset);
         plant.step(t_step, u_grid);
-
-        /*double i_a = abs(plant.m_model.outputs.Vdc_p - plant.m_model.outputs.Vdc_n);
-        double i_b = plant.m_x[V_C_dc];
-        double i_c = 0;*/
-
 
         fout << t << ","
              << plant.m_model.outputs.N_conv_a << ","
