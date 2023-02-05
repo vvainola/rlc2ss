@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Implicit integration using backward euler / trapezoidal. Backward euler from
+// Implicit integration using backward euler / Tustin. Backward euler from
 // boost odeint was used as an example
 
 #pragma once
@@ -49,16 +49,24 @@ class Integrator {
     /// <param name="t">Current time</param>
     /// <returns>New state</returns>
     template <class System>
-    vector_t step(System const& system, vector_t const& x0, double t, double dt) {
+    vector_t step_backward_euler(System const& system, vector_t const& x0, double t, double dt) {
         t += dt;
         // Update 1 / (1 - dt * J) term if dt or jacobian has changed
-        matrix_t jacobi = system.jacobian(x0, t);
-        if (jacobi != m_jacobi_prev
+        matrix_t jacobian = system.jacobian(x0, t);
+        if (jacobian != m_jacobian_prev
             || dt != m_dt_prev) {
-            m_dt_prev = dt;
-            m_jacobi_prev = jacobi;
-            m_gradient_inv = matrix_t(matrix_t::Identity() - dt * jacobi).inverse();
+            update_backward_euler_coeffs(jacobian, dt);
         }
+        return step_backward_euler_fast(system, x0, t, dt);
+    }
+
+    /// <summary>
+    /// Same as step_backward_euler but the check for changed jacobian or timestep is skipped and
+    /// left to the user to update when needed
+    /// </summary>
+    template <class System>
+    vector_t step_backward_euler_fast(System const& system, vector_t const& x0, double t, double dt) {
+        t += dt;
 
         // apply first Newton step
         vector_t dxdt = system.dxdt(x0, t);
@@ -76,16 +84,30 @@ class Integrator {
         return x;
     }
 
+    void update_backward_euler_coeffs(matrix_t const& jacobian, double dt) {
+        // Update 1 / (1 - dt * J) term
+        m_dt_prev = dt;
+        m_jacobian_prev = jacobian;
+        m_gradient_inv = matrix_t(matrix_t::Identity() - dt * jacobian).inverse();
+    }
+
     template <class System>
-    vector_t step_trapezoidal(System const& system, vector_t const& x0, double t, double dt) {
-        t += dt;
+    vector_t step_tustin(System const& system, vector_t const& x0, double t, double dt) {
         // Update 1 / (1 - 0.5 * dt * J) term if dt or jacobian has changed
-        matrix_t jacobi = system.jacobian(x0, t);
-        if (jacobi != m_jacobi_prev || dt != m_dt_prev) {
-            m_dt_prev = dt;
-            m_jacobi_prev = jacobi;
-            m_gradient_inv = matrix_t(matrix_t::Identity() - 0.5 * dt * jacobi).inverse();
+        matrix_t jacobian = system.jacobian(x0, t);
+        if (jacobian != m_jacobian_prev || dt != m_dt_prev) {
+            update_tustin_coeffs(jacobian, dt);
         }
+        return step_tustin_fast(system, x0, t, dt);
+    }
+
+    /// <summary>
+    /// Same as step_backward_euler but the check for changed jacobian or timestep is skipped and
+    /// left to the user to update when needed
+    /// </summary
+    template <class System>
+    vector_t step_tustin_fast(System const& system, vector_t const& x0, double t, double dt) {
+        t += dt;
 
         // apply first Newton step
         vector_t dxdt0 = system.dxdt(x0, t);
@@ -103,9 +125,16 @@ class Integrator {
         return x;
     }
 
+    void update_tustin_coeffs(matrix_t const& jacobian, double dt) {
+        // Update 1 / (1 - 0.5 * dt * J) term
+        m_dt_prev = dt;
+        m_jacobian_prev = jacobian;
+        m_gradient_inv = matrix_t(matrix_t::Identity() - 0.5 * dt * jacobian).inverse();
+    }
+
   private:
     matrix_t m_gradient_inv; // 1 / (1 - dt * J)
-    matrix_t m_jacobi_prev;
+    matrix_t m_jacobian_prev;
     double m_dt_prev;
     double m_epsilon;
     size_t m_max_iterations = 10;

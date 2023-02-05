@@ -76,12 +76,20 @@ class {class_name} {{
             m_ss = calculateStateSpace(components, switches);
             // Solve one step with backward euler to reduce numerical oscillations
             m_Bu = m_ss.B * m_inputs.data;
-            states.data = m_solver.step(*this, states.data, 0.0, dt);
+            states.data = m_solver.step_backward_euler(*this, states.data, 0.0, dt);
+
+            // Update coefficients to make following steps with Tustin
+            m_solver.update_tustin_coeffs(jacobian(states.data, dt), dt);
         }} else {{
+            if (dt != m_dt_prev) {{
+                m_solver.update_tustin_coeffs(jacobian(states.data, dt), dt);
+            }}
+
             // Solve with Tustin for better accuracy
             m_Bu = m_ss.B * m_inputs.data;
-            states.data = m_solver.step_trapezoidal(*this, states.data, 0.0, dt);
+            states.data = m_solver.step_tustin_fast(*this, states.data, 0.0, dt);
         }}
+        m_dt_prev = dt;
 
 
         // Update output
@@ -162,6 +170,7 @@ class {class_name} {{
     Components m_components_DO_NOT_TOUCH;
     Switches m_switches_DO_NOT_TOUCH = {{.all = 0}};
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
+    double m_dt_prev = 0;
 
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));
