@@ -219,7 +219,7 @@ def get_xv_voltage(vv_src : Component, components : T.List[Component], full_tree
         voltages.append(node_voltage)
     return Symbol(vv_src.name) * (voltages[0] - voltages[1])
 
-
+#@profile
 def form_state_space_matrices(parsed_netlist):
     NAME = 0
     POS_NODE = 1
@@ -257,6 +257,7 @@ def form_state_space_matrices(parsed_netlist):
             L1 = get_component(components, line_split[1])
             L2 = get_component(components, line_split[2])
             mutual_inductors.append([line_split[NAME], L1, L2])
+            continue
         elif line_split[NAME][0] == 'X':
             continue
 
@@ -448,8 +449,8 @@ def form_state_space_matrices(parsed_netlist):
                 i_dep_as_i_state = sy.solve(eq, i_dep)[0]
         comp.update_current(i_dep_as_i_state)
         i_deps_as_i_states[i_dep] = i_dep_as_i_state
-        i_vec = i_vec.replace(i_dep, i_dep_as_i_state)
-        u_vec = u_vec.replace(i_dep, i_dep_as_i_state)
+        i_vec = i_vec.xreplace({i_dep : i_dep_as_i_state})
+        u_vec = u_vec.xreplace({i_dep : i_dep_as_i_state})
         output_currents[i_dep] = i_dep_as_i_state
     # Replace voltages in capacitors which are not state variables with state voltages
     for u_dep in dependent_voltages:
@@ -460,8 +461,8 @@ def form_state_space_matrices(parsed_netlist):
             if u_dep in eq.free_symbols:
                 u_dep_as_u_state = sy.solve(eq, u_dep)[0]
         comp.update_voltage(u_dep_as_u_state)
-        i_vec = i_vec.replace(u_dep, u_dep_as_u_state)
-        u_vec = u_vec.replace(u_dep, u_dep_as_u_state)
+        i_vec = i_vec.xreplace({u_dep : u_dep_as_u_state})
+        u_vec = u_vec.xreplace({u_dep : u_dep_as_u_state})
         output_voltages[u_dep] = u_dep_as_u_state
     cutset_eqs = cutset_matrix * i_vec
     loop_eqs = loop_matrix * u_vec
@@ -489,8 +490,8 @@ def form_state_space_matrices(parsed_netlist):
                 break
         assert unknown_as_others != ''
         for key, val in solved.items():
-            solved[key] = val.replace(unknown, unknown_as_others)
-        eqs = eqs.replace(unknown, unknown_as_others)
+            solved[key] = val.xreplace({unknown : unknown_as_others})
+        eqs = eqs.xreplace({unknown : unknown_as_others})
     # Update solved to output
     for unknown, unknown_as_state_vars in solved.items():
         comp = get_component(components, str(unknown)[2:])
@@ -500,12 +501,12 @@ def form_state_space_matrices(parsed_netlist):
         if str(unknown)[0] == 'V':
             output_voltages[unknown] = unknown_as_state_vars
             comp.update_voltage(unknown_as_state_vars)
-        i_vec = i_vec.replace(unknown, unknown_as_state_vars)
-        u_vec = u_vec.replace(unknown, unknown_as_state_vars)
+        i_vec = i_vec.xreplace({unknown : unknown_as_state_vars})
+        u_vec = u_vec.xreplace({unknown : unknown_as_state_vars})
         for src in vv_sources + iv_sources:
-            src.update_voltage(src.v().replace(unknown, unknown_as_state_vars))
+            src.update_voltage(src.v().xreplace({unknown : unknown_as_state_vars}))
         for src in ii_sources + vi_sources:
-            src.update_current(src.i().replace(unknown, unknown_as_state_vars))
+            src.update_current(src.i().xreplace({unknown : unknown_as_state_vars}))
 
     # Update outputs
     for src in vv_sources + iv_sources:
@@ -529,17 +530,17 @@ def form_state_space_matrices(parsed_netlist):
         comp_name = str(var)[2:]
         comp = get_component(components, comp_name)
         if comp.name[0] == 'L':
-            i_vec = i_vec.replace(comp.v(), comp.v_der())
-            u_vec = u_vec.replace(comp.v(), comp.v_der())
+            i_vec = i_vec.xreplace({comp.v() : comp.v_der()})
+            u_vec = u_vec.xreplace({comp.v() : comp.v_der()})
         elif comp.name[0] == 'C':
-            i_vec = i_vec.replace(comp.i(), comp.i_der())
-            u_vec = u_vec.replace(comp.i(), comp.i_der())
+            i_vec = i_vec.xreplace({comp.i() : comp.i_der()})
+            u_vec = u_vec.xreplace({comp.i() : comp.i_der()})
         else:
             assert False, f'Invalid state component {comp_name}'
     loop_eqs_for_derivs = loop_matrix * u_vec
     cutset_eqs_for_derivs = cutset_matrix * i_vec
     all_deriv_eqs = sy.Matrix(sy.BlockMatrix([[loop_eqs_for_derivs], [cutset_eqs_for_derivs]]))
-    all_deriv_eqs = sy.simplify(all_deriv_eqs)
+    all_deriv_eqs = (sy.together(all_deriv_eqs)).expand() # sy.simplify(all_deriv_eqs)
     all_deriv_eqs, _ = remove_empty_rows(all_deriv_eqs)
     all_deriv_eqs = list(all_deriv_eqs)
 

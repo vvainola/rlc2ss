@@ -1,6 +1,6 @@
 Vs V1 0
 R1 V1 V2
-L2 V1 V2 Vc
+L2 V1 V2 Vc;
 L1 V2 V3
-C1 V3 0 Vc
+C1 V3 0 Vc;
 K1 L1 L2

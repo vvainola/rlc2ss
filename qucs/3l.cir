@@ -41,6 +41,7 @@ V_dc_src _net37 N_dc_n
 V_src_a _net0 0
 V_src_b _net1 0
 V_src_c _net2 0
+R_dc_n_0 N_dc_n 0 I;
 
 X S_p_a S_n_a S_0_a
 X S_p_b S_n_b S_0_b

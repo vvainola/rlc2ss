@@ -120,6 +120,7 @@ class Plant {
             .R_src_a = 1e-3,
             .R_src_b = 1e-3,
             .R_src_c = 1e-3,
+            .R_dc_n_0 = 1e6
         }) {
     }
 
