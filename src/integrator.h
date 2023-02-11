@@ -27,6 +27,7 @@
 
 #include <Eigen/Core>
 #include <Eigen/LU>
+#include <map>
 
 template <class vector_t,
           class matrix_t>
@@ -67,6 +68,9 @@ class Integrator {
     void update_tustin_coeffs(matrix_t const& jacobian, double dt);
 
   private:
+    // Invert matrix with caching
+    matrix_t invert(matrix_t const& m);
+
     matrix_t m_gradient_inv; // 1 / (1 - dt * J)
     matrix_t m_jacobian_prev;
     double m_dt_prev;
@@ -116,7 +120,7 @@ inline void Integrator<vector_t, matrix_t>::update_backward_euler_coeffs(matrix_
     // Update 1 / (1 - dt * J) term
     m_dt_prev = dt;
     m_jacobian_prev = jacobian;
-    m_gradient_inv = matrix_t(matrix_t::Identity() - dt * jacobian).inverse();
+    m_gradient_inv = invert(matrix_t::Identity() - dt * jacobian);
 }
 
 template <class vector_t,
@@ -159,5 +163,24 @@ inline void Integrator<vector_t, matrix_t>::update_tustin_coeffs(matrix_t const&
     // Update 1 / (1 - 0.5 * dt * J) term
     m_dt_prev = dt;
     m_jacobian_prev = jacobian;
-    m_gradient_inv = matrix_t(matrix_t::Identity() - 0.5 * dt * jacobian).inverse();
+    m_gradient_inv = invert(matrix_t::Identity() - 0.5 * dt * jacobian);
+}
+
+template <class vector_t, class matrix_t>
+inline matrix_t Integrator<vector_t, matrix_t>::invert(matrix_t const& matrix) {
+    static std::map<matrix_t,
+                    matrix_t,
+                    std::function<bool(const matrix_t&, const matrix_t&)>>
+    inverse_cache([](const matrix_t& a, const matrix_t& b) -> bool {
+        return std::lexicographical_compare(
+            a.data(), a.data() + a.size(), b.data(), b.data() + b.size());
+    });
+    if (inverse_cache.contains(matrix)) {
+        return inverse_cache[matrix];
+    }
+
+    matrix_t inverse = matrix.inverse();
+    inverse_cache[matrix] = inverse;
+
+    return inverse;
 }
