@@ -15,6 +15,7 @@ class Model_3L {
     struct StateSpaceMatrices;
     StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
+    Model_3L(){}
     Model_3L(Components const& c);
 
     static inline constexpr size_t NUM_INPUTS = 4;
@@ -34,6 +35,37 @@ class Model_3L {
         m_inputs.data = inputs.data;
         // Update state-space matrices if needed
         if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {
+            assert(components.L_conv_a != -1);
+            assert(components.L_conv_b != -1);
+            assert(components.L_conv_c != -1);
+            assert(components.L_dc_src != -1);
+            assert(components.L_grid_a != -1);
+            assert(components.L_grid_b != -1);
+            assert(components.L_grid_c != -1);
+            assert(components.L_src_a != -1);
+            assert(components.L_src_b != -1);
+            assert(components.L_src_c != -1);
+            assert(components.C_dc_n != -1);
+            assert(components.C_dc_p != -1);
+            assert(components.C_f_a != -1);
+            assert(components.C_f_b != -1);
+            assert(components.C_f_c != -1);
+            assert(components.R_conv_a != -1);
+            assert(components.R_conv_b != -1);
+            assert(components.R_conv_c != -1);
+            assert(components.R_dc_n != -1);
+            assert(components.R_dc_p != -1);
+            assert(components.R_dc_src != -1);
+            assert(components.R_f_a != -1);
+            assert(components.R_f_b != -1);
+            assert(components.R_f_c != -1);
+            assert(components.R_grid_a != -1);
+            assert(components.R_grid_b != -1);
+            assert(components.R_grid_c != -1);
+            assert(components.R_src_a != -1);
+            assert(components.R_src_b != -1);
+            assert(components.R_src_c != -1);
+            assert(components.R_dc_n_0 != -1);
             m_components_DO_NOT_TOUCH = components;
             m_switches_DO_NOT_TOUCH.all = switches.all;
             m_ss = calculateStateSpace(components, switches);
@@ -264,37 +296,7 @@ Model_3L::Model_3L(Components const& c)
     : components(c),
       m_components_DO_NOT_TOUCH(c) {
     m_ss = calculateStateSpace(components, switches);
-    assert(components.L_conv_a != -1);
-    assert(components.L_conv_b != -1);
-    assert(components.L_conv_c != -1);
-    assert(components.L_dc_src != -1);
-    assert(components.L_grid_a != -1);
-    assert(components.L_grid_b != -1);
-    assert(components.L_grid_c != -1);
-    assert(components.L_src_a != -1);
-    assert(components.L_src_b != -1);
-    assert(components.L_src_c != -1);
-    assert(components.C_dc_n != -1);
-    assert(components.C_dc_p != -1);
-    assert(components.C_f_a != -1);
-    assert(components.C_f_b != -1);
-    assert(components.C_f_c != -1);
-    assert(components.R_conv_a != -1);
-    assert(components.R_conv_b != -1);
-    assert(components.R_conv_c != -1);
-    assert(components.R_dc_n != -1);
-    assert(components.R_dc_p != -1);
-    assert(components.R_dc_src != -1);
-    assert(components.R_f_a != -1);
-    assert(components.R_f_b != -1);
-    assert(components.R_f_c != -1);
-    assert(components.R_grid_a != -1);
-    assert(components.R_grid_b != -1);
-    assert(components.R_grid_c != -1);
-    assert(components.R_src_a != -1);
-    assert(components.R_src_b != -1);
-    assert(components.R_src_c != -1);
-    assert(components.R_dc_n_0 != -1);
+
 }
 
 Model_3L::StateSpaceMatrices calculateStateSpace_0(Model_3L::Components const& c);

@@ -28,7 +28,7 @@ def matrices_to_cpp(filename, circuit_combinations, switches):
     class_name = 'Model_' + os.path.basename(filename).replace('.', '_')[0:-11]
     components_list = "\n".join([f'\t\tdouble {str(component)} = -1;' for component in component_names])
     components_compare = " &&\n".join([f'\t\t\t\t{str(component)} == other.{str(component)}' for component in component_names])
-    verify_components = "\n".join([f'\tassert(components.{str(component)} != -1);' for component in component_names])
+    verify_components = "\n".join([f'\t\t\tassert(components.{str(component)} != -1);' for component in component_names])
     states_list = "\n".join([f'\t\t\tdouble {str(state)};' for state in states])
     inputs_list = "\n".join([f'\t\t\tdouble {str(input)};' for input in inputs])
     outputs_list = "\n".join([f'\t\t\tdouble {str(output)};' for output in outputs])
@@ -52,6 +52,7 @@ class {class_name} {{
     struct StateSpaceMatrices;
     StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
+    {class_name}(){{}}
     {class_name}(Components const& c);
 
     static inline constexpr size_t NUM_INPUTS = {num_inputs};
@@ -71,6 +72,7 @@ class {class_name} {{
         m_inputs.data = inputs.data;
         // Update state-space matrices if needed
         if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {{
+{verify_components}
             m_components_DO_NOT_TOUCH = components;
             m_switches_DO_NOT_TOUCH.all = switches.all;
             m_ss = calculateStateSpace(components, switches);
@@ -181,7 +183,6 @@ class {class_name} {{
     : components(c),
       m_components_DO_NOT_TOUCH(c) {{
     m_ss = calculateStateSpace(components, switches);
-{verify_components}
 }}
 
 '''
