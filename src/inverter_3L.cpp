@@ -128,10 +128,10 @@ class Plant {
             m_model.switches.S_n_a = 1;
         }
         if (m_model.outputs.I_L_conv_a > 0) {
-            m_model.switches.S_n_a = 0;
+            m_model.switches.S_p_a = 0;
         }
         if (m_model.outputs.I_L_conv_a < 0) {
-            m_model.switches.S_p_a = 0;
+            m_model.switches.S_n_a = 0;
         }
 
         if (m_model.outputs.N_conv_b - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
@@ -141,10 +141,10 @@ class Plant {
             m_model.switches.S_n_b = 1;
         }
         if (m_model.outputs.I_L_conv_b > 0) {
-            m_model.switches.S_n_b = 0;
+            m_model.switches.S_p_b = 0;
         }
         if (m_model.outputs.I_L_conv_b < 0) {
-            m_model.switches.S_p_b = 0;
+            m_model.switches.S_n_b = 0;
         }
 
         if (m_model.outputs.N_conv_c - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
@@ -154,10 +154,10 @@ class Plant {
             m_model.switches.S_n_c = 1;
         }
         if (m_model.outputs.I_L_conv_c > 0) {
-            m_model.switches.S_n_c = 0;
+            m_model.switches.S_p_c = 0;
         }
         if (m_model.outputs.I_L_conv_c < 0) {
-            m_model.switches.S_p_c = 0;
+            m_model.switches.S_n_c = 0;
         }
         ASSERT((m_model.switches.S_p_a && m_model.switches.S_n_a));
         ASSERT((m_model.switches.S_p_b && m_model.switches.S_n_b));
