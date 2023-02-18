@@ -50,7 +50,7 @@ class {class_name} {{
     union States;
     union Switches;
     struct StateSpaceMatrices;
-    StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
+    static StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
     {class_name}(){{}}
     {class_name}(Components const& c);

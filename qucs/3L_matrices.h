@@ -13,7 +13,7 @@ class Model_3L {
     union States;
     union Switches;
     struct StateSpaceMatrices;
-    StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
+    static StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
     Model_3L(){}
     Model_3L(Components const& c);
