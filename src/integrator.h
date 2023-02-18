@@ -38,6 +38,24 @@ class Integrator {
           m_dt_prev(0) {
     }
 
+    template <class System>
+    vector_t step_runge_kutta4(System const& system, vector_t const& x0, double t, double dt) {
+        vector_t k1 = dt * system.dxdt(x0, t);
+        vector_t k2 = dt * system.dxdt(x0 + 0.5 * k1, t + 0.5 * dt);
+        vector_t k3 = dt * system.dxdt(x0 + 0.5 * k2, t + 0.5 * dt);
+        vector_t k4 = dt * system.dxdt(x0 + k3, t + dt);
+        return x0 +  (1.0 / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4);
+    }
+
+    template <class System>
+    vector_t step_runge_kutta38(System const& system, vector_t const& x0, double t, double dt) {
+        vector_t k1 = dt * system.dxdt(x0, t);
+        vector_t k2 = dt * system.dxdt(x0 + 1./3. * k1, t + 1./3. * dt);
+        vector_t k3 = dt * system.dxdt(x0 + -1./3. * k1 + k2, t + 2./3. * dt);
+        vector_t k4 = dt * system.dxdt(x0 + k1 - k2 + k3, t + dt);
+        return x0 + (1.0 / 8.0) * (k1 + 3 * k2 + 3 * k3 + k4);
+    }
+
     /// <summary>
     /// Do a step with backward euler integration. The next step is solved with
     /// Newton's method
