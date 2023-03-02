@@ -213,13 +213,13 @@ class {class_name} {{
 
     for i in sorted(circuit_combinations):
         combination = circuit_combinations[i]
-        f.write(f'{class_name}::StateSpaceMatrices calculateStateSpace_{i}({class_name}::Components const& c);\n')
+        f.write(f'std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class_name}::Components const& c);\n')
 
     f.write(f'''
 struct Topology {{
     {class_name}::Components components;
     {class_name}::Switches switches;
-    {class_name}::StateSpaceMatrices state_space;
+    std::unique_ptr<{class_name}::StateSpaceMatrices> state_space;
 }};
     
 {class_name}::StateSpaceMatrices {class_name}::calculateStateSpace({class_name}::Components const& components, {class_name}::Switches switches)
@@ -230,9 +230,9 @@ struct Topology {{
         return t.components == components && t.switches.all == switches.all;
     }});
     if (it != state_space_cache.end()) {{
-        return it->state_space;
+        return *it->state_space;
     }}
-    {class_name}::StateSpaceMatrices state_space;
+    auto state_space = std::make_unique<{class_name}::StateSpaceMatrices>();
 
     switch (switches.all) {{
 ''')
@@ -244,12 +244,12 @@ struct Topology {{
     default:
         assert(0);
     }}
-    state_space_cache.push_back(Topology{{
+    Topology& topology = state_space_cache.emplace_back(Topology{{
         .components = components,
         .switches = switches,
-        .state_space = state_space}});
+        .state_space = std::move(state_space)}});
 
-    return state_space;
+    return *topology.state_space;
 }}
 ''')
     
@@ -266,7 +266,7 @@ struct Topology {{
             if i & pow(2, j):
                 switch_combination += f" {switches[j]}"
         f.write(f'''
-{class_name}::StateSpaceMatrices calculateStateSpace_{i}({class_name}::Components const& c) // {switch_combination}
+std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class_name}::Components const& c) // {switch_combination}
 {{
 {write_components}
     Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> K1;
@@ -292,11 +292,11 @@ struct Topology {{
     C1 <<\n\t\t\t {C1};
     D1 <<\n\t\t\t {D1};
 
-    {class_name}::StateSpaceMatrices ss;
-    ss.A = K1.partialPivLu().solve(A1);
-    ss.B = K1.partialPivLu().solve(B1);
-    ss.C = (C1 + K2 * ss.A);
-    ss.D = (D1 + K2 * ss.B);
+    auto ss = std::make_unique<{class_name}::StateSpaceMatrices>();
+    ss->A = K1.partialPivLu().solve(A1);
+    ss->B = K1.partialPivLu().solve(B1);
+    ss->C = (C1 + K2 * ss->A);
+    ss->D = (D1 + K2 * ss->B);
     return ss;
 }}
 
