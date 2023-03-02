@@ -27,7 +27,7 @@
 
 #include <Eigen/Core>
 #include <Eigen/LU>
-#include <map>
+#include <queue>
 
 template <class vector_t,
           class matrix_t>
@@ -44,14 +44,14 @@ class Integrator {
         vector_t k2 = dt * system.dxdt(x0 + 0.5 * k1, t + 0.5 * dt);
         vector_t k3 = dt * system.dxdt(x0 + 0.5 * k2, t + 0.5 * dt);
         vector_t k4 = dt * system.dxdt(x0 + k3, t + dt);
-        return x0 +  (1.0 / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4);
+        return x0 + (1.0 / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4);
     }
 
     template <class System>
     vector_t step_runge_kutta38(System const& system, vector_t const& x0, double t, double dt) {
         vector_t k1 = dt * system.dxdt(x0, t);
-        vector_t k2 = dt * system.dxdt(x0 + 1./3. * k1, t + 1./3. * dt);
-        vector_t k3 = dt * system.dxdt(x0 + -1./3. * k1 + k2, t + 2./3. * dt);
+        vector_t k2 = dt * system.dxdt(x0 + 1. / 3. * k1, t + 1. / 3. * dt);
+        vector_t k3 = dt * system.dxdt(x0 + -1. / 3. * k1 + k2, t + 2. / 3. * dt);
         vector_t k4 = dt * system.dxdt(x0 + k1 - k2 + k3, t + dt);
         return x0 + (1.0 / 8.0) * (k1 + 3 * k2 + 3 * k3 + k4);
     }
@@ -94,6 +94,11 @@ class Integrator {
     double m_dt_prev;
     double m_epsilon;
     size_t m_max_iterations = 10;
+
+    using matrix_and_inverse = std::pair<matrix_t, matrix_t>;
+    std::deque<matrix_and_inverse> m_inverse_cache;
+    size_t m_cache_size = 100;
+
 };
 
 template <class vector_t,
@@ -186,19 +191,23 @@ inline void Integrator<vector_t, matrix_t>::update_tustin_coeffs(matrix_t const&
 
 template <class vector_t, class matrix_t>
 inline matrix_t Integrator<vector_t, matrix_t>::invert(matrix_t const& matrix) {
-    static std::map<matrix_t,
-                    matrix_t,
-                    std::function<bool(const matrix_t&, const matrix_t&)>>
-    inverse_cache([](const matrix_t& a, const matrix_t& b) -> bool {
-        return std::lexicographical_compare(
-            a.data(), a.data() + a.size(), b.data(), b.data() + b.size());
-    });
-    if (inverse_cache.contains(matrix)) {
-        return inverse_cache[matrix];
+    // Cache inverses so that if time stepping is mostly fixed but sometimes different to hit
+    // switching events, the inverse does not need to be recalculated whenever returning to
+    // to the fixed timestep
+    if (m_inverse_cache.size() >= m_cache_size) {
+        m_inverse_cache.pop_back();
     }
 
+    auto it = std::find_if(m_inverse_cache.begin(), m_inverse_cache.end(), [&matrix](matrix_and_inverse const& matrix_and_inverse) {
+        return matrix == matrix_and_inverse.first;
+    });
+    if (it != m_inverse_cache.end()) {
+        matrix_and_inverse m = *it;
+        m_inverse_cache.erase(it);
+        m_inverse_cache.push_front(m);
+        return m.second;
+    }
     matrix_t inverse = matrix.inverse();
-    inverse_cache[matrix] = inverse;
-
+    m_inverse_cache.push_front({matrix, inverse});
     return inverse;
 }
