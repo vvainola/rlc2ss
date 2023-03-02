@@ -36,6 +36,15 @@ def matrices_to_cpp(filename, circuit_combinations, switches):
     update_states = "\n".join([f'\t\tstates.{state} = outputs.{state};' for state in states])
         
     template = '''
+#pragma once
+
+#pragma warning(disable : 4127) // conditional expression is constant
+#pragma warning(disable : 4189) // local variable is initialized but not referenced
+#pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
+#pragma warning(disable : 4408) // anonymous struct did not declare any data members
+#pragma warning(disable : 4459) // declaration hides global declaration
+#pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
+
 #include <Eigen/Dense>
 #include <Eigen/Core>
 #include <Eigen/LU>
@@ -291,6 +300,15 @@ struct Topology {{
     return ss;
 }}
 
+''')
+                
+    f.write('''
+#pragma warning(default : 4127) // conditional expression is constant
+#pragma warning(default : 4189) // local variable is initialized but not referenced
+#pragma warning(default : 4201) // nonstandard extension used: nameless struct/union
+#pragma warning(default : 4408) // anonymous struct did not declare any data members
+#pragma warning(default : 4459) // declaration hides global declaration
+#pragma warning(default : 5054) // operator '&': deprecated between enumerations of different types
 ''')
     
     f.close()
