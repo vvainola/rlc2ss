@@ -33,9 +33,14 @@ template <class vector_t,
           class matrix_t>
 class Integrator {
   public:
-    Integrator(double epsilon = 1e-8)
-        : m_epsilon(epsilon),
-          m_dt_prev(0) {
+    Integrator()
+        : m_dt_prev(0) {
+    }
+
+    void setTolerances(double epsilon, double abstol, double reltol) {
+        m_epsilon = epsilon;
+        m_abstol = abstol;
+        m_reltol = reltol;
     }
 
     template <class System>
@@ -86,16 +91,16 @@ class Integrator {
             vector_t b4_4 = 2197. / 4104. * k4;
             vector_t b4_5 = -1. / 5. * k5;
 
-            double err = ((b5_1 - b4_1) + (b5_3 - b4_3) + (b5_4 - b4_4) + (b5_5 - b4_5) + (b5_6)).norm();
-            if (err < m_epsilon) {
+            vector_t err = ((b5_1 - b4_1) + (b5_3 - b4_3) + (b5_4 - b4_4) + (b5_5 - b4_5) + (b5_6));
+            vector_t order_5 = x + b5_1 + b5_3 + b5_4 + b5_5 + b5_6;
+            if (withinTolerances(order_5, err)) {
                 t += dt;
-                x = x + b5_1 + b5_3 + b5_4 + b5_5 + b5_6;
+                x = order_5;
                 --steps_remaining;
             } else {
                 steps_remaining *= 2;
                 dt = dt / 2.;
             }
-
         }
         return x;
     }
@@ -136,12 +141,23 @@ class Integrator {
     matrix_t m_gradient_inv; // 1 / (1 - dt * J)
     matrix_t m_jacobian_prev;
     double m_dt_prev;
-    double m_epsilon;
+    double m_epsilon = 1e-8;
+    double m_abstol = 1e-6;
+    double m_reltol = 1e-3;
     size_t m_max_iterations = 10;
 
     using matrix_and_inverse = std::pair<matrix_t, matrix_t>;
     std::deque<matrix_and_inverse> m_inverse_cache;
     size_t m_cache_size = 100;
+
+    bool withinTolerances(vector_t const& x, vector_t const& err) {
+        for (int i = 0; i < x.size(); ++i) {
+            if (abs(err[i]) > std::max(m_reltol * abs(x[i]), m_abstol)) {
+                return false;
+            }
+        }
+        return true;
+    }
 };
 
 template <class vector_t,
