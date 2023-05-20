@@ -77,6 +77,14 @@ class {class_name} {{
         return m_ss.A;
     }}
 
+    // Implicit Tustin integration is used only for this timestep and different length timesteps are solved with adaptive step size integration.
+    void setImplicitIntegrationTimestep(double dt) {{
+        if (dt != m_dt_implicit && dt > 0) {{
+            m_solver.update_tustin_coeffs(jacobian(states.data, dt), dt);
+        }}
+        m_dt_implicit = dt;
+    }}
+
     void step(double dt, Inputs const& inputs) {{
         m_inputs.data = inputs.data;
         // Update state-space matrices if needed
@@ -90,15 +98,25 @@ class {class_name} {{
             states.data = m_solver.step_backward_euler(*this, states.data, 0.0, dt);
 
             // Update coefficients to make following steps with Tustin
-            m_solver.update_tustin_coeffs(jacobian(states.data, dt), dt);
+            if (m_dt_implicit > 0) {{
+                m_solver.update_tustin_coeffs(jacobian(states.data, m_dt_implicit), m_dt_implicit);
+            }} else {{
+                m_solver.update_tustin_coeffs(jacobian(states.data, dt), dt);
+            }}
         }} else {{
-            if (dt != m_dt_prev) {{
+            m_Bu = m_ss.B * m_inputs.data;
+            // Coefficient need to be updated if dt changes and implicit integration is used for all step sizes
+            if (dt != m_dt_prev && m_dt_implicit == 0) {{
                 m_solver.update_tustin_coeffs(jacobian(states.data, dt), dt);
             }}
 
-            // Solve with Tustin for better accuracy
-            m_Bu = m_ss.B * m_inputs.data;
-            states.data = m_solver.step_tustin_fast(*this, states.data, 0.0, dt);
+            if (dt != m_dt_implicit && m_dt_implicit > 0) {{
+                // Use adaptive step size runge-kutta-fehlberg integration for timesteps that are different than implicit integration timestep
+                states.data = m_solver.step_runge_kutta_fehlberg(*this, states.data, 0.0, dt);
+            }} else {{
+                // Solve with Tustin for better accuracy
+                states.data = m_solver.step_tustin_fast(*this, states.data, 0.0, dt);
+            }}
         }}
         m_dt_prev = dt;
 
@@ -182,6 +200,7 @@ class {class_name} {{
     Switches m_switches_DO_NOT_TOUCH = {{.all = 0}};
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_prev = 0;
+    double m_dt_implicit = 0;
 
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));
