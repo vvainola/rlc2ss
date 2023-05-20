@@ -1,17 +1,17 @@
 # MIT License
-# 
+#
 # Copyright (c) 2022 vvainola
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -34,7 +34,7 @@ def matrices_to_cpp(filename, circuit_combinations, switches):
     outputs_list = "\n".join([f'\t\t\tdouble {str(output)};' for output in outputs])
     switches_list = "\n".join([f'\t\t\tuint32_t {str(switch)} : 1;' for switch in switches])
     update_states = "\n".join([f'\t\tstates.{state} = outputs.{state};' for state in states])
-        
+
     template = '''
 #pragma once
 
@@ -114,7 +114,7 @@ class {class_name} {{
 {components_list}
 
         bool operator==(Components const& other) const {{
-            return 
+            return
 {components_compare};
         }}
 
@@ -174,7 +174,7 @@ class {class_name} {{
 
   private:
     Inputs m_inputs;
-    Integrator<Eigen::Vector<double, NUM_STATES>, 
+    Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
         m_solver;
     StateSpaceMatrices m_ss;
@@ -216,17 +216,17 @@ class {class_name} {{
         f.write(f'std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class_name}::Components const& c);\n')
 
     f.write(f'''
-struct Topology {{
+struct {class_name}_Topology {{
     {class_name}::Components components;
     {class_name}::Switches switches;
     std::unique_ptr<{class_name}::StateSpaceMatrices> state_space;
 }};
-    
+
 {class_name}::StateSpaceMatrices {class_name}::calculateStateSpace({class_name}::Components const& components, {class_name}::Switches switches)
 {{
-    static std::vector<Topology> state_space_cache;
+    static std::vector<{class_name}_Topology> state_space_cache;
     auto it = std::find_if(
-        state_space_cache.begin(), state_space_cache.end(), [&](Topology const& t) {{
+        state_space_cache.begin(), state_space_cache.end(), [&]({class_name}_Topology const& t) {{
         return t.components == components && t.switches.all == switches.all;
     }});
     if (it != state_space_cache.end()) {{
@@ -244,7 +244,7 @@ struct Topology {{
     default:
         assert(0);
     }}
-    Topology& topology = state_space_cache.emplace_back(Topology{{
+    {class_name}_Topology& topology = state_space_cache.emplace_back({class_name}_Topology{{
         .components = components,
         .switches = switches,
         .state_space = std::move(state_space)}});
@@ -252,9 +252,9 @@ struct Topology {{
     return *topology.state_space;
 }}
 ''')
-    
 
-    
+
+
 
     write_components = ''
     for component in component_names:
@@ -276,7 +276,7 @@ std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class
     Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> C1;
     Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> D1;
         ''')
-        
+
         (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = combination
         K1 = str(K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in K1])
         K2 = str(K2).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in K2])
@@ -301,7 +301,7 @@ std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class
 }}
 
 ''')
-                
+
     f.write('''
 #pragma warning(default : 4127) // conditional expression is constant
 #pragma warning(default : 4189) // local variable is initialized but not referenced
@@ -310,5 +310,5 @@ std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class
 #pragma warning(default : 4459) // declaration hides global declaration
 #pragma warning(default : 5054) // operator '&': deprecated between enumerations of different types
 ''')
-    
+
     f.close()
