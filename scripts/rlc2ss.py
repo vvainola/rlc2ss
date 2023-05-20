@@ -1,17 +1,17 @@
 # MIT License
-# 
+#
 # Copyright (c) 2022 vvainola
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -386,7 +386,7 @@ def form_state_space_matrices(parsed_netlist):
             states.append(ind.i())
         else:
             dependent_currents.append(ind.i())
-    
+
     if states == []:
         return None
 
@@ -467,7 +467,7 @@ def form_state_space_matrices(parsed_netlist):
     cutset_eqs = cutset_matrix * i_vec
     loop_eqs = loop_matrix * u_vec
     eqs = sy.Matrix(sy.BlockMatrix([[cutset_eqs], [loop_eqs]]))
-    
+
     # Replace the passive components currents and voltages with state variables
     # The order of solving should not matter because the equations are linearly
     # independent
@@ -524,7 +524,7 @@ def form_state_space_matrices(parsed_netlist):
         m = sy.Symbol(v[0]) * sy.sqrt(Symbol(L1.name) * Symbol(L2.name))
         L1.add_mutual_inductance(m * L2.der())
         L2.add_mutual_inductance(m * L1.der())
-    
+
     # Replace uL/iC with L*dI / C*dU
     for var in states + dependent_currents + dependent_voltages:
         comp_name = str(var)[2:]
@@ -570,7 +570,7 @@ def form_state_space_matrices(parsed_netlist):
 
     states_deriv = [Symbol(f'd{str(state)}') for state in states]
     K1, Bu = sy.linear_eq_to_matrix(all_deriv_eqs, states_deriv)
-    # Reshape
+    # Reshape, Bu is moved to the right hand side so no sign inverse needed here
     K1, rows_removed = remove_empty_rows(K1)
     for row in rows_removed:
         Bu.row_del(row)
@@ -579,7 +579,6 @@ def form_state_space_matrices(parsed_netlist):
         print('K matrix is not symmetric')
         return None
     assert K1.shape[0] == K1.shape[1]
-    Bu = -Bu
     A1, Bu = sy.linear_eq_to_matrix(Bu, states)
     Bu = -Bu
     inputs = []
@@ -587,8 +586,6 @@ def form_state_space_matrices(parsed_netlist):
         if not (c.name.startswith('I_switch_')) and not (c.name.startswith('V_switch_')):
             inputs.append(Symbol(c.name))
     B1, _ = sy.linear_eq_to_matrix(Bu, inputs)
-    A1 = -A1
-    B1 = -B1
 
     Cx_Du = Matrix(sy.zeros(len(outputs), 1))
     for i, output in enumerate(outputs):
@@ -651,7 +648,7 @@ def main():
             c.reverse()
             combination_number = int("".join(c), 2)
             out[combination_number] = form_state_space_matrices(netlist_wo_switches)
-    
+
     state_matrices_to_cpp.matrices_to_cpp(f'{filename}_matrices.h', out, switches)
 
 if __name__ == '__main__':
