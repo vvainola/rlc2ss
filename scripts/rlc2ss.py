@@ -175,6 +175,7 @@ def lines_with_switches(netlist):
     lines_w_switches = []
     switches = []
     xor_switches = []
+    and_switches = []
     for line in netlist:
         line_split = line.strip().split(' ')
         if line_split[0][0] == 'S':
@@ -186,15 +187,25 @@ def lines_with_switches(netlist):
             # Check for invalid switches
             if set(switches).intersection(set(xor_switch_combination)) != set(xor_switch_combination):
                 sys.exit(f'Invalid switch in {xor_switch_combination}')
-    return lines_w_switches, switches, xor_switches
+        if line_split[0][0] == 'Y':
+            and_switch_combination = line_split[1:]
+            and_switches.append(and_switch_combination)
+            # Check for invalid switches
+            if set(switches).intersection(set(and_switch_combination)) != set(and_switch_combination):
+                sys.exit(f'Invalid switch in {and_switch_combination}')
+    return lines_w_switches, switches, xor_switches, and_switches
 
-def is_invalid_switch_combination(combination, switches, xor_switches):
+def is_invalid_switch_combination(combination, switches, xor_switches, and_switches):
     active_switches = set()
     for i, v in enumerate(combination):
         if v == 1:
             active_switches.add(switches[i])
     for xor_combination in xor_switches:
         if len(active_switches.intersection(set(xor_combination))) > 1:
+            return True
+    for and_combination in and_switches:
+        count = len(active_switches.intersection(set(and_combination)))
+        if count >= 1 and count < len(and_combination):
             return True
     return False
 
@@ -243,7 +254,7 @@ def form_state_space_matrices(parsed_netlist):
     mutual_inductors = []
     for line in netlist:
         line_split = line.split()
-        if line_split[NAME][0] == 'K' or line_split[NAME][0] == 'X':
+        if line_split[NAME][0] == 'K' or line_split[NAME][0] == 'X' or line_split[NAME][0] == 'Y':
             continue
         node_pos = Node(line_split[POS_NODE])
         node_neg = Node(line_split[NEG_NODE])
@@ -258,7 +269,7 @@ def form_state_space_matrices(parsed_netlist):
             L2 = get_component(components, line_split[2])
             mutual_inductors.append([line_split[NAME], L1, L2])
             continue
-        elif line_split[NAME][0] == 'X':
+        elif line_split[NAME][0] == 'X' or line_split[NAME][0] == 'Y':
             continue
 
         pos_node = nodes[nodes.index(Node(line_split[POS_NODE]))]
@@ -621,7 +632,7 @@ def form_state_space_matrices(parsed_netlist):
 def main():
     filename = os.path.splitext(sys.argv[1])[0]
     netlist = parse_netlist(sys.argv[1])
-    lines_w_switches, switches, xor_switches = lines_with_switches(netlist)
+    lines_w_switches, switches, xor_switches, and_switches = lines_with_switches(netlist)
 
     out = {}
     if len(lines_w_switches) == 0:
@@ -631,7 +642,7 @@ def main():
     else:
         combinations = list(itertools.product([0, 1], repeat=len(lines_w_switches)))
         for i, combination in enumerate(combinations):
-            if is_invalid_switch_combination(combination, switches, xor_switches):
+            if is_invalid_switch_combination(combination, switches, xor_switches, and_switches):
                 continue
             print(f'{i} = {combination}')
             netlist_wo_switches = netlist.copy()

@@ -253,15 +253,14 @@ struct {class_name}_Topology {{
     }}
     auto state_space = std::make_unique<{class_name}::StateSpaceMatrices>();
 
-    switch (switches.all) {{
-''')
+    switch (switches.all) {{''')
 
     for i in sorted(circuit_combinations):
         f.write(f'\n\t\tcase {i}: state_space = calculateStateSpace_{i}(components); break;')
 
     f.write(f'''
     default:
-        assert(0);
+        assert(("Invalid switch combination", 0));
     }}
     {class_name}_Topology& topology = state_space_cache.emplace_back({class_name}_Topology{{
         .components = components,
