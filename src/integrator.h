@@ -56,6 +56,50 @@ class Integrator {
         return x0 + (1.0 / 8.0) * (k1 + 3 * k2 + 3 * k3 + k4);
     }
 
+    // <summary>
+    /// Adaptive integration using Runge-Kutta-Fehlberg method https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta%E2%80%93Fehlberg_method
+    /// <param name="system">System with dxdt and jacobian functions</param>
+    /// <param name="x0">Initial state</param>
+    /// <param name="t">Current time</param>
+    /// <returns>New state</returns>
+    template <class System>
+    vector_t step_runge_kutta_fehlberg(System const& system, vector_t const& x0, double t, double dt) {
+        vector_t x = x0;
+        int steps_remaining = 1;
+        while (steps_remaining > 0) {
+            // clang-format off
+            vector_t k1 = dt  * system.dxdt(x                                                                                                           , t);
+            vector_t k2 = dt  * system.dxdt(x + 1. / 4.        * k1                                                                                     , t + 1. / 4.    * dt);
+            vector_t k3 = dt  * system.dxdt(x + 3. / 32.       * k1 + 9. / 32.       * k2                                                               , t + 3. / 8.    * dt);
+            vector_t k4 = dt  * system.dxdt(x + 1932. / 2197.  * k1 - 7200. / 2197.  * k2 + 7296. / 2197.  * k3                                         , t + 12. / 13.  * dt);
+            vector_t k5 = dt  * system.dxdt(x + 439. / 216.    * k1 - 8.             * k2 + 3680. / 513.   * k3 - 845. / 4104.   * k4                   , t + dt);
+            vector_t k6 = dt  * system.dxdt(x + -8. / 27.      * k1 + 2.             * k2 - 3544. / 2565.  * k3 + 1859. / 4104.  * k4 - 11. / 40.  * k5 , t + 1. / 2.  * dt);
+            // clang-format on
+            vector_t b5_1 = 16. / 135. * k1;
+            vector_t b5_3 = 6656. / 12825. * k3;
+            vector_t b5_4 = 28561. / 56430. * k4;
+            vector_t b5_5 = -9. / 50. * k5;
+            vector_t b5_6 = 2. / 55. * k6;
+
+            vector_t b4_1 = 25. / 216. * k1;
+            vector_t b4_3 = 1408. / 2565. * k3;
+            vector_t b4_4 = 2197. / 4104. * k4;
+            vector_t b4_5 = -1. / 5. * k5;
+
+            double err = ((b5_1 - b4_1) + (b5_3 - b4_3) + (b5_4 - b4_4) + (b5_5 - b4_5) + (b5_6)).norm();
+            if (err < m_epsilon) {
+                t += dt;
+                x = x + b5_1 + b5_3 + b5_4 + b5_5 + b5_6;
+                --steps_remaining;
+            } else {
+                steps_remaining *= 2;
+                dt = dt / 2.;
+            }
+
+        }
+        return x;
+    }
+
     /// <summary>
     /// Do a step with backward euler integration. The next step is solved with
     /// Newton's method
@@ -98,7 +142,6 @@ class Integrator {
     using matrix_and_inverse = std::pair<matrix_t, matrix_t>;
     std::deque<matrix_and_inverse> m_inverse_cache;
     size_t m_cache_size = 100;
-
 };
 
 template <class vector_t,
