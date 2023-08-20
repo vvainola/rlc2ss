@@ -626,6 +626,8 @@ def form_state_space_matrices(parsed_netlist):
     # D = D1 + C2 * H1 * K_inv * B1     ( D1 + K2 * K1_inv * B1 )
 
     component_names = [c.name for c in inductors + capacitors + resistors + vv_sources + iv_sources + vi_sources + ii_sources]
+    for Lm in mutual_inductors:
+        component_names.append(Lm[0])
     return (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1)
 
 
