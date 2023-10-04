@@ -21,11 +21,12 @@
 # SOFTWARE.
 import os
 
-def matrices_to_cpp(filename, circuit_combinations, switches):
-    f = open(filename, 'w')
+def matrices_to_cpp(model_name, circuit_combinations, switches):
+    hpp = open(f'{model_name}_matrices.hpp', 'w')
+    cpp = open(f'{model_name}_matrices.cpp', 'w')
     (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = circuit_combinations[0]
 
-    class_name = 'Model_' + os.path.basename(filename).replace('.', '_')[0:-11]
+    class_name = 'Model_' + os.path.basename(model_name)
     components_list = "\n".join([f'\t\tdouble {str(component)} = -1;' for component in component_names])
     components_compare = " &&\n".join([f'\t\t\t\t{str(component)} == other.{str(component)}' for component in component_names])
     verify_components = "\n".join([f'\t\t\tassert(components.{str(component)} != -1);' for component in component_names])
@@ -207,14 +208,15 @@ class {class_name} {{
     static_assert(sizeof(double) * NUM_OUTPUTS == sizeof(Outputs));
 }};
 
-{class_name}::{class_name}(Components const& c)
-    : components(c),
-      m_components_DO_NOT_TOUCH(c) {{
-    m_ss = calculateStateSpace(components, switches);
-}}
+#pragma warning(default : 4127) // conditional expression is constant
+#pragma warning(default : 4189) // local variable is initialized but not referenced
+#pragma warning(default : 4201) // nonstandard extension used: nameless struct/union
+#pragma warning(default : 4408) // anonymous struct did not declare any data members
+#pragma warning(default : 4459) // declaration hides global declaration
+#pragma warning(default : 5054) // operator '&': deprecated between enumerations of different types
 
 '''
-    f.write(template.format(
+    hpp.write(template.format(
         class_name = class_name,
         num_inputs = len(inputs),
         num_outputs = len(outputs),
@@ -229,12 +231,31 @@ class {class_name} {{
         switches_list = switches_list,
         update_states = update_states,
     ).replace('\t', '    '))
+    hpp.close()
+
+    cpp.write(f'''
+#include "{os.path.basename(model_name)}_matrices.hpp"
+
+#pragma warning(disable : 4127) // conditional expression is constant
+#pragma warning(disable : 4189) // local variable is initialized but not referenced
+#pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
+#pragma warning(disable : 4408) // anonymous struct did not declare any data members
+#pragma warning(disable : 4459) // declaration hides global declaration
+#pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
+
+{class_name}::{class_name}(Components const& c)
+    : components(c),
+      m_components_DO_NOT_TOUCH(c) {{
+    m_ss = calculateStateSpace(components, switches);
+}}
+
+''')
 
     for i in sorted(circuit_combinations):
         combination = circuit_combinations[i]
-        f.write(f'std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class_name}::Components const& c);\n')
+        cpp.write(f'std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class_name}::Components const& c);\n')
 
-    f.write(f'''
+    cpp.write(f'''
 struct {class_name}_Topology {{
     {class_name}::Components components;
     {class_name}::Switches switches;
@@ -256,9 +277,9 @@ struct {class_name}_Topology {{
     switch (switches.all) {{''')
 
     for i in sorted(circuit_combinations):
-        f.write(f'\n\t\tcase {i}: state_space = calculateStateSpace_{i}(components); break;')
+        cpp.write(f'\n\t\tcase {i}: state_space = calculateStateSpace_{i}(components); break;')
 
-    f.write(f'''
+    cpp.write(f'''
     default:
         assert(("Invalid switch combination", 0));
     }}
@@ -271,9 +292,6 @@ struct {class_name}_Topology {{
 }}
 ''')
 
-
-
-
     write_components = ''
     for component in component_names:
         write_components += f'\tdouble {component} = c.{component};\n'
@@ -283,7 +301,7 @@ struct {class_name}_Topology {{
         for j in range(len(switches)):
             if i & pow(2, j):
                 switch_combination += f" {switches[j]}"
-        f.write(f'''
+        cpp.write(f'''
 std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class_name}::Components const& c) // {switch_combination}
 {{
 {write_components}
@@ -293,7 +311,7 @@ std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class
     Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> K2;
     Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> C1;
     Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> D1;
-        ''')
+''')
 
         (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = combination
         K1 = str(K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in K1])
@@ -302,7 +320,7 @@ std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class
         B1 = str(B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in B1])
         C1 = str(C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in C1])
         D1 = str(D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in D1])
-        f.write(f'''
+        cpp.write(f'''
     K1 <<\n\t\t\t {K1};
     K2 <<\n\t\t\t {K2};
     A1 <<\n\t\t\t {A1};
@@ -320,13 +338,5 @@ std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class
 
 ''')
 
-    f.write('''
-#pragma warning(default : 4127) // conditional expression is constant
-#pragma warning(default : 4189) // local variable is initialized but not referenced
-#pragma warning(default : 4201) // nonstandard extension used: nameless struct/union
-#pragma warning(default : 4408) // anonymous struct did not declare any data members
-#pragma warning(default : 4459) // declaration hides global declaration
-#pragma warning(default : 5054) // operator '&': deprecated between enumerations of different types
-''')
 
-    f.close()
+    cpp.close()

@@ -662,7 +662,7 @@ def main():
             combination_number = int("".join(c), 2)
             out[combination_number] = form_state_space_matrices(netlist_wo_switches)
 
-    state_matrices_to_cpp.matrices_to_cpp(f'{filename}_matrices.h', out, switches)
+    state_matrices_to_cpp.matrices_to_cpp(filename, out, switches)
 
 if __name__ == '__main__':
     main()
