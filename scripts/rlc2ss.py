@@ -398,9 +398,6 @@ def form_state_space_matrices(parsed_netlist):
         else:
             dependent_currents.append(ind.i())
 
-    if states == []:
-        return None
-
     branches = len(components)
     # Create cutset matrix
     cutset_matrix = sy.zeros(len(twigs), branches)
