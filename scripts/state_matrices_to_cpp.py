@@ -43,7 +43,6 @@ def matrices_to_cpp(model_name, circuit_combinations, switches):
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
 #pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
-#pragma warning(disable : 4459) // declaration hides global declaration
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
 #include <Eigen/Dense>
@@ -212,7 +211,6 @@ class {class_name} {{
 #pragma warning(default : 4189) // local variable is initialized but not referenced
 #pragma warning(default : 4201) // nonstandard extension used: nameless struct/union
 #pragma warning(default : 4408) // anonymous struct did not declare any data members
-#pragma warning(default : 4459) // declaration hides global declaration
 #pragma warning(default : 5054) // operator '&': deprecated between enumerations of different types
 
 '''
@@ -240,7 +238,6 @@ class {class_name} {{
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
 #pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
-#pragma warning(disable : 4459) // declaration hides global declaration
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
 static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
