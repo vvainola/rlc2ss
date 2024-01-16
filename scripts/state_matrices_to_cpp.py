@@ -212,7 +212,6 @@ class {class_name} {{
 #pragma warning(default : 4201) // nonstandard extension used: nameless struct/union
 #pragma warning(default : 4408) // anonymous struct did not declare any data members
 #pragma warning(default : 5054) // operator '&': deprecated between enumerations of different types
-
 '''
     hpp.write(template.format(
         class_name = class_name,
