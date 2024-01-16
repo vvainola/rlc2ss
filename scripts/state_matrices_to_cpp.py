@@ -243,6 +243,21 @@ class {class_name} {{
 #pragma warning(disable : 4459) // declaration hides global declaration
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
+static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> const  &K1,
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> const  &A1,
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS> const  &B1,
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> const &K2,
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> const &C1,
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> const &D1) {{
+    auto ss = std::make_unique<{class_name}::StateSpaceMatrices>();
+    ss->A   = K1.partialPivLu().solve(A1);
+    ss->B   = K1.partialPivLu().solve(B1);
+    ss->C   = (C1 + K2 * ss->A);
+    ss->D   = (D1 + K2 * ss->B);
+    return ss;
+}}
+
 {class_name}::{class_name}(Components const& c)
     : components(c),
       m_components_DO_NOT_TOUCH(c) {{
@@ -305,35 +320,24 @@ struct {class_name}_Topology {{
 std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class_name}::Components const& c) // {switch_combination}
 {{
 {write_components}
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> K1;
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> A1;
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS> B1;
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> K2;
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> C1;
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> D1;
 ''')
 
         (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = combination
-        K1 = str(K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in K1])
-        K2 = str(K2).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in K2])
-        A1 = str(A1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in A1])
-        B1 = str(B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in B1])
-        C1 = str(C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in C1])
-        D1 = str(D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',\n\t\t\t') #",".join([str(coeff) for coeff in D1])
+        K1 = str(K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K1])
+        K2 = str(K2).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K2])
+        A1 = str(A1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in A1])
+        B1 = str(B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in B1])
+        C1 = str(C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in C1])
+        D1 = str(D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in D1])
         cpp.write(f'''
-    K1 <<\n\t\t\t {K1};
-    K2 <<\n\t\t\t {K2};
-    A1 <<\n\t\t\t {A1};
-    B1 <<\n\t\t\t {B1};
-    C1 <<\n\t\t\t {C1};
-    D1 <<\n\t\t\t {D1};
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> K1 {{\n\t\t{{ {K1} }} }};\n
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> K2 {{\n\t\t{{ {K2}}} }};\n
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> A1 {{\n\t\t{{ {A1} }} }};\n
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS> B1 {{\n\t\t{{ {B1} }} }};\n
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> C1 {{\n\t\t{{ {C1} }} }};\n
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> D1 {{\n\t\t{{ {D1} }} }};
 
-    auto ss = std::make_unique<{class_name}::StateSpaceMatrices>();
-    ss->A = K1.partialPivLu().solve(A1);
-    ss->B = K1.partialPivLu().solve(B1);
-    ss->C = (C1 + K2 * ss->A);
-    ss->D = (D1 + K2 * ss->B);
-    return ss;
+    return calcStateSpace(K1, A1, B1, K2, C1, D1);
 }}
 
 ''')
