@@ -29,8 +29,8 @@ from sympy import Symbol, Matrix
 import typing as T
 import networkx as nx
 import sys
-import line_profiler
 import state_matrices_to_cpp
+from state_matrices_to_cpp import StateSpaceMatrices
 import itertools
 
 sy.init_printing()
@@ -625,7 +625,19 @@ def form_state_space_matrices(parsed_netlist):
     component_names = [c.name for c in inductors + capacitors + resistors + vv_sources + iv_sources + vi_sources + ii_sources]
     for Lm in mutual_inductors:
         component_names.append(Lm[0])
-    return (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1)
+    ss = StateSpaceMatrices(
+        component_names = component_names,
+        states = states,
+        inputs = inputs,
+        outputs = outputs,
+        K1 = K1,
+        K2 = K2,
+        A1 = A1,
+        B1 = B1,
+        C1 = C1,
+        D1 = D1
+    )
+    return ss
 
 
 def main():

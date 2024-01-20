@@ -20,21 +20,36 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 import os
+from dataclasses import dataclass
+import sympy
 
-def matrices_to_cpp(model_name, circuit_combinations, switches):
+@dataclass
+class StateSpaceMatrices:
+    component_names: list[str]
+    states: list[sympy.Symbol]
+    inputs: list[sympy.Symbol]
+    outputs: list[sympy.Symbol]
+    K1: sympy.Matrix
+    K2: sympy.Matrix
+    A1: sympy.Matrix
+    B1: sympy.Matrix
+    C1: sympy.Matrix
+    D1: sympy.Matrix
+
+def matrices_to_cpp(model_name, circuit_combinations : list[StateSpaceMatrices], switches):
     hpp = open(f'{model_name}_matrices.hpp', 'w')
     cpp = open(f'{model_name}_matrices.cpp', 'w')
-    (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = circuit_combinations[0]
+    ss = circuit_combinations[0]
 
     class_name = 'Model_' + os.path.basename(model_name)
-    components_list = "\n".join([f'\t\tdouble {str(component)} = -1;' for component in component_names])
-    components_compare = " &&\n".join([f'\t\t\t\t{str(component)} == other.{str(component)}' for component in component_names])
-    verify_components = "\n".join([f'\t\t\tassert(components.{str(component)} != -1);' for component in component_names])
-    states_list = "\n".join([f'\t\t\tdouble {str(state)};' for state in states])
-    inputs_list = "\n".join([f'\t\t\tdouble {str(input)};' for input in inputs])
-    outputs_list = "\n".join([f'\t\t\tdouble {str(output)};' for output in outputs])
+    components_list = "\n".join([f'\t\tdouble {str(component)} = -1;' for component in ss.component_names])
+    components_compare = " &&\n".join([f'\t\t\t\t{str(component)} == other.{str(component)}' for component in ss.component_names])
+    verify_components = "\n".join([f'\t\t\tassert(components.{str(component)} != -1);' for component in ss.component_names])
+    states_list = "\n".join([f'\t\t\tdouble {str(state)};' for state in ss.states])
+    inputs_list = "\n".join([f'\t\t\tdouble {str(input)};' for input in ss.inputs])
+    outputs_list = "\n".join([f'\t\t\tdouble {str(output)};' for output in ss.outputs])
     switches_list = "\n".join([f'\t\t\tuint32_t {str(switch)} : 1;' for switch in switches])
-    update_states = "\n".join([f'\t\tstates.{state} = outputs.{state};' for state in states])
+    update_states = "\n".join([f'\t\tstates.{state} = outputs.{state};' for state in ss.states])
 
     template = '''
 #pragma once
@@ -215,9 +230,9 @@ class {class_name} {{
 '''
     hpp.write(template.format(
         class_name = class_name,
-        num_inputs = len(inputs),
-        num_outputs = len(outputs),
-        num_states = len(states),
+        num_inputs = len(ss.inputs),
+        num_outputs = len(ss.outputs),
+        num_states = len(ss.states),
         num_switches = len(switches),
         components_list = components_list,
         components_compare = components_compare,
@@ -304,10 +319,10 @@ struct {class_name}_Topology {{
 ''')
 
     write_components = ''
-    for component in component_names:
+    for component in ss.component_names:
         write_components += f'\tdouble {component} = c.{component};\n'
     for i in sorted(circuit_combinations):
-        combination = circuit_combinations[i]
+        ss = circuit_combinations[i]
         switch_combination = ''
         for j in range(len(switches)):
             if i & pow(2, j):
@@ -318,13 +333,12 @@ std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class
 {write_components}
 ''')
 
-        (component_names, states, inputs, outputs, K1, K2, A1, B1, C1, D1) = combination
-        K1 = str(K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K1])
-        K2 = str(K2).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K2])
-        A1 = str(A1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in A1])
-        B1 = str(B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in B1])
-        C1 = str(C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in C1])
-        D1 = str(D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in D1])
+        K1 = str(ss.K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K1])
+        K2 = str(ss.K2).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K2])
+        A1 = str(ss.A1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in A1])
+        B1 = str(ss.B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in B1])
+        C1 = str(ss.C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in C1])
+        D1 = str(ss.D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in D1])
         cpp.write(f'''
     Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> K1 {{\n\t\t{{ {K1} }} }};\n
     Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> K2 {{\n\t\t{{ {K2}}} }};\n
