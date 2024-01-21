@@ -53,15 +53,15 @@ Model_diode_bridge::StateSpaceMatrices Model_diode_bridge::calculateStateSpace(M
 
     // Replace symbolic components with their values before parsing the json
     std::string s = m_circuit_json;
-	s = rlc2ss::replace(s, "L_a", std::to_string(components.L_a));
-	s = rlc2ss::replace(s, "L_b", std::to_string(components.L_b));
-	s = rlc2ss::replace(s, "L_c", std::to_string(components.L_c));
-	s = rlc2ss::replace(s, "C_dc", std::to_string(components.C_dc));
-	s = rlc2ss::replace(s, "R_a", std::to_string(components.R_a));
-	s = rlc2ss::replace(s, "R_b", std::to_string(components.R_b));
-	s = rlc2ss::replace(s, "R_c", std::to_string(components.R_c));
-	s = rlc2ss::replace(s, "R_dc", std::to_string(components.R_dc));
-	s = rlc2ss::replace(s, "R_load", std::to_string(components.R_load));
+	s = rlc2ss::replace(s, " L_a ", std::to_string(components.L_a));
+	s = rlc2ss::replace(s, " L_b ", std::to_string(components.L_b));
+	s = rlc2ss::replace(s, " L_c ", std::to_string(components.L_c));
+	s = rlc2ss::replace(s, " C_dc ", std::to_string(components.C_dc));
+	s = rlc2ss::replace(s, " R_a ", std::to_string(components.R_a));
+	s = rlc2ss::replace(s, " R_b ", std::to_string(components.R_b));
+	s = rlc2ss::replace(s, " R_c ", std::to_string(components.R_c));
+	s = rlc2ss::replace(s, " R_dc ", std::to_string(components.R_dc));
+	s = rlc2ss::replace(s, " R_load ", std::to_string(components.R_load));
 
     // Parse json for the intermediate matrices
     nlohmann::json j = nlohmann::json::parse(s);

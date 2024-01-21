@@ -300,7 +300,7 @@ struct {class_name}_Topology {{
 ''')
 
     for component in ss.component_names:
-        cpp.write(f"\ts = rlc2ss::replace(s, \"{component}\", std::to_string(components.{component}));\n")
+        cpp.write(f"\ts = rlc2ss::replace(s, \" {component} \", std::to_string(components.{component}));\n")
 
     cpp.write(f'''
     // Parse json for the intermediate matrices
@@ -342,6 +342,17 @@ struct {class_name}_Topology {{
         B1 = str(ss.B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('*', ' * ')
         C1 = str(ss.C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('*', ' * ')
         D1 = str(ss.D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('*', ' * ')
+
+        # Add whitespace around each component so that when replacing the names with numeric values,
+        # component names which are a substring of some other component name will not be replaced.
+        for component in ss.component_names:
+            K1 = K1.replace(component, f' {component} ')
+            K2 = K2.replace(component, f' {component} ')
+            A1 = A1.replace(component, f' {component} ')
+            B1 = B1.replace(component, f' {component} ')
+            C1 = C1.replace(component, f' {component} ')
+            D1 = D1.replace(component, f' {component} ')
+
         circuits[str(i)] = {}
         circuits[str(i)]["K1"] = K1
         circuits[str(i)]["K2"] = K2
