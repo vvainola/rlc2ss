@@ -23,7 +23,7 @@
 #define BOOST_ALLOW_DEPRECATED_HEADERS
 #include "integrator.h"
 
-#include "..\schematics\diode_bridge_matrices.h"
+#include "..\schematics\diode_bridge_matrices.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -169,5 +169,4 @@ int main() {
     fout.close();
     std::cout << "Done!\n"
               << std::endl;
-    system("python ..\\scripts\\plot.py");
 }

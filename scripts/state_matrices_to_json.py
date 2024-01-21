@@ -21,22 +21,11 @@
 # SOFTWARE.
 import os
 from dataclasses import dataclass
+from state_matrices_to_cpp import StateSpaceMatrices
 import sympy
+import json
 
-@dataclass
-class StateSpaceMatrices:
-    component_names: list[str]
-    states: list[sympy.Symbol]
-    inputs: list[sympy.Symbol]
-    outputs: list[sympy.Symbol]
-    K1: sympy.Matrix
-    K2: sympy.Matrix
-    A1: sympy.Matrix
-    B1: sympy.Matrix
-    C1: sympy.Matrix
-    D1: sympy.Matrix
-
-def matrices_to_cpp(model_name, circuit_combinations : list[StateSpaceMatrices], switches):
+def matrices_to_cpp(model_name: str, circuit_combinations: list[StateSpaceMatrices], switches, resource_id: int):
     hpp = open(f'{model_name}_matrices.hpp', 'w')
     cpp = open(f'{model_name}_matrices.cpp', 'w')
     ss = circuit_combinations[0]
@@ -74,7 +63,6 @@ class {class_name} {{
     union States;
     union Switches;
     struct StateSpaceMatrices;
-    static StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
     {class_name}(){{}}
     {class_name}(Components const& c);
@@ -207,7 +195,8 @@ class {class_name} {{
     Switches switches = {{.all = 0}};
 
   private:
-    Inputs m_inputs;
+    StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
+
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
         m_solver;
@@ -217,6 +206,8 @@ class {class_name} {{
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_prev = 0;
     double m_dt_implicit = 0;
+    // The json file with symbolic intermediate matrices
+    std::string m_circuit_json;
 
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));
@@ -248,6 +239,8 @@ class {class_name} {{
 
     cpp.write(f'''
 #include "{os.path.basename(model_name)}_matrices.hpp"
+#include "rlc2ss.h"
+#include "nlohmann/json.hpp"
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -256,17 +249,17 @@ class {class_name} {{
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
 static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> const  &K1,
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> const  &A1,
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS> const  &B1,
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> const &K2,
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> const &C1,
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> const &D1) {{
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> const& K1,
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> const& A1,
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS> const& B1,
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> const& K2,
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> const& C1,
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> const& D1) {{
     auto ss = std::make_unique<{class_name}::StateSpaceMatrices>();
-    ss->A   = K1.partialPivLu().solve(A1);
-    ss->B   = K1.partialPivLu().solve(B1);
-    ss->C   = (C1 + K2 * ss->A);
-    ss->D   = (D1 + K2 * ss->B);
+    ss->A = K1.partialPivLu().solve(A1);
+    ss->B = K1.partialPivLu().solve(B1);
+    ss->C = (C1 + K2 * ss->A);
+    ss->D = (D1 + K2 * ss->B);
     return ss;
 }}
 
@@ -275,12 +268,7 @@ static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
       m_components_DO_NOT_TOUCH(c) {{
     m_ss = calculateStateSpace(components, switches);
 }}
-
 ''')
-
-    for i in sorted(circuit_combinations):
-        combination = circuit_combinations[i]
-        cpp.write(f'std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class_name}::Components const& c);\n')
 
     cpp.write(f'''
 struct {class_name}_Topology {{
@@ -289,69 +277,84 @@ struct {class_name}_Topology {{
     std::unique_ptr<{class_name}::StateSpaceMatrices> state_space;
 }};
 
-{class_name}::StateSpaceMatrices {class_name}::calculateStateSpace({class_name}::Components const& components, {class_name}::Switches switches)
-{{
+{class_name}::StateSpaceMatrices {class_name}::calculateStateSpace({class_name}::Components const& components, {class_name}::Switches switches) {{
     static std::vector<{class_name}_Topology> state_space_cache;
     auto it = std::find_if(
         state_space_cache.begin(), state_space_cache.end(), [&]({class_name}_Topology const& t) {{
-        return t.components == components && t.switches.all == switches.all;
-    }});
+            return t.components == components && t.switches.all == switches.all;
+        }});
     if (it != state_space_cache.end()) {{
         return *it->state_space;
     }}
-    auto state_space = std::make_unique<{class_name}::StateSpaceMatrices>();
+''')
 
-    switch (switches.all) {{''')
-
-    for i in sorted(circuit_combinations):
-        cpp.write(f'\n\t\tcase {i}: state_space = calculateStateSpace_{i}(components); break;')
 
     cpp.write(f'''
-    default:
-        assert(("Invalid switch combination", 0));
+    if (m_circuit_json.empty()) {{
+        m_circuit_json = rlc2ss::loadTextResource({resource_id});
     }}
+    assert(!m_circuit_json.empty());
+
+    // Replace symbolic components with their values before parsing the json
+    std::string s = m_circuit_json;
+''')
+
+    for component in ss.component_names:
+        cpp.write(f"\ts = rlc2ss::replace(s, \"{component}\", std::to_string(components.{component}));\n")
+
+    cpp.write(f'''
+    // Parse json for the intermediate matrices
+    nlohmann::json j = nlohmann::json::parse(s);
+    std::string K1_str = j[std::to_string(switches.all)]["K1"];
+    std::string K2_str = j[std::to_string(switches.all)]["K2"];
+    std::string A1_str = j[std::to_string(switches.all)]["A1"];
+    std::string B1_str = j[std::to_string(switches.all)]["B1"];
+    std::string C1_str = j[std::to_string(switches.all)]["C1"];
+    std::string D1_str = j[std::to_string(switches.all)]["D1"];
+
+    // Create eigen matrices
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(K1_str).data());
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(K2_str).data());
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(A1_str).data());
+    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(B1_str).data());
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(C1_str).data());
+    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(D1_str).data());
+
     {class_name}_Topology& topology = state_space_cache.emplace_back({class_name}_Topology{{
         .components = components,
         .switches = switches,
-        .state_space = std::move(state_space)}});
+        .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)}});
 
     return *topology.state_space;
 }}
 ''')
+
+    circuits = {}
 
     write_components = ''
     for component in ss.component_names:
         write_components += f'\tdouble {component} = c.{component};\n'
     for i in sorted(circuit_combinations):
         ss = circuit_combinations[i]
-        switch_combination = ''
-        for j in range(len(switches)):
-            if i & pow(2, j):
-                switch_combination += f" {switches[j]}"
-        cpp.write(f'''
-std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class_name}::Components const& c) // {switch_combination}
-{{
-{write_components}
-''')
+        K1 = str(ss.K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('*', ' * ')
+        K2 = str(ss.K2).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('*', ' * ')
+        A1 = str(ss.A1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('*', ' * ')
+        B1 = str(ss.B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('*', ' * ')
+        C1 = str(ss.C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('*', ' * ')
+        D1 = str(ss.D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('*', ' * ')
+        circuits[str(i)] = {}
+        circuits[str(i)]["K1"] = K1
+        circuits[str(i)]["K2"] = K2
+        circuits[str(i)]["A1"] = A1
+        circuits[str(i)]["B1"] = B1
+        circuits[str(i)]["C1"] = C1
+        circuits[str(i)]["D1"] = D1
 
-        K1 = str(ss.K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K1])
-        K2 = str(ss.K2).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K2])
-        A1 = str(ss.A1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in A1])
-        B1 = str(ss.B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in B1])
-        C1 = str(ss.C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in C1])
-        D1 = str(ss.D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in D1])
-        cpp.write(f'''
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> K1 {{\n\t\t{{ {K1} }} }};\n
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> K2 {{\n\t\t{{ {K2}}} }};\n
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> A1 {{\n\t\t{{ {A1} }} }};\n
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS> B1 {{\n\t\t{{ {B1} }} }};\n
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> C1 {{\n\t\t{{ {C1} }} }};\n
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> D1 {{\n\t\t{{ {D1} }} }};
+    with open(f"{model_name}_matrices.json", "w") as outfile:
+        json.dump(circuits, outfile)
 
-    return calcStateSpace(K1, A1, B1, K2, C1, D1);
-}}
-
-''')
-
+    with open(f"{model_name}_matrices.rc", "w") as outfile:
+        name = os.path.basename(model_name)
+        outfile.write(f'#define {name}_matrices_json {resource_id} \n{name}_matrices_json    TEXT    "{name}_matrices.json"')
 
     cpp.close()

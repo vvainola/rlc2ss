@@ -30,8 +30,10 @@ import typing as T
 import networkx as nx
 import sys
 import state_matrices_to_cpp
+import state_matrices_to_json
 from state_matrices_to_cpp import StateSpaceMatrices
 import itertools
+import argparse
 
 sy.init_printing()
 M = Matrix
@@ -641,14 +643,22 @@ def form_state_space_matrices(parsed_netlist):
 
 
 def main():
-    filename = os.path.splitext(sys.argv[1])[0]
-    netlist = parse_netlist(sys.argv[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('netlist', type=str)
+    parser.add_argument('--json', type=int, help='Store circuit in JSON format. The default is C++. The json number is the resource id.')
+    args = parser.parse_args()
+
+    filename = os.path.splitext(args.netlist)[0]
+    netlist = parse_netlist(args.netlist)
     lines_w_switches, switches, xor_switches, and_switches = lines_with_switches(netlist)
 
     out = {}
     if len(lines_w_switches) == 0:
         out[0] = form_state_space_matrices(netlist)
-        state_matrices_to_cpp.matrices_to_cpp(f'{filename}_matrices.h', out, switches)
+        if args.json:
+            state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, args.json)
+        else:
+            state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches)
         sys.exit(0)
     else:
         combinations = list(itertools.product([0, 1], repeat=len(lines_w_switches)))
@@ -670,8 +680,10 @@ def main():
             c.reverse()
             combination_number = int("".join(c), 2)
             out[combination_number] = form_state_space_matrices(netlist_wo_switches)
-
-    state_matrices_to_cpp.matrices_to_cpp(filename, out, switches)
+    if args.json:
+        state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, args.json)
+    else:
+        state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches)
 
 if __name__ == '__main__':
     main()

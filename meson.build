@@ -16,12 +16,21 @@ configure_file(
         'build_root' : meson.build_root()
     }
 )
+windows = import('windows')
 
-deps = [dependency('eigen3')]
+deps = [dependency('eigen3'), dependency('nlohmann_json')]
+gui = subproject('gui').get_variable('lib_gui_dep')
 
+diode_bridge_resource = windows.compile_resources('schematics/diode_bridge_matrices.rc', depend_files : 'schematics/diode_bridge_matrices.json')
 diode_bridge = executable('diode_bridge',
-    sources : 'src/diode_bridge.cpp',
-    dependencies : deps
+    sources : [
+        'src/diode_bridge.cpp',
+        'src/rlc2ss.cpp',
+        'schematics/diode_bridge_matrices.cpp',
+        diode_bridge_resource
+    ],
+    include_directories: ['src'],
+    dependencies : deps + [gui]
 )
 
 lcl_with_faults = executable('lcl_with_faults',
@@ -39,7 +48,6 @@ transformer = executable('transformer',
     dependencies : deps
 )
 
-gui = subproject('gui').get_variable('lib_gui_dep')
 inverter_3L = executable('inverter_3L',
     sources : ['src/inverter_3L.cpp'],
     dependencies : deps + [gui]
