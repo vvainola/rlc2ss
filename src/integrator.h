@@ -140,7 +140,7 @@ class Integrator {
 
     matrix_t m_gradient_inv; // 1 / (1 - dt * J)
     matrix_t m_jacobian_prev;
-    double m_dt_prev;
+    double m_dt_prev = 0;
     double m_epsilon = 1e-8;
     double m_abstol = 1e-6;
     double m_reltol = 1e-3;
