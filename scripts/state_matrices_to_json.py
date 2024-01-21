@@ -22,10 +22,9 @@
 import os
 from dataclasses import dataclass
 from state_matrices_to_cpp import StateSpaceMatrices
-import sympy
 import json
 
-def matrices_to_cpp(model_name: str, circuit_combinations: list[StateSpaceMatrices], switches, resource_id: int):
+def matrices_to_cpp(model_name: str, circuit_combinations: dict[int, StateSpaceMatrices], switches: list[str], resource_id: int):
     hpp = open(f'{model_name}_matrices.hpp', 'w')
     cpp = open(f'{model_name}_matrices.cpp', 'w')
     ss = circuit_combinations[0]

@@ -36,7 +36,7 @@ class StateSpaceMatrices:
     C1: sympy.Matrix
     D1: sympy.Matrix
 
-def matrices_to_cpp(model_name, circuit_combinations : list[StateSpaceMatrices], switches):
+def matrices_to_cpp(model_name: str, circuit_combinations: dict[int, StateSpaceMatrices], switches: list[str]):
     hpp = open(f'{model_name}_matrices.hpp', 'w')
     cpp = open(f'{model_name}_matrices.cpp', 'w')
     ss = circuit_combinations[0]

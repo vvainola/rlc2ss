@@ -653,7 +653,7 @@ def main():
     netlist = parse_netlist(args.netlist)
     lines_w_switches, switches, xor_switches, and_switches = lines_with_switches(netlist)
 
-    out = {}
+    out: dict[int, StateSpaceMatrices] = {}
     if len(lines_w_switches) == 0:
         out[0] = form_state_space_matrices(netlist)
         if args.json:
