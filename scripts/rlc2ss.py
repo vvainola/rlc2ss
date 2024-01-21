@@ -34,6 +34,7 @@ import state_matrices_to_json
 from state_matrices_to_cpp import StateSpaceMatrices
 import itertools
 import argparse
+from tqdm import tqdm
 
 sy.init_printing()
 M = Matrix
@@ -662,10 +663,11 @@ def main():
         sys.exit(0)
     else:
         combinations = list(itertools.product([0, 1], repeat=len(lines_w_switches)))
+        progress_bar = tqdm(total=len(combinations))
         for i, combination in enumerate(combinations):
+            progress_bar.update(1)
             if is_invalid_switch_combination(combination, switches, xor_switches, and_switches):
                 continue
-            print(f'{i} = {combination}')
             netlist_wo_switches = netlist.copy()
             for j, line in enumerate(lines_w_switches):
                 if combination[j] == 1:
@@ -675,11 +677,11 @@ def main():
                         netlist_wo_switches[j] = line.replace(f'{switch_name} ', f'{replacement} ')
                 else:
                     netlist_wo_switches.remove(line)
-
             c = [str(c) for c in list(combination)]
             c.reverse()
             combination_number = int("".join(c), 2)
             out[combination_number] = form_state_space_matrices(netlist_wo_switches)
+        progress_bar.close()
     if args.json:
         state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, args.json)
     else:
