@@ -139,10 +139,10 @@ double evaluateExpression(const std::string& expression) {
             operand_stack.push(operand);
         } else if (isOperator(token[0])) {
             // Token is an operator
-            char currentOperator = token[0];
+            char current_operator = token[0];
 
             while (!operator_stack.empty()
-                   && getPrecedence(operator_stack.top()) >= getPrecedence(currentOperator)) {
+                   && getPrecedence(operator_stack.top()) >= getPrecedence(current_operator)) {
                 // Apply higher or equal precedence operators on top of the operator stack
                 char top_operator = operator_stack.top();
                 operator_stack.pop();
@@ -162,7 +162,7 @@ double evaluateExpression(const std::string& expression) {
             }
 
             // Push the current operator onto the stack
-            operator_stack.push(currentOperator);
+            operator_stack.push(current_operator);
         } else {
             std::cerr << "Invalid token: " << token << std::endl;
             return 0.0; // Handle invalid tokens gracefully
