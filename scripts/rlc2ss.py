@@ -78,9 +78,9 @@ class Component:
             self._der = None
 
         if name.startswith('I_switch'):
-            self._current = sy.Symbol('0')
+            self._current = 0
         elif name.startswith('V_switch'):
-            self._voltage = sy.Symbol('0')
+            self._voltage = 0
 
         self._mutual_inductance_voltage = sy.Add()
 
@@ -488,10 +488,15 @@ def form_state_space_matrices(parsed_netlist):
     for comp in resistors + voltage_sources + vv_sources + iv_sources:
         unknowns.append(comp.i())
     solved = {}
+    # Solve for unknowns
     for i, unknown in enumerate(unknowns):
         unknown_as_others = ''
         for eq in eqs:
             if unknown in eq.free_symbols:
+                # Expand the eq in case it sums up to zero
+                eq = sy.together(eq).expand()
+                if unknown not in eq.free_symbols:
+                    continue
                 try:
                     unknown_as_others = sy.linsolve([eq], [unknown]).args[0][0]
                 except ZeroDivisionError:
@@ -500,9 +505,15 @@ def form_state_space_matrices(parsed_netlist):
                 solved[unknown] = unknown_as_others
                 break
         assert unknown_as_others != ''
+        unknown_as_others = sy.together(unknown_as_others).expand()
         for key, val in solved.items():
             solved[key] = val.xreplace({unknown : unknown_as_others})
         eqs = eqs.xreplace({unknown : unknown_as_others})
+    # Try simplify the solved so that there are no powers of two in the output matrices
+    solved_simplified = {}
+    for key, val in solved.items():
+        solved_simplified[key] = sy.simplify(val).expand()
+    solved = solved_simplified
     # Update solved to output
     for unknown, unknown_as_state_vars in solved.items():
         comp = get_component(components, str(unknown)[2:])
