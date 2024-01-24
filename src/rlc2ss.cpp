@@ -27,13 +27,13 @@
 #include <sstream>
 #include <windows.h>
 #include <stack>
+#include <assert.h>
 
 namespace rlc2ss {
 
 static bool isOperator(char c);
 static int getPrecedence(char op);
 static double applyOperator(double operand1, double operand2, char op);
-static double evaluateExpression(const std::string& expression);
 static std::vector<std::string> split(const std::string& s, char delim);
 
 std::string readFile(const std::string& filename) {
@@ -110,62 +110,97 @@ static int getPrecedence(char op) {
     return 0; // Default precedence for non-operators
 }
 
-static double applyOperator(double operand1, double operand2, char op) {
+double applyOperator(double operand1, double operand2, char op) {
     switch (op) {
-        case '+':
-            return operand1 + operand2;
-        case '-':
-            return operand1 - operand2;
-        case '*':
-            return operand1 * operand2;
-        case '/':
-            return operand1 / operand2;
+        case '+': return operand1 + operand2;
+        case '-': return operand1 - operand2;
+        case '*': return operand1 * operand2;
+        case '/': return operand1 / operand2;
         default:
             std::cerr << "Invalid operator: " << op << std::endl;
             return 0.0; // Handle invalid operators gracefully
     }
 }
 
-double evaluateExpression(const std::string& expression) {
-    std::istringstream iss(expression);
+double evaluateExpression(std::istringstream& iss) {
     std::stack<double> operand_stack;
     std::stack<char> operator_stack;
 
-    std::string token;
-    while (iss >> token) {
-        if (isdigit(token[0]) || (token.size() > 1 && token[0] == '-' && isdigit(token[1]))) {
-            // Token is a number
-            double operand = std::stod(token);
+    char current_char;
+    while (iss.get(current_char)) {
+        if (isspace(current_char)) {
+            continue; // Skip whitespace
+        } else if (isdigit(current_char)
+                   || (current_char == '-' && operand_stack.empty() && isdigit(iss.peek()))
+                   || (current_char == '-' && !operator_stack.empty() && isdigit(iss.peek()))) {
+            // Parse a number
+            iss.putback(current_char);
+            double operand;
+            iss >> operand;
             operand_stack.push(operand);
-        } else if (isOperator(token[0])) {
+        } else if (isOperator(current_char)) {
             // Token is an operator
-            char current_operator = token[0];
+            char current_operator = current_char;
 
-            while (!operator_stack.empty()
-                   && getPrecedence(operator_stack.top()) >= getPrecedence(current_operator)) {
+            while (!operator_stack.empty() && getPrecedence(operator_stack.top()) >= getPrecedence(current_operator)) {
                 // Apply higher or equal precedence operators on top of the operator stack
                 char top_operator = operator_stack.top();
                 operator_stack.pop();
 
-                if (operand_stack.size() < 2) {
+                if (operand_stack.size() == 1 && top_operator == '-') {
+                    // Unary operator
+                    double operand = operand_stack.top();
+                    operand_stack.pop();
+                    operand_stack.push(-operand);
+                } else if (operand_stack.size() >= 2) {
+                    double operand2 = operand_stack.top();
+                    operand_stack.pop();
+                    double operand1 = operand_stack.top();
+                    operand_stack.pop();
+
+                    double result = applyOperator(operand1, operand2, top_operator);
+                    operand_stack.push(result);
+                } else {
                     std::cerr << "Invalid expression: Not enough operands for operator " << top_operator << std::endl;
                     return 0.0;
                 }
-
-                double operand2 = operand_stack.top();
-                operand_stack.pop();
-                double operand1 = operand_stack.top();
-                operand_stack.pop();
-
-                double result = applyOperator(operand1, operand2, top_operator);
-                operand_stack.push(result);
             }
 
             // Push the current operator onto the stack
             operator_stack.push(current_operator);
+        } else if (current_char == '(') {
+            // Token is an opening parenthesis, evaluate the expression inside the parenthesis
+            double result = evaluateExpression(iss);
+            operand_stack.push(result);
+        } else if (current_char == ')') {
+            // Token is a closing parenthesis, evaluate the expression until the opening parenthesis
+            while (!operator_stack.empty() && operator_stack.top() != '(') {
+                char top_operator = operator_stack.top();
+                operator_stack.pop();
+
+                if (operand_stack.size() == 1 && top_operator == '-') {
+                    // Unary operator
+                    double operand = operand_stack.top();
+                    operand_stack.pop();
+                    operand_stack.push(-operand);
+                } else if (operand_stack.size() >= 2) {
+                    double operand2 = operand_stack.top();
+                    operand_stack.pop();
+                    double operand1 = operand_stack.top();
+                    operand_stack.pop();
+
+                    double result = applyOperator(operand1, operand2, top_operator);
+                    operand_stack.push(result);
+                } else {
+                    std::cerr << "Invalid expression: Not enough operands for operator " << top_operator << std::endl;
+                    return 0.0;
+                }
+            }
+            assert(operand_stack.size() == 1);
+            return operand_stack.top();
         } else {
-            std::cerr << "Invalid token: " << token << std::endl;
-            return 0.0; // Handle invalid tokens gracefully
+            std::cerr << "Invalid character: " << current_char << std::endl;
+            return 0.0; // Handle invalid characters gracefully
         }
     }
 
@@ -195,6 +230,11 @@ double evaluateExpression(const std::string& expression) {
         std::cerr << "Invalid expression: Too many operands" << std::endl;
         return 0.0;
     }
+}
+
+double evaluateExpression(const std::string& expression) {
+    std::istringstream iss(expression);
+    return evaluateExpression(iss);
 }
 
 std::vector<double> getCommaDelimitedValues(std::string const s) {
