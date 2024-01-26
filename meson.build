@@ -52,3 +52,14 @@ inverter_3L = executable('inverter_3L',
     sources : ['src/inverter_3L.cpp'],
     dependencies : deps + [gui]
 )
+
+executable('tests',
+    sources : [
+        'src/rlc2ss.cpp',
+        'tests/expressionEvalTest.cpp',
+    ],
+    include_directories: [
+        'src'
+    ],
+    dependencies: dependency('catch2-with-main')
+)

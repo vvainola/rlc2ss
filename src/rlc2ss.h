@@ -30,6 +30,6 @@ std::string readFile(const std::string& filename);
 std::string replace(const std::string& original, const std::string& search, const std::string& replacement);
 std::vector<double> getCommaDelimitedValues(std::string const s);
 std::string loadTextResource(int resource_id);
-double evaluateExpression(const std::string& expression);
+double evaluateExpression(std::string expression);
 
 } // namespace rlc2ss
