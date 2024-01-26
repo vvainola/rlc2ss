@@ -56,7 +56,7 @@ inverter_3L = executable('inverter_3L',
 executable('tests',
     sources : [
         'src/rlc2ss.cpp',
-        'tests/expressionEvalTest.cpp',
+        'tests/expression_eval_test.cpp',
     ],
     include_directories: [
         'src'
