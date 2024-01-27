@@ -1,0 +1,57 @@
+C_dc_n1 _net34 N_dc_n
+C_dc_n2 _net41 _net36
+C_dc_p1 _net15 N_dc_0  Vn;
+C_dc_p2 _net39 _net40
+C_f_a N_cap_a _net31
+C_f_b N_cap_b _net32
+C_f_c N_cap_c _net33
+L_conv_a V2_a N_cap_a
+L_conv_b V2_b N_cap_b
+L_conv_c V2_c N_cap_c
+L_dc_n _net36 N_dc_n
+L_dc_p _net38 N_dc_p
+L_dc_src _net35 _net37
+L_grid_a _net22 _net23
+L_grid_b _net24 _net25
+L_grid_c _net26 _net27
+L_src_a _net28 _net0
+L_src_b _net29 _net1
+L_src_c _net30 _net2
+R_conv_a N_conv_a V2_a Vp;
+R_conv_b N_conv_b V2_b Vp;
+R_conv_c N_conv_c V2_c Vp;
+R_dc_pn1 N_dc_0 N_dc_n  Vn;
+R_dc_pn2 _net40 _net36
+R_dc_pp1 N_dc_p N_dc_0  Vp;
+R_dc_pp2 _net38 _net40
+R_dc_sn1 N_dc_0 _net34
+R_dc_sn2 _net40 _net41
+R_dc_sp1 N_dc_p _net15
+R_dc_sp2 _net38 _net39
+R_dc_src _net38 _net37
+R_f_a _net31 N_cap_0
+R_f_b _net32 N_cap_0
+R_f_c _net33 N_cap_0
+R_grid_a N_cap_a _net22
+R_grid_b N_cap_b _net24
+R_grid_c N_cap_c _net26
+R_src_a _net23 _net28
+R_src_b _net25 _net29
+R_src_c _net27 _net30
+S_0_a N_conv_a  N_dc_0
+S_0_b N_conv_b  N_dc_0
+S_0_c N_conv_c  N_dc_0
+S_n_a N_dc_n  N_conv_a
+S_n_b N_dc_n  N_conv_b
+S_n_c N_dc_n  N_conv_c
+S_p_a N_conv_a  N_dc_p
+S_p_b N_conv_b  N_dc_p
+S_p_c N_conv_c  N_dc_p
+V_dc_src _net35 _net36
+V_src_a _net0 0
+V_src_b _net1 0
+V_src_c _net2 0
+
+X S_p_a S_0_a S_n_a
+X S_p_b S_0_b S_n_b
+X S_p_c S_0_c S_n_c

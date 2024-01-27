@@ -23,74 +23,55 @@
 #define BOOST_ALLOW_DEPRECATED_HEADERS
 #include "integrator.h"
 
-#include "../qucs/3L_matrices.h"
+#include "../qucs/diode_bridge_3l_matrices.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include "dbg_gui_wrapper.h"
-
-#define ASSERT(cond)    \
-    if (cond) {         \
-        __debugbreak(); \
-    }
+#include "DbgGui/dbg_gui_wrapper.h"
+#include "vector_classes.h"
 
 constexpr double DIODE_ON_THRESHOLD_VOLTAGE = 0.8;
-constexpr double PI = 3.141592652;
-
+double v_dc = 500;
 
 template <typename T>
 int sign(T val) {
     return (T(0) < val) - (val < T(0));
 }
-struct XY {
-    double x;
-    double y;
-};
 
-struct ABC {
-    double a;
-    double b;
-    double c;
-};
-
-XY abc_to_xy(ABC const& in) {
-    return XY{
-        2.0 / 3.0 * in.a - 1.0 / 3.0 * in.b - 1.0 / 3.0 * in.c,
-        sqrt(3) / 3.0 * in.b - sqrt(3) / 3.0 * in.c};
-}
-
-ABC xy_to_abc(XY in) {
-    return ABC{
-        in.x,
-        -0.5 * in.x + 0.5 * sqrt(3) * in.y,
-        -0.5 * in.x - 0.5 * sqrt(3) * in.y};
-}
-
-double v_dc = 500;
 class Plant {
   public:
     Plant()
-        : m_model(Model_3L::Components{
+        : m_model(Model_diode_bridge_3l::Components{
             .L_conv_a = 100e-5,
             .L_conv_b = 100e-5,
             .L_conv_c = 100e-5,
-            .L_dc_src = 1e-5,
+            .L_dc_n = 100e-5,
+            .L_dc_p = 100e-5,
+            .L_dc_src = 100e-1,
             .L_grid_a = 100e-5,
             .L_grid_b = 100e-5,
             .L_grid_c = 100e-5,
             .L_src_a = 100e-5,
             .L_src_b = 100e-5,
             .L_src_c = 100e-5,
-            .C_dc_n = 10e-3,
-            .C_dc_p = 10e-3,
+            .C_dc_n1 = 10e-3,
+            .C_dc_n2 = 10e-3,
+            .C_dc_p1 = 10e-3,
+            .C_dc_p2 = 10e-3,
             .C_f_a = 1e-5,
             .C_f_b = 1e-5,
             .C_f_c = 1e-5,
             .R_conv_a = 1e-3,
             .R_conv_b = 1e-3,
             .R_conv_c = 1e-3,
-            .R_dc_n = 1e-6,
-            .R_dc_p = 1e-6,
+            .R_dc_pn1 = 100,
+            .R_dc_pn2 = 100,
+            .R_dc_pp1 = 100,
+            .R_dc_pp2 = 100,
+            .R_dc_sn1 = 1e-3,
+            .R_dc_sn2 = 1e-3,
+            .R_dc_sp1 = 1e-3,
+            .R_dc_sp2 = 1e-3,
             .R_dc_src = 10,
             .R_f_a = 1e-3,
             .R_f_b = 1e-3,
@@ -101,14 +82,13 @@ class Plant {
             .R_src_a = 1e-3,
             .R_src_b = 1e-3,
             .R_src_c = 1e-3,
-            .R_dc_n_0 = 1e6
         }) {
     }
 
-    void step(double dt, ABC ugrid) {
+    void step(double dt, V_abc ugrid) {
         checkDiodes();
 
-        Model_3L::Inputs inputs;
+        Model_diode_bridge_3l::Inputs inputs;
         inputs.V_dc_src = v_dc;
         inputs.V_src_a = ugrid.a;
         inputs.V_src_b = ugrid.b;
@@ -119,7 +99,7 @@ class Plant {
 
     void checkDiodes() {
         double u_dc = m_model.outputs.N_dc_p - m_model.outputs.N_dc_n;
-        Model_3L::Switches switches = m_model.switches;
+        Model_diode_bridge_3l::Switches switches = m_model.switches;
         // A pos
         if (m_model.outputs.N_conv_a - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
             m_model.switches.S_p_a = 1;
@@ -159,20 +139,19 @@ class Plant {
         if (m_model.outputs.I_L_conv_c < 0) {
             m_model.switches.S_n_c = 0;
         }
-        ASSERT((m_model.switches.S_p_a && m_model.switches.S_n_a));
-        ASSERT((m_model.switches.S_p_b && m_model.switches.S_n_b));
-        ASSERT((m_model.switches.S_p_c && m_model.switches.S_n_c));
+        /*assert((m_model.switches.S_p_a && m_model.switches.S_n_a));
+        assert((m_model.switches.S_p_b && m_model.switches.S_n_b));
+        assert((m_model.switches.S_p_c && m_model.switches.S_n_c));*/
     }
 
-    Model_3L m_model;
+    Model_diode_bridge_3l m_model;
     double dc_voltage;
 };
 
 Plant plant;
-XY i_conv;
+V_xy i_conv;
 double t = 0;
 int main() {
-
     double amplitude = 400;
 
     double freq = 2 * PI * 50;
@@ -180,14 +159,32 @@ int main() {
     double c_offset = -4.0 * PI / 3.0;
     double angle = PI;
 
-    ABC u_grid;
+    V_abc u_grid;
     double t_step = 10e-6;
     std::ofstream fout("temp.csv");
 
-    DbgGui_create(t_step);
-    DbgGui_startUpdateLoop();
+    fout << "t" << ","
+         << "N_conv_a" << ","
+         << "N_conv_b" << ","
+         << "N_conv_c" << ","
+         << "I_L_conv_a" << ","
+         << "I_L_conv_b" << ","
+         << "I_L_conv_c" << ","
+         << "N_dc_n" << ","
+         << "N_dc_p" << ","
+         << "S_n_a" << ","
+         << "S_n_b" << ","
+         << "S_n_c" << ","
+         << "S_p_a" << ","
+         << "S_p_b" << ","
+         << "S_p_c" << ","
+         << "N_dc_p - N_dc_n" << ","
+         << "\n";
+
+    //DbgGui_create(t_step);
+    //DbgGui_startUpdateLoop();
     for (; t < 0.2; t += t_step) {
-        DbgGui_sample();
+        //DbgGui_sample();
         u_grid.a = amplitude * sin(freq * t + angle);
         u_grid.b = amplitude * sin(freq * t + angle + b_offset);
         u_grid.c = amplitude * sin(freq * t + angle + c_offset);
@@ -210,9 +207,9 @@ int main() {
              << plant.m_model.switches.S_p_c << ","
              << plant.m_model.outputs.N_dc_p - plant.m_model.outputs.N_dc_n << ","
              << "\n";
-        i_conv = abc_to_xy({plant.m_model.outputs.I_L_conv_a,
-                            plant.m_model.outputs.I_L_conv_b,
-                            plant.m_model.outputs.I_L_conv_c});
+        i_conv = V_xy({plant.m_model.outputs.I_L_conv_a,
+                       plant.m_model.outputs.I_L_conv_b,
+                       plant.m_model.outputs.I_L_conv_c});
         fout.flush();
     }
     fout.close();

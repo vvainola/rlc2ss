@@ -1,5 +1,0 @@
-<Project>
-    <PropertyGroup>
-            <LocalDebuggerEnvironment>PATH=@conan_bin@;%PATH%</LocalDebuggerEnvironment>
-    </PropertyGroup>
-</Project>

@@ -6,16 +6,6 @@ project('RLC_to_SS',
         'b_vscrt=md',
     ])
 add_project_arguments('-DNOMINMAX', language : 'cpp')
-
-configure_file(
-    input : 'Directory.Build.Props.in',
-    output : 'Directory.Build.Props',
-    configuration :
-    {
-        'conan_bin': meson.current_build_dir()/'conan/bin',
-        'build_root' : meson.build_root()
-    }
-)
 windows = import('windows')
 
 deps = [dependency('eigen3'), dependency('nlohmann_json')]
@@ -33,23 +23,22 @@ diode_bridge = executable('diode_bridge',
     dependencies : deps + [gui]
 )
 
-lcl_with_faults = executable('lcl_with_faults',
-    sources : 'src/lcl_with_faults.cpp',
-    dependencies : deps
-)
+#transformer = executable('transformer',
+#    sources : 'src/transformer.cpp',
+#    dependencies : deps
+#)
 
-lcl = executable('lcl',
-    sources : 'src/lcl.cpp',
-    dependencies : deps
-)
-
-transformer = executable('transformer',
-    sources : 'src/transformer.cpp',
-    dependencies : deps
-)
-
-inverter_3L = executable('inverter_3L',
-    sources : ['src/inverter_3L.cpp'],
+diode_bridge_3L_resource = windows.compile_resources('qucs/diode_bridge_3l_matrices.rc', depend_files : 'qucs/diode_bridge_3l_matrices.json')
+diode_bridge_3L = executable('diode_bridge_3L',
+    sources : [
+        'src/diode_bridge_3L.cpp',
+        'src/rlc2ss.cpp',
+        'qucs/diode_bridge_3l_matrices.cpp',
+        diode_bridge_3L_resource,
+    ],
+    include_directories: [
+        'src'
+    ],
     dependencies : deps + [gui]
 )
 
