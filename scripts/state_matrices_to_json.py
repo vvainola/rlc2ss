@@ -60,6 +60,7 @@ def matrices_to_cpp(model_name: str, circuit_combinations: dict[int, StateSpaceM
 #include <Eigen/Core>
 #include <Eigen/LU>
 #include "integrator.h"
+#include "nlohmann/json.hpp"
 #include <assert.h>
 
 class {class_name} {{
@@ -214,7 +215,7 @@ class {class_name} {{
     double m_dt_prev = 0;
     double m_dt_implicit = 0;
     // The json file with symbolic intermediate matrices
-    std::string m_circuit_json;
+    nlohmann::json m_circuit_json;
 
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));
@@ -247,7 +248,6 @@ class {class_name} {{
     cpp.write(f'''
 #include "{os.path.basename(model_name)}_matrices.hpp"
 #include "rlc2ss.h"
-#include "nlohmann/json.hpp"
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -298,12 +298,12 @@ struct {class_name}_Topology {{
 
     cpp.write(f'''
     if (m_circuit_json.empty()) {{
-        m_circuit_json = rlc2ss::loadTextResource({resource_id});
+        m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
     }}
     assert(!m_circuit_json.empty());
 
-    // Replace symbolic components with their values before parsing the json
-    std::string s = m_circuit_json;
+    // Get the intermediate matrices as string for replacing symbolic components with their values
+    std::string s = m_circuit_json[std::to_string(switches.all)].dump();
 ''')
 
     for component in ss.component_names:
@@ -312,12 +312,12 @@ struct {class_name}_Topology {{
     cpp.write(f'''
     // Parse json for the intermediate matrices
     nlohmann::json j = nlohmann::json::parse(s);
-    std::string K1_str = j[std::to_string(switches.all)]["K1"];
-    std::string K2_str = j[std::to_string(switches.all)]["K2"];
-    std::string A1_str = j[std::to_string(switches.all)]["A1"];
-    std::string B1_str = j[std::to_string(switches.all)]["B1"];
-    std::string C1_str = j[std::to_string(switches.all)]["C1"];
-    std::string D1_str = j[std::to_string(switches.all)]["D1"];
+    std::string K1_str = j["K1"];
+    std::string K2_str = j["K2"];
+    std::string A1_str = j["A1"];
+    std::string B1_str = j["B1"];
+    std::string C1_str = j["C1"];
+    std::string D1_str = j["D1"];
 
     // Create eigen matrices
     Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(K1_str).data());

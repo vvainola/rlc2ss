@@ -11,6 +11,7 @@
 #include <Eigen/Core>
 #include <Eigen/LU>
 #include "integrator.h"
+#include "nlohmann/json.hpp"
 #include <assert.h>
 
 class Model_diode_bridge_3l {
@@ -356,7 +357,7 @@ class Model_diode_bridge_3l {
     double m_dt_prev = 0;
     double m_dt_implicit = 0;
     // The json file with symbolic intermediate matrices
-    std::string m_circuit_json;
+    nlohmann::json m_circuit_json;
 
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));

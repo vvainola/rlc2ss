@@ -1,7 +1,6 @@
 
 #include "diode_bridge_3l_matrices.hpp"
 #include "rlc2ss.h"
-#include "nlohmann/json.hpp"
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -47,12 +46,12 @@ Model_diode_bridge_3l::StateSpaceMatrices Model_diode_bridge_3l::calculateStateS
     }
 
     if (m_circuit_json.empty()) {
-        m_circuit_json = rlc2ss::loadTextResource(101);
+        m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource(101));
     }
     assert(!m_circuit_json.empty());
 
-    // Replace symbolic components with their values before parsing the json
-    std::string s = m_circuit_json;
+    // Get the intermediate matrices as string for replacing symbolic components with their values
+    std::string s = m_circuit_json[std::to_string(switches.all)].dump();
 	s = rlc2ss::replace(s, "L_conv_a", std::to_string(components.L_conv_a));
 	s = rlc2ss::replace(s, "L_conv_b", std::to_string(components.L_conv_b));
 	s = rlc2ss::replace(s, "L_conv_c", std::to_string(components.L_conv_c));
@@ -97,12 +96,12 @@ Model_diode_bridge_3l::StateSpaceMatrices Model_diode_bridge_3l::calculateStateS
 
     // Parse json for the intermediate matrices
     nlohmann::json j = nlohmann::json::parse(s);
-    std::string K1_str = j[std::to_string(switches.all)]["K1"];
-    std::string K2_str = j[std::to_string(switches.all)]["K2"];
-    std::string A1_str = j[std::to_string(switches.all)]["A1"];
-    std::string B1_str = j[std::to_string(switches.all)]["B1"];
-    std::string C1_str = j[std::to_string(switches.all)]["C1"];
-    std::string D1_str = j[std::to_string(switches.all)]["D1"];
+    std::string K1_str = j["K1"];
+    std::string K2_str = j["K2"];
+    std::string A1_str = j["A1"];
+    std::string B1_str = j["B1"];
+    std::string C1_str = j["C1"];
+    std::string D1_str = j["D1"];
 
     // Create eigen matrices
     Eigen::Matrix<double, Model_diode_bridge_3l::NUM_STATES, Model_diode_bridge_3l::NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(K1_str).data());
