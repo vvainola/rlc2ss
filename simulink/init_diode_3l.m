@@ -1,7 +1,7 @@
 clc;
 L_conv = 100e-5;
 L_dc = 100e-5;
-L_dc_src = 100e-1;
+L_dc_src = 100e-4;
 L_grid = 100e-5;
 L_src = 100e-5;
 C_dc = 10e-3;
@@ -9,6 +9,7 @@ C_f = 1e-5;
 R_conv = 1e-3;
 R_dc_p = 100;
 R_dc = 1e-3;
+R_dc_src_p = 1;
 R_dc_src = 10;
 R_f = 1e-3;
 R_grid = 1e-3;

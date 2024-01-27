@@ -80,7 +80,8 @@ class Model_diode_bridge_3l {
             assert(components.R_dc_sn2 != -1);
             assert(components.R_dc_sp1 != -1);
             assert(components.R_dc_sp2 != -1);
-            assert(components.R_dc_src != -1);
+            assert(components.R_dc_src_s != -1);
+            assert(components.R_dc_src_p != -1);
             assert(components.R_f_a != -1);
             assert(components.R_f_b != -1);
             assert(components.R_f_c != -1);
@@ -177,7 +178,8 @@ class Model_diode_bridge_3l {
         double R_dc_sn2 = -1;
         double R_dc_sp1 = -1;
         double R_dc_sp2 = -1;
-        double R_dc_src = -1;
+        double R_dc_src_s = -1;
+        double R_dc_src_p = -1;
         double R_f_a = -1;
         double R_f_b = -1;
         double R_f_c = -1;
@@ -220,7 +222,8 @@ class Model_diode_bridge_3l {
                 R_dc_sn2 == other.R_dc_sn2 &&
                 R_dc_sp1 == other.R_dc_sp1 &&
                 R_dc_sp2 == other.R_dc_sp2 &&
-                R_dc_src == other.R_dc_src &&
+                R_dc_src_s == other.R_dc_src_s &&
+                R_dc_src_p == other.R_dc_src_p &&
                 R_f_a == other.R_f_a &&
                 R_f_b == other.R_f_b &&
                 R_f_c == other.R_f_c &&

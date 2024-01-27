@@ -83,7 +83,8 @@ Model_diode_bridge_3l::StateSpaceMatrices Model_diode_bridge_3l::calculateStateS
 	s = rlc2ss::replace(s, " R_dc_sn2 ", std::to_string(components.R_dc_sn2));
 	s = rlc2ss::replace(s, " R_dc_sp1 ", std::to_string(components.R_dc_sp1));
 	s = rlc2ss::replace(s, " R_dc_sp2 ", std::to_string(components.R_dc_sp2));
-	s = rlc2ss::replace(s, " R_dc_src ", std::to_string(components.R_dc_src));
+	s = rlc2ss::replace(s, " R_dc_src_s ", std::to_string(components.R_dc_src_s));
+	s = rlc2ss::replace(s, " R_dc_src_p ", std::to_string(components.R_dc_src_p));
 	s = rlc2ss::replace(s, " R_f_a ", std::to_string(components.R_f_a));
 	s = rlc2ss::replace(s, " R_f_b ", std::to_string(components.R_f_b));
 	s = rlc2ss::replace(s, " R_f_c ", std::to_string(components.R_f_c));

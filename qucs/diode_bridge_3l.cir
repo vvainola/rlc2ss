@@ -1,6 +1,6 @@
 C_dc_n1 _net34 N_dc_n
 C_dc_n2 _net41 _net36
-C_dc_p1 _net15 N_dc_0  Vn;
+C_dc_p1 _net15 N_dc_0 Vn;
 C_dc_p2 _net39 _net40
 C_f_a N_cap_a _net31
 C_f_b N_cap_b _net32
@@ -20,15 +20,16 @@ L_src_c _net30 _net2
 R_conv_a N_conv_a V2_a Vp;
 R_conv_b N_conv_b V2_b Vp;
 R_conv_c N_conv_c V2_c Vp;
-R_dc_pn1 N_dc_0 N_dc_n  Vn;
+R_dc_pn1 N_dc_0 N_dc_n Vn;
 R_dc_pn2 _net40 _net36
-R_dc_pp1 N_dc_p N_dc_0  Vp;
+R_dc_pp1 N_dc_p N_dc_0 Vp;
 R_dc_pp2 _net38 _net40
 R_dc_sn1 N_dc_0 _net34
 R_dc_sn2 _net40 _net41
 R_dc_sp1 N_dc_p _net15
 R_dc_sp2 _net38 _net39
-R_dc_src _net38 _net37
+R_dc_src_s _net38 _net37
+R_dc_src_p _net38 _net37
 R_f_a _net31 N_cap_0
 R_f_b _net32 N_cap_0
 R_f_c _net33 N_cap_0
