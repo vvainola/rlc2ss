@@ -7,3 +7,7 @@ R_c N1_c N2_c
 L_a N2_a Nn IVc
 L_b N2_b Nn IVc
 L_c N2_c Nn IVc
+
+Kab L_a L_b
+Kbc L_b L_c
+Kca L_c L_a
