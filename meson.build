@@ -28,10 +28,13 @@ diode_bridge = executable('diode_bridge',
 #    dependencies : deps
 #)
 
+mutual_inductance_resource = windows.compile_resources('schematics/RL3_matrices.rc', depend_files : 'schematics/RL3_matrices.json')
 executable('mutual_inductance',
     sources : [
         'src/mutual_inductance.cpp',
+        'src/rlc2ss.cpp',
         'schematics/RL3_matrices.cpp',
+        mutual_inductance_resource,
     ],
     include_directories: [
         'src'

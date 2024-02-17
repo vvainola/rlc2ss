@@ -11,6 +11,7 @@
 #include <Eigen/Core>
 #include <Eigen/LU>
 #include "integrator.h"
+#include "nlohmann/json.hpp"
 #include <assert.h>
 
 class Model_RL3 {
@@ -21,7 +22,6 @@ class Model_RL3 {
     union States;
     union Switches;
     struct StateSpaceMatrices;
-    static StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
     Model_RL3(){}
     Model_RL3(Components const& c);
@@ -186,7 +186,8 @@ class Model_RL3 {
     Switches switches = {.all = 0};
 
   private:
-    Inputs m_inputs;
+    StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
+
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
         m_solver;
@@ -196,6 +197,8 @@ class Model_RL3 {
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_prev = 0;
     double m_dt_implicit = 0;
+    // The json file with symbolic intermediate matrices
+    nlohmann::json m_circuit_json;
 
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));

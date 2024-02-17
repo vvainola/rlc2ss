@@ -161,6 +161,16 @@ double evaluateExpression(std::istringstream& iss) {
             operand_stack.push(operand);
             // Don't care about the value in full stack but it has to be distinguishable from operator
             full_stack.push('0');
+        }
+        // sqrt
+        else if (current_char == 's') {
+            assert(iss.get() == 'q');
+            assert(iss.get() == 'r');
+            assert(iss.get() == 't');
+            assert(iss.get() == '(');
+            double operand = evaluateExpression(iss);
+            operand_stack.push(sqrt(operand));
+            full_stack.push('0');
         } else if (isOperator(current_char)) {
             // Token is an operator
             char current_operator = current_char;
