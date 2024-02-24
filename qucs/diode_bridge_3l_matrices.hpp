@@ -104,7 +104,7 @@ class Model_diode_bridge_3l {
             assert(components.R_src_c != -1);
             m_components_DO_NOT_TOUCH = components;
             m_switches_DO_NOT_TOUCH.all = switches.all;
-            m_ss = calculateStateSpace(components, switches);
+            updateStateSpaceMatrices();
             m_solver.updateJacobian(m_ss.A);
             // Solve one step with backward euler to reduce numerical oscillations
             m_Bu = m_ss.B * inputs.data;
@@ -365,7 +365,7 @@ class Model_diode_bridge_3l {
     Switches switches = {.all = 0};
 
   private:
-    StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
+    void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>

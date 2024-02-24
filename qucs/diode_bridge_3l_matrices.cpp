@@ -26,7 +26,7 @@ static std::unique_ptr<Model_diode_bridge_3l::StateSpaceMatrices> calcStateSpace
 Model_diode_bridge_3l::Model_diode_bridge_3l(Components const& c)
     : components(c),
       m_components_DO_NOT_TOUCH(c) {
-    m_ss = calculateStateSpace(components, switches);
+    updateStateSpaceMatrices();
     m_solver.updateJacobian(m_ss.A);
 }
 
@@ -36,14 +36,15 @@ struct Model_diode_bridge_3l_Topology {
     std::unique_ptr<Model_diode_bridge_3l::StateSpaceMatrices> state_space;
 };
 
-Model_diode_bridge_3l::StateSpaceMatrices Model_diode_bridge_3l::calculateStateSpace(Model_diode_bridge_3l::Components const& components, Model_diode_bridge_3l::Switches switches) {
+void Model_diode_bridge_3l::updateStateSpaceMatrices() {
     static std::vector<Model_diode_bridge_3l_Topology> state_space_cache;
     auto it = std::find_if(
         state_space_cache.begin(), state_space_cache.end(), [&](Model_diode_bridge_3l_Topology const& t) {
             return t.components == components && t.switches.all == switches.all;
         });
     if (it != state_space_cache.end()) {
-        return *it->state_space;
+        m_ss = *it->state_space;
+        return;
     }
 
     if (m_circuit_json.empty()) {
@@ -117,5 +118,5 @@ Model_diode_bridge_3l::StateSpaceMatrices Model_diode_bridge_3l::calculateStateS
         .switches = switches,
         .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)});
 
-    return *topology.state_space;
+    m_ss = *topology.state_space;
 }

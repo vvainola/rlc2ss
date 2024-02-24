@@ -113,7 +113,7 @@ class {class_name} {{
 {verify_components}
             m_components_DO_NOT_TOUCH = components;
             m_switches_DO_NOT_TOUCH.all = switches.all;
-            m_ss = calculateStateSpace(components, switches);
+            updateStateSpaceMatrices();
             m_solver.updateJacobian(m_ss.A);
             // Solve one step with backward euler to reduce numerical oscillations
             m_Bu = m_ss.B * inputs.data;
@@ -223,7 +223,7 @@ class {class_name} {{
     Switches switches = {{.all = 0}};
 
   private:
-    StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
+    void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
@@ -295,7 +295,7 @@ static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
 {class_name}::{class_name}(Components const& c)
     : components(c),
       m_components_DO_NOT_TOUCH(c) {{
-    m_ss = calculateStateSpace(components, switches);
+    updateStateSpaceMatrices();
     m_solver.updateJacobian(m_ss.A);
 }}
 ''')
@@ -307,14 +307,15 @@ struct {class_name}_Topology {{
     std::unique_ptr<{class_name}::StateSpaceMatrices> state_space;
 }};
 
-{class_name}::StateSpaceMatrices {class_name}::calculateStateSpace({class_name}::Components const& components, {class_name}::Switches switches) {{
+void {class_name}::updateStateSpaceMatrices() {{
     static std::vector<{class_name}_Topology> state_space_cache;
     auto it = std::find_if(
         state_space_cache.begin(), state_space_cache.end(), [&]({class_name}_Topology const& t) {{
             return t.components == components && t.switches.all == switches.all;
         }});
     if (it != state_space_cache.end()) {{
-        return *it->state_space;
+        m_ss = *it->state_space;
+        return;
     }}
 ''')
 
@@ -355,7 +356,7 @@ struct {class_name}_Topology {{
         .switches = switches,
         .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)}});
 
-    return *topology.state_space;
+    m_ss = *topology.state_space;
 }}
 ''')
 
