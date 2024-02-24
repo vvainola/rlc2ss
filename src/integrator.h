@@ -75,7 +75,6 @@ class Integrator {
         if (m_caching_enabled) {
             m_jacobian_hash = matrixHash(jacobian);
         } else {
-            m_inverse_cache.clear();
             m_jacobian_hash = 0;
         }
     }
@@ -179,9 +178,12 @@ template <class System>
 inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system, vector_t const& x0, double t, double dt) {
     t += dt;
     if (dt != m_dt_prev) {
+        if (!m_caching_enabled) {
+            m_inverse_cache.clear();
+        }
         // Update 1 / (1 - 0.5 * dt * J) term
         m_dt_prev = dt;
-        std::pair<uint64_t, double> hash_and_dt{m_jacobian_hash, dt * m_caching_enabled};
+        std::pair<uint64_t, double> hash_and_dt{m_jacobian_hash, dt};
         if (!m_inverse_cache.contains(hash_and_dt)) {
             m_inverse_cache[hash_and_dt] = (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse();
         }
