@@ -35,10 +35,26 @@ class Model_diode_bridge_3l {
         return m_ss.A * state + m_Bu;
     }
 
-    // Implicit Tustin integration is used for timesteps larger than this.
-    void setImplicitIntegrationLimit(double dt) {
+    enum class TimestepErrorCorrectionMode {
+        // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
+        // e.g. resolution is 0.1e-6 and the variation in timestep length is a multiple of that and
+        // there should not ever be any error although floating point roundings may cause some.
+        NONE,
+        // Round the used timestep to closest multiple of resolution and store the error to accumulator
+        // so that the timestep length error will be corrected when accumulator becomes a multiple of the
+        // timestep resolution.
+        ACCUMULATE,
+        // The timestep length that is not a multiple of timestep resolution will be integrated with
+        // adaptive step size runge-kutta-fehlberg. E.g. If resolution 1us and timestep is 12.1us,
+        // 12 us will be solved with Tustin and remaining 0.1us with RKF to avoid calculating jacobian
+        // inverse for very small timesteps
+        INTEGRATE_ADAPTIVE
+    };
+
+    void setTimestepResolution(double dt, TimestepErrorCorrectionMode mode) {
         m_solver.enableInverseMatrixCaching(true);
-        m_dt_implicit_limit = dt;
+        m_dt_resolution = dt;
+        m_dt_correction_mode = mode;
     }
 
     void step(double dt, Inputs const& inputs_) {
@@ -96,18 +112,30 @@ class Model_diode_bridge_3l {
         } else {
             m_Bu = m_ss.B * inputs.data;
 
-            if (m_dt_implicit_limit > 0) {
-                // Solve with tustin as multiples of implicit limit and the remaining time with runge-kutta so
-                // that the matrix inverses required for implicit integration can be cached for common timesteps
-                // and weird small remainders are solved with adaptive integration.
-                double multiple = dt / m_dt_implicit_limit;
-                if (std::abs(std::round(multiple) - multiple) > 1e-6) {
-                    double dt1 = std::floor(multiple) * m_dt_implicit_limit;
-                    double dt2 = (multiple - std::floor(multiple)) * m_dt_implicit_limit;
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
-                    states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
-                } else {
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_implicit_limit);
+            if (m_dt_resolution > 0) {
+                if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {
+                    // Solve with tustin as multiples of resolution and ignore any error
+                    double multiple = std::round(dt / m_dt_resolution);
+                    states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {
+                    // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
+                    // on later steps
+                    double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
+                    m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
+                    states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_resolution);
+                } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::INTEGRATE_ADAPTIVE) {
+                    // Solve with tustin as multiples of resolution and the remaining time with runge-kutta so
+                    // that the matrix inverses required for implicit integration can be cached for common timesteps
+                    // and weird small remainders are solved with adaptive integration.
+                    double multiple = dt / m_dt_resolution;
+                    if (std::abs(std::round(multiple) - multiple) > 1e-6) {
+                        double dt1 = std::floor(multiple) * m_dt_resolution;
+                        double dt2 = (multiple - std::floor(multiple)) * m_dt_resolution;
+                        states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
+                        states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
+                    } else {
+                        states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                    }
                 }
             } else {
                 states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
@@ -347,7 +375,9 @@ class Model_diode_bridge_3l {
     Switches m_switches_DO_NOT_TOUCH = {.all = 0};
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_prev = 0;
-    double m_dt_implicit_limit = 0;
+    double m_dt_resolution = 0;
+    TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
+    double m_dt_error_accumulator = 0;
     // The json file with symbolic intermediate matrices
     nlohmann::json m_circuit_json;
 

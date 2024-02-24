@@ -84,7 +84,7 @@ class Plant {
             .R_src_b = 1e-3,
             .R_src_c = 1e-3,
         }) {
-        m_model.setImplicitIntegrationLimit(1e-6);
+        m_model.setTimestepResolution(0.01e-6, Model_diode_bridge_3l::TimestepErrorCorrectionMode::NONE);
     }
 
     void step(double dt, V_abc ugrid) {
