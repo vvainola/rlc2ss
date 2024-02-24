@@ -184,10 +184,12 @@ inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system,
         // Update 1 / (1 - 0.5 * dt * J) term
         m_dt_prev = dt;
         std::pair<uint64_t, double> hash_and_dt{m_jacobian_hash, dt};
-        if (!m_inverse_cache.contains(hash_and_dt)) {
-            m_inverse_cache[hash_and_dt] = (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse();
+        auto it = m_inverse_cache.find(hash_and_dt);
+        if (it == m_inverse_cache.end()) {
+            m_jacobian_coeff_inv = &m_inverse_cache.emplace(hash_and_dt, (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse()).first->second;
+        } else {
+            m_jacobian_coeff_inv = &it->second;
         }
-        m_jacobian_coeff_inv = &m_inverse_cache[hash_and_dt];
     }
 
     // apply first Newton step
