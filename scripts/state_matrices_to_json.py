@@ -40,12 +40,12 @@ def matrices_to_cpp(model_name: str, circuit_combinations: dict[int, StateSpaceM
     class_name = 'Model_' + os.path.basename(model_name)
     components_list = "\n".join([f'\t\tdouble {str(component)} = -1;' for component in ss.component_names])
     components_compare = " &&\n".join([f'\t\t\t\t{str(component)} == other.{str(component)}' for component in ss.component_names])
-    verify_components = "\n".join([f'\t\t\tassert(components.{str(component)} != -1);' for component in ss.component_names])
+    verify_components = "\n".join([f'\t\tassert(components.{str(component)} != -1);' for component in ss.component_names])
     states_list = "\n".join([f'\t\t\tdouble {str(state)};' for state in ss.states])
     inputs_list = "\n".join([f'\t\t\tdouble {str(input)};' for input in ss.inputs])
     outputs_list = "\n".join([f'\t\t\tdouble {str(output)};' for output in ss.outputs])
     switches_list = "\n".join([f'\t\t\tuint32_t {str(switch)} : 1;' for switch in switches])
-    update_states = "\n".join([f'\t\tstates.{state} = outputs.{state};' for state in ss.states])
+    update_states = "\n".join([f'\tstates.{state} = outputs.{state};' for state in ss.states])
 
     template = '''
 #pragma once
@@ -106,58 +106,7 @@ class {class_name} {{
         m_dt_correction_mode = mode;
     }}
 
-    void step(double dt, Inputs const& inputs_) {{
-        inputs.data = inputs_.data;
-        // Update state-space matrices if needed
-        if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {{
-{verify_components}
-            m_components_DO_NOT_TOUCH = components;
-            m_switches_DO_NOT_TOUCH.all = switches.all;
-            updateStateSpaceMatrices();
-            m_solver.updateJacobian(m_ss.A);
-            // Solve one step with backward euler to reduce numerical oscillations
-            m_Bu = m_ss.B * inputs.data;
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
-        }} else {{
-            m_Bu = m_ss.B * inputs.data;
-
-            if (m_dt_resolution > 0) {{
-                if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {{
-                    // Solve with tustin as multiples of resolution and ignore any error
-                    double multiple = std::round(dt / m_dt_resolution);
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
-                }} else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {{
-                    // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
-                    // on later steps
-                    double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
-                    m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_resolution);
-                }} else if (m_dt_correction_mode == TimestepErrorCorrectionMode::INTEGRATE_ADAPTIVE) {{
-                    // Solve with tustin as multiples of resolution and the remaining time with runge-kutta so
-                    // that the matrix inverses required for implicit integration can be cached for common timesteps
-                    // and weird small remainders are solved with adaptive integration.
-                    double multiple = dt / m_dt_resolution;
-                    if (std::abs(std::round(multiple) - multiple) > 1e-6) {{
-                        double dt1 = std::floor(multiple) * m_dt_resolution;
-                        double dt2 = (multiple - std::floor(multiple)) * m_dt_resolution;
-                        states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
-                        states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
-                    }} else {{
-                        states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
-                    }}
-                }}
-            }} else {{
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
-            }}
-        }}
-        m_dt_prev = dt;
-
-        // Update output
-        outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
-
-        // Update states from outputs to have correct values for dependent states
-{update_states}
-    }}
+    void step(double dt, Inputs const& inputs_);
 
     struct Components {{
 {components_list}
@@ -297,6 +246,61 @@ static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
       m_components_DO_NOT_TOUCH(c) {{
     updateStateSpaceMatrices();
     m_solver.updateJacobian(m_ss.A);
+}}
+''')
+
+    cpp.write(f'''
+void {class_name}::step(double dt, Inputs const& inputs_) {{
+    inputs.data = inputs_.data;
+    // Update state-space matrices if needed
+    if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {{
+{verify_components}
+        m_components_DO_NOT_TOUCH = components;
+        m_switches_DO_NOT_TOUCH.all = switches.all;
+        updateStateSpaceMatrices();
+        m_solver.updateJacobian(m_ss.A);
+        // Solve one step with backward euler to reduce numerical oscillations
+        m_Bu = m_ss.B * inputs.data;
+        states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+    }} else {{
+        m_Bu = m_ss.B * inputs.data;
+
+        if (m_dt_resolution > 0) {{
+            if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {{
+                // Solve with tustin as multiples of resolution and ignore any error
+                double multiple = std::round(dt / m_dt_resolution);
+                states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+            }} else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {{
+                // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
+                // on later steps
+                double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
+                m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
+                states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_resolution);
+            }} else if (m_dt_correction_mode == TimestepErrorCorrectionMode::INTEGRATE_ADAPTIVE) {{
+                // Solve with tustin as multiples of resolution and the remaining time with runge-kutta so
+                // that the matrix inverses required for implicit integration can be cached for common timesteps
+                // and weird small remainders are solved with adaptive integration.
+                double multiple = dt / m_dt_resolution;
+                if (std::abs(std::round(multiple) - multiple) > 1e-6) {{
+                    double dt1 = std::floor(multiple) * m_dt_resolution;
+                    double dt2 = (multiple - std::floor(multiple)) * m_dt_resolution;
+                    states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
+                    states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
+                }} else {{
+                    states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                }}
+            }}
+        }} else {{
+            states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
+        }}
+    }}
+    m_dt_prev = dt;
+
+    // Update output
+    outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
+
+    // Update states from outputs to have correct values for dependent states
+{update_states}
 }}
 ''')
 

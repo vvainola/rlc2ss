@@ -29,6 +29,69 @@ Model_RL3::Model_RL3(Components const& c)
     m_solver.updateJacobian(m_ss.A);
 }
 
+
+void Model_RL3::step(double dt, Inputs const& inputs_) {
+    inputs.data = inputs_.data;
+    // Update state-space matrices if needed
+    if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {
+		assert(components.L_a != -1);
+		assert(components.L_b != -1);
+		assert(components.L_c != -1);
+		assert(components.R_a != -1);
+		assert(components.R_b != -1);
+		assert(components.R_c != -1);
+		assert(components.Kab != -1);
+		assert(components.Kbc != -1);
+		assert(components.Kca != -1);
+        m_components_DO_NOT_TOUCH = components;
+        m_switches_DO_NOT_TOUCH.all = switches.all;
+        m_ss = calculateStateSpace(components, switches);
+        m_solver.updateJacobian(m_ss.A);
+        // Solve one step with backward euler to reduce numerical oscillations
+        m_Bu = m_ss.B * inputs.data;
+        states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+    } else {
+        m_Bu = m_ss.B * inputs.data;
+
+        if (m_dt_resolution > 0) {
+            if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {
+                // Solve with tustin as multiples of resolution and ignore any error
+                double multiple = std::round(dt / m_dt_resolution);
+                states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+            } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {
+                // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
+                // on later steps
+                double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
+                m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
+                states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_resolution);
+            } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::INTEGRATE_ADAPTIVE) {
+                // Solve with tustin as multiples of resolution and the remaining time with runge-kutta so
+                // that the matrix inverses required for implicit integration can be cached for common timesteps
+                // and weird small remainders are solved with adaptive integration.
+                double multiple = dt / m_dt_resolution;
+                if (std::abs(std::round(multiple) - multiple) > 1e-6) {
+                    double dt1 = std::floor(multiple) * m_dt_resolution;
+                    double dt2 = (multiple - std::floor(multiple)) * m_dt_resolution;
+                    states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
+                    states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
+                } else {
+                    states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                }
+            }
+        } else {
+            states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
+        }
+    }
+    m_dt_prev = dt;
+
+    // Update output
+    outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
+
+    // Update states from outputs to have correct values for dependent states
+	states.I_L_a = outputs.I_L_a;
+	states.I_L_b = outputs.I_L_b;
+	states.I_L_c = outputs.I_L_c;
+}
 std::unique_ptr<Model_RL3::StateSpaceMatrices> calculateStateSpace_0(Model_RL3::Components const& c);
 
 struct Model_RL3_Topology {
