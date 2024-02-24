@@ -96,8 +96,7 @@ class Integrator {
     size_t m_max_iterations = 10;
 
     std::map<std::pair<uint64_t, double>, matrix_t> m_inverse_cache;
-    uint64_t m_matrix_hash;
-    bool m_caching_enabled;
+    bool m_caching_enabled = false;
 
     bool withinTolerances(vector_t const& x, vector_t const& err) {
         for (int i = 0; i < x.size(); ++i) {
