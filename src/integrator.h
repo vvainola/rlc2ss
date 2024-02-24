@@ -28,7 +28,7 @@
 #include <Eigen/Core>
 #include <Eigen/LU>
 #include <queue>
-#include <map>
+#include <unordered_map>
 
 template <class vector_t,
           class matrix_t>
@@ -72,11 +72,7 @@ class Integrator {
     void updateJacobian(matrix_t const& jacobian) {
         m_dt_prev = 0;
         m_jacobian = jacobian;
-        if (m_caching_enabled) {
-            m_jacobian_hash = matrixHash(jacobian);
-        } else {
-            m_jacobian_hash = 0;
-        }
+        m_used_inverse_cache = &m_inverse_caches[matrixHash(jacobian)];
     }
 
     void enableInverseMatrixCaching(bool enable) {
@@ -84,10 +80,10 @@ class Integrator {
     }
 
   private:
-    uint64_t matrixHash(matrix_t const& matrix);
+    using MatrixHash = uint64_t;
+    MatrixHash matrixHash(matrix_t const& matrix);
 
     matrix_t m_jacobian;
-    uint64_t m_jacobian_hash;
     matrix_t* m_jacobian_coeff_inv; // 1 / (1 - 0.5 * dt * J)
     double m_dt_prev = 0;
     double m_epsilon = 1e-8;
@@ -95,7 +91,8 @@ class Integrator {
     double m_reltol = 1e-3;
     size_t m_max_iterations = 10;
 
-    std::map<std::pair<uint64_t, double>, matrix_t> m_inverse_cache;
+    std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_inverse_caches;
+    std::unordered_map<double, matrix_t>* m_used_inverse_cache;
     bool m_caching_enabled = false;
 
     bool withinTolerances(vector_t const& x, vector_t const& err) {
@@ -177,15 +174,14 @@ template <class System>
 inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system, vector_t const& x0, double t, double dt) {
     t += dt;
     if (dt != m_dt_prev) {
+        m_dt_prev = dt;
         if (!m_caching_enabled) {
-            m_inverse_cache.clear();
+            m_used_inverse_cache->clear();
         }
         // Update 1 / (1 - 0.5 * dt * J) term
-        m_dt_prev = dt;
-        std::pair<uint64_t, double> hash_and_dt{m_jacobian_hash, dt};
-        auto it = m_inverse_cache.find(hash_and_dt);
-        if (it == m_inverse_cache.end()) {
-            m_jacobian_coeff_inv = &m_inverse_cache.emplace(hash_and_dt, (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse()).first->second;
+        auto it = m_used_inverse_cache->find(dt);
+        if (it == m_used_inverse_cache->end()) {
+            m_jacobian_coeff_inv = &m_used_inverse_cache->emplace(dt, (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse()).first->second;
         } else {
             m_jacobian_coeff_inv = &it->second;
         }
