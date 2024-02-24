@@ -31,10 +31,6 @@ class Model_diode_bridge {
     static inline constexpr size_t NUM_STATES = 4;
     static inline constexpr size_t NUM_SWITCHES = 6;
 
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {
-        return m_ss.A * state + m_Bu;
-    }
-
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
         // e.g. resolution is 0.1e-6 and the variation in timestep length is a multiple of that and
@@ -58,48 +54,6 @@ class Model_diode_bridge {
     }
 
     void step(double dt, Inputs const& inputs_);
-
-    struct Components {
-        double L_a = -1;
-        double L_b = -1;
-        double L_c = -1;
-        double C_dc = -1;
-        double R_a = -1;
-        double R_b = -1;
-        double R_c = -1;
-        double R_dc = -1;
-        double R_load = -1;
-
-        bool operator==(Components const& other) const {
-            return
-                L_a == other.L_a &&
-                L_b == other.L_b &&
-                L_c == other.L_c &&
-                C_dc == other.C_dc &&
-                R_a == other.R_a &&
-                R_b == other.R_b &&
-                R_c == other.R_c &&
-                R_dc == other.R_dc &&
-                R_load == other.R_load;
-        }
-
-        bool operator!=(Components const& other) const {
-            return !(*this == other);
-        }
-    };
-
-    union States {
-        States() {
-            data.setZero();
-        }
-        struct {
-            double I_L_a;
-            double I_L_b;
-            double I_L_c;
-            double V_C_dc;
-        };
-        Eigen::Vector<double, NUM_STATES> data;
-    };
 
     union Inputs {
         Inputs() {
@@ -143,12 +97,58 @@ class Model_diode_bridge {
         uint32_t all;
     };
 
+    struct Components {
+        double L_a = -1;
+        double L_b = -1;
+        double L_c = -1;
+        double C_dc = -1;
+        double R_a = -1;
+        double R_b = -1;
+        double R_c = -1;
+        double R_dc = -1;
+        double R_load = -1;
+
+        bool operator==(Components const& other) const {
+            return
+                L_a == other.L_a &&
+                L_b == other.L_b &&
+                L_c == other.L_c &&
+                C_dc == other.C_dc &&
+                R_a == other.R_a &&
+                R_b == other.R_b &&
+                R_c == other.R_c &&
+                R_dc == other.R_dc &&
+                R_load == other.R_load;
+        }
+
+        bool operator!=(Components const& other) const {
+            return !(*this == other);
+        }
+    };
+
+    union States {
+        States() {
+            data.setZero();
+        }
+        struct {
+            double I_L_a;
+            double I_L_b;
+            double I_L_c;
+            double V_C_dc;
+        };
+        Eigen::Vector<double, NUM_STATES> data;
+    };
+
     struct StateSpaceMatrices {
         Eigen::Matrix<double, NUM_STATES, NUM_STATES> A;
         Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B;
         Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C;
         Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D;
     };
+
+    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {
+        return m_ss.A * state + m_Bu;
+    }
 
     Components components;
     Inputs inputs;

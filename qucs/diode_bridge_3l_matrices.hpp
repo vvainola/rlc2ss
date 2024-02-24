@@ -31,10 +31,6 @@ class Model_diode_bridge_3l {
     static inline constexpr size_t NUM_STATES = 19;
     static inline constexpr size_t NUM_SWITCHES = 9;
 
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {
-        return m_ss.A * state + m_Bu;
-    }
-
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
         // e.g. resolution is 0.1e-6 and the variation in timestep length is a multiple of that and
@@ -58,6 +54,68 @@ class Model_diode_bridge_3l {
     }
 
     void step(double dt, Inputs const& inputs_);
+
+    union Inputs {
+        Inputs() {
+            data.setZero();
+        }
+        struct {
+            double V_dc_src;
+            double V_src_a;
+            double V_src_b;
+            double V_src_c;
+        };
+        Eigen::Vector<double, NUM_INPUTS> data;
+    };
+
+    union Outputs {
+        Outputs() {
+            data.setZero();
+        }
+        struct {
+            double I_L_conv_a;
+            double I_L_conv_b;
+            double I_L_conv_c;
+            double I_L_dc_n;
+            double I_L_dc_p;
+            double I_L_dc_src;
+            double I_L_grid_a;
+            double I_L_grid_b;
+            double I_L_grid_c;
+            double I_L_src_a;
+            double I_L_src_b;
+            double I_L_src_c;
+            double N_conv_a;
+            double N_conv_b;
+            double N_conv_c;
+            double N_dc_0;
+            double N_dc_n;
+            double N_dc_p;
+            double V_C_dc_n1;
+            double V_C_dc_n2;
+            double V_C_dc_p1;
+            double V_C_dc_p2;
+            double V_C_f_a;
+            double V_C_f_b;
+            double V_C_f_c;
+        };
+        Eigen::Vector<double, NUM_OUTPUTS> data;
+    };
+
+    union Switches {
+        struct {
+            uint32_t S_0_a : 1;
+            uint32_t S_0_b : 1;
+            uint32_t S_0_c : 1;
+            uint32_t S_n_a : 1;
+            uint32_t S_n_b : 1;
+            uint32_t S_n_c : 1;
+            uint32_t S_p_a : 1;
+            uint32_t S_p_b : 1;
+            uint32_t S_p_c : 1;
+        };
+        uint32_t all;
+    };
 
     struct Components {
         double L_conv_a = -1;
@@ -180,74 +238,16 @@ class Model_diode_bridge_3l {
         Eigen::Vector<double, NUM_STATES> data;
     };
 
-    union Inputs {
-        Inputs() {
-            data.setZero();
-        }
-        struct {
-            double V_dc_src;
-            double V_src_a;
-            double V_src_b;
-            double V_src_c;
-        };
-        Eigen::Vector<double, NUM_INPUTS> data;
-    };
-
-    union Outputs {
-        Outputs() {
-            data.setZero();
-        }
-        struct {
-            double I_L_conv_a;
-            double I_L_conv_b;
-            double I_L_conv_c;
-            double I_L_dc_n;
-            double I_L_dc_p;
-            double I_L_dc_src;
-            double I_L_grid_a;
-            double I_L_grid_b;
-            double I_L_grid_c;
-            double I_L_src_a;
-            double I_L_src_b;
-            double I_L_src_c;
-            double N_conv_a;
-            double N_conv_b;
-            double N_conv_c;
-            double N_dc_0;
-            double N_dc_n;
-            double N_dc_p;
-            double V_C_dc_n1;
-            double V_C_dc_n2;
-            double V_C_dc_p1;
-            double V_C_dc_p2;
-            double V_C_f_a;
-            double V_C_f_b;
-            double V_C_f_c;
-        };
-        Eigen::Vector<double, NUM_OUTPUTS> data;
-    };
-
-    union Switches {
-        struct {
-            uint32_t S_0_a : 1;
-            uint32_t S_0_b : 1;
-            uint32_t S_0_c : 1;
-            uint32_t S_n_a : 1;
-            uint32_t S_n_b : 1;
-            uint32_t S_n_c : 1;
-            uint32_t S_p_a : 1;
-            uint32_t S_p_b : 1;
-            uint32_t S_p_c : 1;
-        };
-        uint32_t all;
-    };
-
     struct StateSpaceMatrices {
         Eigen::Matrix<double, NUM_STATES, NUM_STATES> A;
         Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B;
         Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C;
         Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D;
     };
+
+    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {
+        return m_ss.A * state + m_Bu;
+    }
 
     Components components;
     Inputs inputs;

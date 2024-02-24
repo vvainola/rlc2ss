@@ -84,10 +84,6 @@ class {class_name} {{
     static inline constexpr size_t NUM_STATES = {num_states};
     static inline constexpr size_t NUM_SWITCHES = {num_switches};
 
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {{
-        return m_ss.A * state + m_Bu;
-    }}
-
     enum class TimestepErrorCorrectionMode {{
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
         // e.g. resolution is 0.1e-6 and the variation in timestep length is a multiple of that and
@@ -111,29 +107,6 @@ class {class_name} {{
     }}
 
     void step(double dt, Inputs const& inputs_);
-
-    struct Components {{
-{components_list}
-
-        bool operator==(Components const& other) const {{
-            return
-{components_compare};
-        }}
-
-        bool operator!=(Components const& other) const {{
-            return !(*this == other);
-        }}
-    }};
-
-    union States {{
-        States() {{
-            data.setZero();
-        }}
-        struct {{
-{states_list}
-        }};
-        Eigen::Vector<double, NUM_STATES> data;
-    }};
 
     union Inputs {{
         Inputs() {{
@@ -162,12 +135,39 @@ class {class_name} {{
         uint32_t all;
     }};
 
+    struct Components {{
+{components_list}
+
+        bool operator==(Components const& other) const {{
+            return
+{components_compare};
+        }}
+
+        bool operator!=(Components const& other) const {{
+            return !(*this == other);
+        }}
+    }};
+
+    union States {{
+        States() {{
+            data.setZero();
+        }}
+        struct {{
+{states_list}
+        }};
+        Eigen::Vector<double, NUM_STATES> data;
+    }};
+
     struct StateSpaceMatrices {{
         Eigen::Matrix<double, NUM_STATES, NUM_STATES> A;
         Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B;
         Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C;
         Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D;
     }};
+
+    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {{
+        return m_ss.A * state + m_Bu;
+    }}
 
     Components components;
     Inputs inputs;

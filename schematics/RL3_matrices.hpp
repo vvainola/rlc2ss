@@ -31,10 +31,6 @@ class Model_RL3 {
     static inline constexpr size_t NUM_STATES = 3;
     static inline constexpr size_t NUM_SWITCHES = 0;
 
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {
-        return m_ss.A * state + m_Bu;
-    }
-
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
         // e.g. resolution is 0.1e-6 and the variation in timestep length is a multiple of that and
@@ -58,6 +54,37 @@ class Model_RL3 {
     }
 
     void step(double dt, Inputs const& inputs_);
+
+    union Inputs {
+        Inputs() {
+            data.setZero();
+        }
+        struct {
+            double V_a;
+            double V_b;
+            double V_c;
+        };
+        Eigen::Vector<double, NUM_INPUTS> data;
+    };
+
+    union Outputs {
+        Outputs() {
+            data.setZero();
+        }
+        struct {
+            double I_L_a;
+            double I_L_b;
+            double I_L_c;
+        };
+        Eigen::Vector<double, NUM_OUTPUTS> data;
+    };
+
+    union Switches {
+        struct {
+
+        };
+        uint32_t all;
+    };
 
     struct Components {
         double L_a = -1;
@@ -100,43 +127,16 @@ class Model_RL3 {
         Eigen::Vector<double, NUM_STATES> data;
     };
 
-    union Inputs {
-        Inputs() {
-            data.setZero();
-        }
-        struct {
-            double V_a;
-            double V_b;
-            double V_c;
-        };
-        Eigen::Vector<double, NUM_INPUTS> data;
-    };
-
-    union Outputs {
-        Outputs() {
-            data.setZero();
-        }
-        struct {
-            double I_L_a;
-            double I_L_b;
-            double I_L_c;
-        };
-        Eigen::Vector<double, NUM_OUTPUTS> data;
-    };
-
-    union Switches {
-        struct {
-
-        };
-        uint32_t all;
-    };
-
     struct StateSpaceMatrices {
         Eigen::Matrix<double, NUM_STATES, NUM_STATES> A;
         Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B;
         Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C;
         Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D;
     };
+
+    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {
+        return m_ss.A * state + m_Bu;
+    }
 
     Components components;
     Inputs inputs;
