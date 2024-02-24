@@ -213,7 +213,7 @@ inline uint64_t Integrator<vector_t, matrix_t>::matrixHash(matrix_t const& matri
     // row-major). It will give you the same hash value for two different matrices if they
     // are the transpose of each other in different storage order.
     uint64_t seed = 0;
-    for (size_t i = 0; i < matrix.size(); ++i) {
+    for (int i = 0; i < matrix.size(); ++i) {
         auto elem = *(matrix.data() + i);
         seed ^= std::hash<typename matrix_t::Scalar>()(elem) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     }
