@@ -4,6 +4,7 @@ project('RLC_to_SS',
     default_options : [
         'cpp_std=c++20',
         'b_vscrt=md',
+        'warning_level=3',
     ])
 add_project_arguments('-DNOMINMAX', language : 'cpp')
 windows = import('windows')
