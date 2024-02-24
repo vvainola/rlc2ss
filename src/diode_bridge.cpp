@@ -41,7 +41,7 @@ struct abc {
 
 constexpr double DIODE_ON_THRESHOLD_VOLTAGE = 0.8;
 
-double t = 0;
+double timestamp = 0;
 
 constexpr double PI = 3.141592652;
 
@@ -151,10 +151,10 @@ int main() {
     fout << "time,a,b,c"
          << "\n";
 
-    for (; t < 0.1; t += t_step) {
-        u_grid.a = amplitude * sin(freq * t + angle);
-        u_grid.b = amplitude * sin(freq * t + angle + b_offset);
-        u_grid.c = amplitude * sin(freq * t + angle + c_offset);
+    for (; timestamp < 0.1; timestamp += t_step) {
+        u_grid.a = amplitude * sin(freq * timestamp + angle);
+        u_grid.b = amplitude * sin(freq * timestamp + angle + b_offset);
+        u_grid.c = amplitude * sin(freq * timestamp + angle + c_offset);
         diode_bridge.step(t_step, u_grid);
 
         /*double i_a = abs(plant.m_plant.outputs.Vdc_p - plant.m_plant.outputs.Vdc_n);
@@ -164,7 +164,7 @@ int main() {
         double i_a = diode_bridge.m_model.outputs.I_L_a;
         double i_b = diode_bridge.m_model.outputs.I_L_b;
         double i_c = diode_bridge.m_model.outputs.I_L_c;
-        fout << t << "," << i_a << "," << i_b << "," << i_c << "\n";
+        fout << timestamp << "," << i_a << "," << i_b << "," << i_c << "\n";
     }
     fout.close();
     std::cout << "Done!\n"

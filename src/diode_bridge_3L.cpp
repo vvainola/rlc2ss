@@ -152,7 +152,7 @@ class Plant {
 
 Plant plant;
 V_xy i_conv;
-double t = 0;
+double timestamp = 0;
 int main() {
     double amplitude = 400;
 
@@ -185,17 +185,17 @@ int main() {
 
     double t_weird = 11.11e-6;
     double t_next_weird = t_weird;
-    double t_next = t + t_step;
+    double t_next = timestamp + t_step;
 
-    //DbgGui_create(t_step);
+    DbgGui_create(t_step);
     DbgGui_startUpdateLoop();
-    for (; t < 100.2; t += t_step) {
+    for (; timestamp < 100.2; timestamp += t_step) {
         DbgGui_sample();
-        u_grid.a = amplitude * sin(freq * t + angle);
-        u_grid.b = amplitude * sin(freq * t + angle + b_offset);
-        u_grid.c = amplitude * sin(freq * t + angle + c_offset);
+        u_grid.a = amplitude * sin(freq * timestamp + angle);
+        u_grid.b = amplitude * sin(freq * timestamp + angle + b_offset);
+        u_grid.c = amplitude * sin(freq * timestamp + angle + c_offset);
 
-        double dt_weird = t_next_weird - t;
+        double dt_weird = t_next_weird - timestamp;
         double dt = t_step;
         if (dt_weird < dt) {
             plant.step(dt_weird, u_grid);
@@ -225,7 +225,7 @@ int main() {
                        plant.m_model.outputs.I_L_conv_b,
                        plant.m_model.outputs.I_L_conv_c});
         fout.flush();*/
-        t_next = t + t_step;
+        t_next = timestamp + t_step;
     }
     fout.close();
     std::cout << "Done!\n"
