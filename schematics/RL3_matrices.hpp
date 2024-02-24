@@ -11,7 +11,6 @@
 #include <Eigen/Core>
 #include <Eigen/LU>
 #include "integrator.h"
-#include "nlohmann/json.hpp"
 #include <assert.h>
 
 class Model_RL3 {
@@ -22,8 +21,9 @@ class Model_RL3 {
     union States;
     union Switches;
     struct StateSpaceMatrices;
+    static StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
-    Model_RL3(){}
+    Model_RL3() {}
     Model_RL3(Components const& c);
 
     static inline constexpr size_t NUM_INPUTS = 3;
@@ -35,16 +35,10 @@ class Model_RL3 {
         return m_ss.A * state + m_Bu;
     }
 
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES> const& jacobian(const Eigen::Vector<double, NUM_STATES>& /*state*/, const double& /*t*/) const {
-        return m_ss.A;
-    }
-
-    // Implicit Tustin integration is used only for this timestep and different length timesteps are solved with adaptive step size integration.
-    void setImplicitIntegrationTimestep(double dt) {
-        if (dt != m_dt_implicit && dt > 0) {
-            m_solver.update_tustin_coeffs(jacobian(states.data, dt), dt);
-        }
-        m_dt_implicit = dt;
+    // Implicit Tustin integration is used for timesteps larger than this.
+    void setImplicitIntegrationLimit(double dt) {
+        m_solver.enableInverseMatrixCaching(true);
+        m_dt_implicit_limit = dt;
     }
 
     void step(double dt, Inputs const& inputs_) {
@@ -63,33 +57,31 @@ class Model_RL3 {
             m_components_DO_NOT_TOUCH = components;
             m_switches_DO_NOT_TOUCH.all = switches.all;
             m_ss = calculateStateSpace(components, switches);
+            m_solver.updateJacobian(m_ss.A);
             // Solve one step with backward euler to reduce numerical oscillations
             m_Bu = m_ss.B * inputs.data;
-            states.data = m_solver.step_backward_euler(*this, states.data, 0.0, dt);
-
-            // Update coefficients to make following steps with Tustin
-            if (m_dt_implicit > 0) {
-                m_solver.update_tustin_coeffs(jacobian(states.data, m_dt_implicit), m_dt_implicit);
-            } else {
-                m_solver.update_tustin_coeffs(jacobian(states.data, dt), dt);
-            }
+            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
         } else {
             m_Bu = m_ss.B * inputs.data;
-            // Coefficient need to be updated if dt changes and implicit integration is used for all step sizes
-            if (dt != m_dt_prev && m_dt_implicit == 0) {
-                m_solver.update_tustin_coeffs(jacobian(states.data, dt), dt);
-            }
 
-            if (dt != m_dt_implicit && m_dt_implicit > 0) {
-                // Use adaptive step size runge-kutta-fehlberg integration for timesteps that are different than implicit integration timestep
-                states.data = m_solver.step_runge_kutta_fehlberg(*this, states.data, 0.0, dt);
+            if (m_dt_implicit_limit > 0) {
+                // Solve with tustin as multiples of implicit limit and the remaining time with runge-kutta so
+                // that the matrix inverses required for implicit integration can be cached for common timesteps
+                // and weird small remainders are solved with adaptive integration.
+                double multiple = dt / m_dt_implicit_limit;
+                if (std::abs(std::round(multiple) - multiple) > 1e-6) {
+                    double dt1 = std::floor(multiple) * m_dt_implicit_limit;
+                    double dt2 = (multiple - std::floor(multiple)) * m_dt_implicit_limit;
+                    states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
+                    states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
+                } else {
+                    states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_implicit_limit);
+                }
             } else {
-                // Solve with Tustin for better accuracy
-                states.data = m_solver.step_tustin_fast(*this, states.data, 0.0, dt);
+                states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
             }
         }
         m_dt_prev = dt;
-
 
         // Update output
         outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
@@ -186,8 +178,7 @@ class Model_RL3 {
     Switches switches = {.all = 0};
 
   private:
-    StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
-
+    Inputs m_inputs;
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
         m_solver;
@@ -196,9 +187,7 @@ class Model_RL3 {
     Switches m_switches_DO_NOT_TOUCH = {.all = 0};
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_prev = 0;
-    double m_dt_implicit = 0;
-    // The json file with symbolic intermediate matrices
-    nlohmann::json m_circuit_json;
+    double m_dt_implicit_limit = 0;
 
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));

@@ -28,6 +28,7 @@
 #include <Eigen/Core>
 #include <Eigen/LU>
 #include <queue>
+#include <map>
 
 template <class vector_t,
           class matrix_t>
@@ -43,24 +44,6 @@ class Integrator {
         m_reltol = reltol;
     }
 
-    template <class System>
-    vector_t step_runge_kutta4(System const& system, vector_t const& x0, double t, double dt) {
-        vector_t k1 = dt * system.dxdt(x0, t);
-        vector_t k2 = dt * system.dxdt(x0 + 0.5 * k1, t + 0.5 * dt);
-        vector_t k3 = dt * system.dxdt(x0 + 0.5 * k2, t + 0.5 * dt);
-        vector_t k4 = dt * system.dxdt(x0 + k3, t + dt);
-        return x0 + (1.0 / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4);
-    }
-
-    template <class System>
-    vector_t step_runge_kutta38(System const& system, vector_t const& x0, double t, double dt) {
-        vector_t k1 = dt * system.dxdt(x0, t);
-        vector_t k2 = dt * system.dxdt(x0 + 1. / 3. * k1, t + 1. / 3. * dt);
-        vector_t k3 = dt * system.dxdt(x0 + -1. / 3. * k1 + k2, t + 2. / 3. * dt);
-        vector_t k4 = dt * system.dxdt(x0 + k1 - k2 + k3, t + dt);
-        return x0 + (1.0 / 8.0) * (k1 + 3 * k2 + 3 * k3 + k4);
-    }
-
     // <summary>
     /// Adaptive integration using Runge-Kutta-Fehlberg method https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta%E2%80%93Fehlberg_method
     /// <param name="system">System with dxdt and jacobian functions</param>
@@ -68,42 +51,7 @@ class Integrator {
     /// <param name="t">Current time</param>
     /// <returns>New state</returns>
     template <class System>
-    vector_t step_runge_kutta_fehlberg(System const& system, vector_t const& x0, double t, double dt) {
-        vector_t x = x0;
-        int steps_remaining = 1;
-        while (steps_remaining > 0) {
-            // clang-format off
-            vector_t k1 = dt  * system.dxdt(x                                                                                                           , t);
-            vector_t k2 = dt  * system.dxdt(x + 1. / 4.        * k1                                                                                     , t + 1. / 4.    * dt);
-            vector_t k3 = dt  * system.dxdt(x + 3. / 32.       * k1 + 9. / 32.       * k2                                                               , t + 3. / 8.    * dt);
-            vector_t k4 = dt  * system.dxdt(x + 1932. / 2197.  * k1 - 7200. / 2197.  * k2 + 7296. / 2197.  * k3                                         , t + 12. / 13.  * dt);
-            vector_t k5 = dt  * system.dxdt(x + 439. / 216.    * k1 - 8.             * k2 + 3680. / 513.   * k3 - 845. / 4104.   * k4                   , t + dt);
-            vector_t k6 = dt  * system.dxdt(x + -8. / 27.      * k1 + 2.             * k2 - 3544. / 2565.  * k3 + 1859. / 4104.  * k4 - 11. / 40.  * k5 , t + 1. / 2.  * dt);
-            // clang-format on
-            vector_t b5_1 = 16. / 135. * k1;
-            vector_t b5_3 = 6656. / 12825. * k3;
-            vector_t b5_4 = 28561. / 56430. * k4;
-            vector_t b5_5 = -9. / 50. * k5;
-            vector_t b5_6 = 2. / 55. * k6;
-
-            vector_t b4_1 = 25. / 216. * k1;
-            vector_t b4_3 = 1408. / 2565. * k3;
-            vector_t b4_4 = 2197. / 4104. * k4;
-            vector_t b4_5 = -1. / 5. * k5;
-
-            vector_t err = ((b5_1 - b4_1) + (b5_3 - b4_3) + (b5_4 - b4_4) + (b5_5 - b4_5) + (b5_6));
-            vector_t order_5 = x + b5_1 + b5_3 + b5_4 + b5_5 + b5_6;
-            if (withinTolerances(order_5, err)) {
-                t += dt;
-                x = order_5;
-                --steps_remaining;
-            } else {
-                steps_remaining *= 2;
-                dt = dt / 2.;
-            }
-        }
-        return x;
-    }
+    vector_t stepRungeKuttaFehlberg(System const& system, vector_t const& x0, double t, double dt);
 
     /// <summary>
     /// Do a step with backward euler integration. The next step is solved with
@@ -117,38 +65,40 @@ class Integrator {
     /// <param name="t">Current time</param>
     /// <returns>New state</returns>
     template <class System>
-    vector_t step_backward_euler(System const& system, vector_t const& x0, double t, double dt);
+    vector_t stepBackwardEuler(System const& system, vector_t const& x0, double t, double dt);
+    template <class System>
+    vector_t stepTustin(System const& system, vector_t const& x0, double t, double dt);
 
-    /// <summary>
-    /// Same as step_backward_euler but the check for changed jacobian or timestep is skipped and
-    /// left to the user to update when needed (update_backward_euler_coeffs)
-    /// </summary>
-    template <class System>
-    vector_t step_backward_euler_fast(System const& system, vector_t const& x0, double t, double dt);
-    void update_backward_euler_coeffs(matrix_t const& jacobian, double dt);
+    void updateJacobian(matrix_t const& jacobian) {
+        m_dt_prev = 0;
+        m_jacobian = jacobian;
+        if (m_caching_enabled) {
+            m_jacobian_hash = matrixHash(jacobian);
+        } else {
+            m_inverse_cache.clear();
+            m_jacobian_hash = 0;
+        }
+    }
 
-    // See backward euler
-    template <class System>
-    vector_t step_tustin(System const& system, vector_t const& x0, double t, double dt);
-    template <class System>
-    vector_t step_tustin_fast(System const& system, vector_t const& x0, double t, double dt);
-    void update_tustin_coeffs(matrix_t const& jacobian, double dt);
+    void enableInverseMatrixCaching(bool enable) {
+        m_caching_enabled = enable;
+    }
 
   private:
-    // Invert matrix with caching
-    matrix_t invert(matrix_t const& m);
+    uint64_t matrixHash(matrix_t const& matrix);
 
-    matrix_t m_gradient_inv; // 1 / (1 - dt * J)
-    matrix_t m_jacobian_prev;
+    matrix_t m_jacobian;
+    uint64_t m_jacobian_hash;
+    matrix_t* m_jacobian_coeff_inv; // 1 / (1 - 0.5 * dt * J)
     double m_dt_prev = 0;
     double m_epsilon = 1e-8;
     double m_abstol = 1e-6;
     double m_reltol = 1e-3;
     size_t m_max_iterations = 10;
 
-    using matrix_and_inverse = std::pair<matrix_t, matrix_t>;
-    std::deque<matrix_and_inverse> m_inverse_cache;
-    size_t m_cache_size = 100;
+    std::map<std::pair<uint64_t, double>, matrix_t> m_inverse_cache;
+    uint64_t m_matrix_hash;
+    bool m_caching_enabled;
 
     bool withinTolerances(vector_t const& x, vector_t const& err) {
         for (int i = 0; i < x.size(); ++i) {
@@ -163,33 +113,60 @@ class Integrator {
 template <class vector_t,
           class matrix_t>
 template <class System>
-inline vector_t Integrator<vector_t, matrix_t>::step_backward_euler(System const& system, vector_t const& x0, double t, double dt) {
-    t += dt;
-    // Update 1 / (1 - dt * J) term if dt or jacobian has changed
-    matrix_t jacobian = system.jacobian(x0, t);
-    if (jacobian != m_jacobian_prev
-        || dt != m_dt_prev) {
-        update_backward_euler_coeffs(jacobian, dt);
+inline vector_t Integrator<vector_t, matrix_t>::stepRungeKuttaFehlberg(System const& system, vector_t const& x0, double t, double dt) {
+    vector_t x = x0;
+    int steps_remaining = 1;
+    while (steps_remaining > 0) {
+        // clang-format off
+        vector_t k1 = dt  * system.dxdt(x                                                                                                           , t);
+        vector_t k2 = dt  * system.dxdt(x + 1. / 4.        * k1                                                                                     , t + 1. / 4.    * dt);
+        vector_t k3 = dt  * system.dxdt(x + 3. / 32.       * k1 + 9. / 32.       * k2                                                               , t + 3. / 8.    * dt);
+        vector_t k4 = dt  * system.dxdt(x + 1932. / 2197.  * k1 - 7200. / 2197.  * k2 + 7296. / 2197.  * k3                                         , t + 12. / 13.  * dt);
+        vector_t k5 = dt  * system.dxdt(x + 439. / 216.    * k1 - 8.             * k2 + 3680. / 513.   * k3 - 845. / 4104.   * k4                   , t + dt);
+        vector_t k6 = dt  * system.dxdt(x + -8. / 27.      * k1 + 2.             * k2 - 3544. / 2565.  * k3 + 1859. / 4104.  * k4 - 11. / 40.  * k5 , t + 1. / 2.  * dt);
+        // clang-format on
+        vector_t b5_1 = 16. / 135. * k1;
+        vector_t b5_3 = 6656. / 12825. * k3;
+        vector_t b5_4 = 28561. / 56430. * k4;
+        vector_t b5_5 = -9. / 50. * k5;
+        vector_t b5_6 = 2. / 55. * k6;
+
+        vector_t b4_1 = 25. / 216. * k1;
+        vector_t b4_3 = 1408. / 2565. * k3;
+        vector_t b4_4 = 2197. / 4104. * k4;
+        vector_t b4_5 = -1. / 5. * k5;
+
+        vector_t err = ((b5_1 - b4_1) + (b5_3 - b4_3) + (b5_4 - b4_4) + (b5_5 - b4_5) + (b5_6));
+        vector_t order_5 = x + b5_1 + b5_3 + b5_4 + b5_5 + b5_6;
+        if (withinTolerances(order_5, err)) {
+            t += dt;
+            x = order_5;
+            --steps_remaining;
+        } else {
+            steps_remaining *= 2;
+            dt = dt / 2.;
+        }
     }
-    return step_backward_euler_fast(system, x0, t, dt);
+    return x;
 }
 
 template <class vector_t,
           class matrix_t>
 template <class System>
-inline vector_t Integrator<vector_t, matrix_t>::step_backward_euler_fast(System const& system, vector_t const& x0, double t, double dt) {
+inline vector_t Integrator<vector_t, matrix_t>::stepBackwardEuler(System const& system, vector_t const& x0, double t, double dt) {
     t += dt;
+    matrix_t jacobian_coeff_inv = (matrix_t::Identity() - dt * m_jacobian).inverse();
 
     // apply first Newton step
     vector_t dxdt = system.dxdt(x0, t);
-    vector_t diff = m_gradient_inv * (-dt * dxdt);
+    vector_t diff = jacobian_coeff_inv * (-dt * dxdt);
     vector_t x = x0 - diff;
 
     // iterate Newton until some precision is reached
     size_t iterations = 0;
     while (diff.norm() > m_epsilon && iterations < m_max_iterations) {
         dxdt = system.dxdt(x, t);
-        diff = m_gradient_inv * (x - x0 - dt * dxdt);
+        diff = jacobian_coeff_inv * (x - x0 - dt * dxdt);
         x -= diff;
         ++iterations;
     }
@@ -198,75 +175,48 @@ inline vector_t Integrator<vector_t, matrix_t>::step_backward_euler_fast(System 
 
 template <class vector_t,
           class matrix_t>
-inline void Integrator<vector_t, matrix_t>::update_backward_euler_coeffs(matrix_t const& jacobian, double dt) {
-    // Update 1 / (1 - dt * J) term
-    m_dt_prev = dt;
-    m_jacobian_prev = jacobian;
-    m_gradient_inv = invert(matrix_t::Identity() - dt * jacobian);
-}
-
-template <class vector_t,
-          class matrix_t>
 template <class System>
-inline vector_t Integrator<vector_t, matrix_t>::step_tustin(System const& system, vector_t const& x0, double t, double dt) {
-    // Update 1 / (1 - 0.5 * dt * J) term if dt or jacobian has changed
-    matrix_t jacobian = system.jacobian(x0, t);
-    if (jacobian != m_jacobian_prev || dt != m_dt_prev) {
-        update_tustin_coeffs(jacobian, dt);
-    }
-    return step_tustin_fast(system, x0, t, dt);
-}
-
-template <class vector_t,
-          class matrix_t>
-template <class System>
-inline vector_t Integrator<vector_t, matrix_t>::step_tustin_fast(System const& system, vector_t const& x0, double t, double dt) {
+inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system, vector_t const& x0, double t, double dt) {
     t += dt;
+    if (dt != m_dt_prev) {
+        // Update 1 / (1 - 0.5 * dt * J) term
+        m_dt_prev = dt;
+        std::pair<uint64_t, double> hash_and_dt{m_jacobian_hash, dt * m_caching_enabled};
+        if (!m_inverse_cache.contains(hash_and_dt)) {
+            m_inverse_cache[hash_and_dt] = (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse();
+        }
+        m_jacobian_coeff_inv = &m_inverse_cache[hash_and_dt];
+    }
 
     // apply first Newton step
     vector_t dxdt0 = system.dxdt(x0, t);
-    vector_t diff = m_gradient_inv * (-0.5 * dt * dxdt0);
+    vector_t diff = *m_jacobian_coeff_inv * (-0.5 * dt * dxdt0);
     vector_t x = x0 - diff;
 
     // iterate Newton until some precision is reached
     size_t iterations = 0;
     while (diff.norm() > m_epsilon && iterations < m_max_iterations) {
         vector_t dxdt = system.dxdt(x, t);
-        diff = m_gradient_inv * (x - x0 - 0.5 * dt * (dxdt0 + dxdt));
+        diff = *m_jacobian_coeff_inv * (x - x0 - 0.5 * dt * (dxdt0 + dxdt));
         x -= diff;
         ++iterations;
     }
     return x;
 }
 
-template <class vector_t,
-          class matrix_t>
-inline void Integrator<vector_t, matrix_t>::update_tustin_coeffs(matrix_t const& jacobian, double dt) {
-    // Update 1 / (1 - 0.5 * dt * J) term
-    m_dt_prev = dt;
-    m_jacobian_prev = jacobian;
-    m_gradient_inv = invert(matrix_t::Identity() - 0.5 * dt * jacobian);
-}
-
 template <class vector_t, class matrix_t>
-inline matrix_t Integrator<vector_t, matrix_t>::invert(matrix_t const& matrix) {
-    // Cache inverses so that if time stepping is mostly fixed but sometimes different to hit
-    // switching events, the inverse does not need to be recalculated whenever returning to
-    // to the fixed timestep
-    if (m_inverse_cache.size() >= m_cache_size) {
-        m_inverse_cache.pop_back();
+inline uint64_t Integrator<vector_t, matrix_t>::matrixHash(matrix_t const& matrix) {
+    // Hash function for Eigen matrix and vector.
+    // The code is from `hash_combine` function of the Boost library. See
+    // http://www.boost.org/doc/libs/1_55_0/doc/html/hash/reference.html#boost.hash_combine .
+    // https://wjngkoh.wordpress.com/2015/03/04/c-hash-function-for-eigen-matrix-and-vector/
+    // Note that it is oblivious to the storage order of Eigen matrix (column- or
+    // row-major). It will give you the same hash value for two different matrices if they
+    // are the transpose of each other in different storage order.
+    uint64_t seed = 0;
+    for (size_t i = 0; i < matrix.size(); ++i) {
+        auto elem = *(matrix.data() + i);
+        seed ^= std::hash<typename matrix_t::Scalar>()(elem) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     }
-
-    auto it = std::find_if(m_inverse_cache.begin(), m_inverse_cache.end(), [&matrix](matrix_and_inverse const& matrix_and_inverse) {
-        return matrix == matrix_and_inverse.first;
-    });
-    if (it != m_inverse_cache.end()) {
-        matrix_and_inverse m = *it;
-        m_inverse_cache.erase(it);
-        m_inverse_cache.push_front(m);
-        return m.second;
-    }
-    matrix_t inverse = matrix.inverse();
-    m_inverse_cache.push_front({matrix, inverse});
-    return inverse;
+    return seed;
 }

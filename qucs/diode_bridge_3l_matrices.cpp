@@ -27,6 +27,7 @@ Model_diode_bridge_3l::Model_diode_bridge_3l(Components const& c)
     : components(c),
       m_components_DO_NOT_TOUCH(c) {
     m_ss = calculateStateSpace(components, switches);
+    m_solver.updateJacobian(m_ss.A);
 }
 
 struct Model_diode_bridge_3l_Topology {

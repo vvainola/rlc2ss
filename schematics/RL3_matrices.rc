@@ -1,2 +1,0 @@
-#define RL3_matrices_json 101 
-RL3_matrices_json    TEXT    "RL3_matrices.json"

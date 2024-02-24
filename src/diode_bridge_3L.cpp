@@ -84,6 +84,7 @@ class Plant {
             .R_src_b = 1e-3,
             .R_src_c = 1e-3,
         }) {
+        m_model.setImplicitIntegrationLimit(1e-6);
     }
 
     void step(double dt, V_abc ugrid) {
@@ -182,16 +183,28 @@ int main() {
          << "N_dc_p - N_dc_n" << ","
          << "\n";
 
+    double t_weird = 11.11e-6;
+    double t_next_weird = t_weird;
+    double t_next = t + t_step;
+
     //DbgGui_create(t_step);
-    //DbgGui_startUpdateLoop();
-    for (; t < 0.2; t += t_step) {
-        //DbgGui_sample();
+    DbgGui_startUpdateLoop();
+    for (; t < 100.2; t += t_step) {
+        DbgGui_sample();
         u_grid.a = amplitude * sin(freq * t + angle);
         u_grid.b = amplitude * sin(freq * t + angle + b_offset);
         u_grid.c = amplitude * sin(freq * t + angle + c_offset);
-        plant.step(t_step, u_grid);
 
-        fout << t << ","
+        double dt_weird = t_next_weird - t;
+        double dt = t_step;
+        if (dt_weird < dt) {
+            plant.step(dt_weird, u_grid);
+            t_next_weird += t_weird;
+            dt -= dt_weird;
+        }
+        plant.step(dt, u_grid);
+
+        /*fout << t << ","
              << plant.m_model.outputs.N_conv_a << ","
              << plant.m_model.outputs.N_conv_b << ","
              << plant.m_model.outputs.N_conv_c << ","
@@ -211,7 +224,8 @@ int main() {
         i_conv = V_xy({plant.m_model.outputs.I_L_conv_a,
                        plant.m_model.outputs.I_L_conv_b,
                        plant.m_model.outputs.I_L_conv_c});
-        fout.flush();
+        fout.flush();*/
+        t_next = t + t_step;
     }
     fout.close();
     std::cout << "Done!\n"
