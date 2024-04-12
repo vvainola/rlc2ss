@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from state_matrices_to_cpp import StateSpaceMatrices
 import json
 import sys
+import typing as T
 
 def check_for_invalid_names(component_names: list[str]):
     for name in component_names:
@@ -31,10 +32,17 @@ def check_for_invalid_names(component_names: list[str]):
             if name in name2 and name != name2:
                 sys.exit(f"[ERROR]: Component name \"{name}\" cannot be a substring of \"{name2}\".")
 
-def matrices_to_cpp(model_name: str, circuit_combinations: dict[int, StateSpaceMatrices], switches: list[str], resource_id: int):
+
+def write_cpp_files(
+    model_name: str,
+    circuit_combinations: dict[int, StateSpaceMatrices],
+    switches: list[str],
+    resource_id: int,
+    dynamic: bool,
+):
     hpp = open(f'{model_name}_matrices.hpp', 'w')
     cpp = open(f'{model_name}_matrices.cpp', 'w')
-    ss = circuit_combinations[0]
+    ss = circuit_combinations[list(circuit_combinations.keys())[0]]
     check_for_invalid_names(ss.component_names)
 
     class_name = 'Model_' + os.path.basename(model_name)
@@ -219,6 +227,8 @@ class {class_name} {{
     cpp.write(f'''
 #include "{os.path.basename(model_name)}_matrices.hpp"
 #include "rlc2ss.h"
+#include <fstream>
+#include <format>
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -323,12 +333,32 @@ void {class_name}::updateStateSpaceMatrices() {{
     }}
 ''')
 
-
-    cpp.write(f'''
+    netlist_abspath_without_extension = os.path.abspath(model_name)
+    netlist_abspath = f'{netlist_abspath_without_extension}.cir'.replace("\\", "\\\\")
+    json_abspath = f'{netlist_abspath_without_extension}_matrices.json'.replace("\\", "\\\\")
+    rlc2ss_py = f'{os.path.dirname(os.path.realpath(__file__))}\\rlc2ss.py.'.replace("\\", "\\\\")
+    python = sys.executable.replace("\\", "\\\\")
+    if dynamic:
+        cpp.write(f'''
+    //if (m_circuit_json.empty()) {{
+    //    m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
+    //}}
+    if (!m_circuit_json.contains(std::to_string(switches.all))) {{
+        m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
+        if (!m_circuit_json.contains(std::to_string(switches.all))) {{
+            system(std::format("{python} {rlc2ss_py} {netlist_abspath} --combination={{}}", switches.all).c_str());
+        }}
+        m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
+    }}
+    ''')
+    else:
+        cpp.write(f'''
     if (m_circuit_json.empty()) {{
         m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
-    }}
-    assert(!m_circuit_json.empty());
+    }}''')
+
+    cpp.write(f'''
+    assert(m_circuit_json.contains(std::to_string(switches.all)));
 
     // Get the intermediate matrices as string for replacing symbolic components with their values
     std::string s = m_circuit_json[std::to_string(switches.all)].dump();
@@ -363,8 +393,22 @@ void {class_name}::updateStateSpaceMatrices() {{
     m_ss = *topology.state_space;
 }}
 ''')
+    cpp.close()
 
-    circuits = {}
+
+def matrices_to_cpp(
+    model_name: str,
+    circuit_combinations: dict[int, StateSpaceMatrices],
+    switches: list[str],
+    resource_id: int | None,
+    dynamic: bool,
+):
+    ss = circuit_combinations[list(circuit_combinations.keys())[0]]
+    if resource_id != None:
+        write_cpp_files(model_name, circuit_combinations, switches, resource_id, dynamic)
+        circuits = {}
+    else:
+        circuits = json.load(open(f"{model_name}_matrices.json", "r"))
 
     write_components = ''
     for component in ss.component_names:
@@ -387,10 +431,9 @@ void {class_name}::updateStateSpaceMatrices() {{
         circuits[str(i)]["D1"] = D1
 
     with open(f"{model_name}_matrices.json", "w") as outfile:
-        json.dump(circuits, outfile)
+        json.dump(circuits, outfile, indent=4)
 
-    with open(f"{model_name}_matrices.rc", "w") as outfile:
-        name = os.path.basename(model_name)
-        outfile.write(f'#define {name}_matrices_json {resource_id} \n{name}_matrices_json    TEXT    "{name}_matrices.json"')
-
-    cpp.close()
+    if resource_id != None:
+        with open(f"{model_name}_matrices.rc", "w") as outfile:
+            name = os.path.basename(model_name)
+            outfile.write(f'#define {name}_matrices_json {resource_id} \n{name}_matrices_json    TEXT    "{name}_matrices.json"')

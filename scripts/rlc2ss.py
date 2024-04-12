@@ -234,7 +234,7 @@ def get_xv_voltage(vv_src : Component, components : T.List[Component], full_tree
     return Symbol(vv_src.name) * (voltages[0] - voltages[1])
 
 #@profile
-def form_state_space_matrices(parsed_netlist):
+def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     NAME = 0
     POS_NODE = 1
     NEG_NODE = 2
@@ -653,12 +653,23 @@ def form_state_space_matrices(parsed_netlist):
     )
     return ss
 
+def int_to_combination(num : int, switch_count : int) -> tuple:
+    combination = [0] * switch_count
+    for i in range(switch_count):
+        if num & 1 << i:
+            combination[i] = 1
+    return tuple(combination)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('netlist', type=str)
     parser.add_argument('--json', type=int, help='Store circuit in JSON format. The default is C++. The json number is the resource id.')
+    parser.add_argument('--dynamic', action='store_true', help='Solve only one combination with all switches open and the rest dynamically at runtime by calling this script')
+    parser.add_argument('--combination', type=int, default=0, help='Solve the circuit only for given combination and update the json. This option is only used by generated code from dynamic option.')
     args = parser.parse_args()
+
+    if args.dynamic and not args.json:
+        sys.exit("Dynamic solving requires json")
 
     filename = os.path.splitext(args.netlist)[0]
     netlist = parse_netlist(args.netlist)
@@ -668,12 +679,17 @@ def main():
     if len(lines_w_switches) == 0:
         out[0] = form_state_space_matrices(netlist)
         if args.json:
-            state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, args.json)
+            state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, args.json, args.dynamic)
         else:
             state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches)
         sys.exit(0)
     else:
-        combinations = list(itertools.product([0, 1], repeat=len(lines_w_switches)))
+        if args.dynamic:
+            combinations = [int_to_combination(0, len(lines_w_switches))]
+        elif args.combination:
+            combinations = [int_to_combination(args.combination, len(lines_w_switches))]
+        else:
+            combinations = list(itertools.product([0, 1], repeat=len(lines_w_switches)))
         progress_bar = tqdm(total=len(combinations))
         for i, combination in enumerate(combinations):
             progress_bar.update(1)
@@ -693,8 +709,8 @@ def main():
             combination_number = int("".join(c), 2)
             out[combination_number] = form_state_space_matrices(netlist_wo_switches)
         progress_bar.close()
-    if args.json:
-        state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, args.json)
+    if args.json or args.combination:
+        state_matrices_to_json.matrices_to_cpp(filename, out, switches, args.json, args.dynamic)
     else:
         state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches)
 
