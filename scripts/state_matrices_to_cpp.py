@@ -48,7 +48,7 @@ def matrices_to_cpp(model_name: str, circuit_combinations: dict[int, StateSpaceM
     states_list = "\n".join([f'\t\t\tdouble {str(state)};' for state in ss.states])
     inputs_list = "\n".join([f'\t\t\tdouble {str(input)};' for input in ss.inputs])
     outputs_list = "\n".join([f'\t\t\tdouble {str(output)};' for output in ss.outputs])
-    switches_list = "\n".join([f'\t\t\tuint32_t {str(switch)} : 1;' for switch in switches])
+    switches_list = "\n".join([f'\t\t\tuint64_t {str(switch)} : 1;' for switch in switches])
     update_states = "\n".join([f'\tstates.{state} = outputs.{state};' for state in ss.states])
 
     template = '''
@@ -132,7 +132,7 @@ class {class_name} {{
         struct {{
 {switches_list}
         }};
-        uint32_t all;
+        uint64_t all;
     }};
 
     struct Components {{
