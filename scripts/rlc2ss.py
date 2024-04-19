@@ -504,7 +504,10 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
                     return None
                 solved[unknown] = unknown_as_others
                 break
-        assert unknown_as_others != ''
+        if unknown_as_others == '':
+            print(f"[WARNING] Unable to solve {unknown}. Setting to zero.")
+            unknown_as_others = Symbol('0')
+            solved[unknown] = Symbol('0')
         unknown_as_others = sy.together(unknown_as_others).expand()
         for key, val in solved.items():
             solved[key] = val.xreplace({unknown : unknown_as_others})
