@@ -262,7 +262,12 @@ void {class_name}::step(double dt, Inputs const& inputs_) {{
         m_solver.updateJacobian(m_ss.A);
         // Solve one step with backward euler to reduce numerical oscillations
         m_Bu = m_ss.B * inputs.data;
-        states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+        if (m_dt_resolution > 0) {{
+            double multiple = std::round(dt / m_dt_resolution);
+            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, multiple * m_dt_resolution);
+        }} else {{
+            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+        }}
     }} else {{
         m_Bu = m_ss.B * inputs.data;
 

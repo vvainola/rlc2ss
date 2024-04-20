@@ -72,7 +72,9 @@ class Integrator {
     void updateJacobian(matrix_t const& jacobian) {
         m_dt_prev = 0;
         m_jacobian = jacobian;
-        m_used_inverse_cache = &m_inverse_caches[matrixHash(jacobian)];
+        uint64_t hash = matrixHash(jacobian);
+        m_used_euler_cache = &m_euler_caches[hash];
+        m_used_tustin_cache = &m_tustin_caches[hash];
     }
 
     void enableInverseMatrixCaching(bool enable) {
@@ -91,8 +93,11 @@ class Integrator {
     double m_reltol = 1e-3;
     size_t m_max_iterations = 10;
 
-    std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_inverse_caches;
-    std::unordered_map<double, matrix_t>* m_used_inverse_cache;
+    // Matrx inverse caches
+    std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_euler_caches;
+    std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_tustin_caches;
+    std::unordered_map<double, matrix_t>* m_used_euler_cache;
+    std::unordered_map<double, matrix_t>* m_used_tustin_cache;
     bool m_caching_enabled = false;
 
     bool withinTolerances(vector_t const& x, vector_t const& err) {
@@ -150,18 +155,27 @@ template <class vector_t,
 template <class System>
 inline vector_t Integrator<vector_t, matrix_t>::stepBackwardEuler(System const& system, vector_t const& x0, double t, double dt) {
     t += dt;
-    matrix_t jacobian_coeff_inv = (matrix_t::Identity() - dt * m_jacobian).inverse();
+    matrix_t* jacobian_coeff_inv;
+    if (!m_caching_enabled) {
+        m_used_euler_cache->clear();
+    }
+    auto it = m_used_euler_cache->find(dt);
+    if (it == m_used_euler_cache->end()) {
+        jacobian_coeff_inv = &m_used_euler_cache->emplace(dt, (matrix_t::Identity() - dt * m_jacobian).inverse()).first->second;
+    } else {
+        jacobian_coeff_inv = &it->second;
+    }
 
     // apply first Newton step
     vector_t dxdt = system.dxdt(x0, t);
-    vector_t diff = jacobian_coeff_inv * (-dt * dxdt);
+    vector_t diff = *jacobian_coeff_inv * (-dt * dxdt);
     vector_t x = x0 - diff;
 
     // iterate Newton until some precision is reached
     size_t iterations = 0;
     while (diff.norm() > m_epsilon && iterations < m_max_iterations) {
         dxdt = system.dxdt(x, t);
-        diff = jacobian_coeff_inv * (x - x0 - dt * dxdt);
+        diff = *jacobian_coeff_inv * (x - x0 - dt * dxdt);
         x -= diff;
         ++iterations;
     }
@@ -176,12 +190,12 @@ inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system,
     if (dt != m_dt_prev) {
         m_dt_prev = dt;
         if (!m_caching_enabled) {
-            m_used_inverse_cache->clear();
+            m_used_tustin_cache->clear();
         }
         // Update 1 / (1 - 0.5 * dt * J) term
-        auto it = m_used_inverse_cache->find(dt);
-        if (it == m_used_inverse_cache->end()) {
-            m_jacobian_coeff_inv = &m_used_inverse_cache->emplace(dt, (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse()).first->second;
+        auto it = m_used_tustin_cache->find(dt);
+        if (it == m_used_tustin_cache->end()) {
+            m_jacobian_coeff_inv = &m_used_tustin_cache->emplace(dt, (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse()).first->second;
         } else {
             m_jacobian_coeff_inv = &it->second;
         }
