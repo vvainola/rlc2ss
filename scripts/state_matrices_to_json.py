@@ -191,7 +191,6 @@ class {class_name} {{
     Components m_components_DO_NOT_TOUCH;
     Switches m_switches_DO_NOT_TOUCH = {{.all = 0}};
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
-    double m_dt_prev = 0;
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
