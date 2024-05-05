@@ -592,7 +592,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     loop_eqs_for_derivs = loop_matrix * u_vec
     cutset_eqs_for_derivs = cutset_matrix * i_vec
     all_deriv_eqs = sy.Matrix(sy.BlockMatrix([[loop_eqs_for_derivs], [cutset_eqs_for_derivs]]))
-    all_deriv_eqs = (sy.together(all_deriv_eqs)).expand() # sy.simplify(all_deriv_eqs)
+    all_deriv_eqs = sy.simplify(all_deriv_eqs) # (sy.together(all_deriv_eqs)).expand()
     all_deriv_eqs, _ = remove_empty_rows(all_deriv_eqs)
     all_deriv_eqs = list(all_deriv_eqs)
 
