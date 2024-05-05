@@ -338,6 +338,7 @@ void {class_name}::step(double dt, Inputs const& inputs_) {{
 }}
 
 void {class_name}::stepInternal(double dt) {{
+    dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
     if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {{
 {verify_components}
