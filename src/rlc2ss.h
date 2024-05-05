@@ -23,6 +23,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <functional>
 
 namespace rlc2ss {
 
@@ -31,5 +32,18 @@ std::string replace(const std::string& original, const std::string& search, cons
 std::vector<double> getCommaDelimitedValues(std::string const s);
 std::string loadTextResource(int resource_id);
 double evaluateExpression(std::string expression);
+
+struct ZeroCrossingEvent {
+    double time;
+    std::function<void(void)> event_callback;
+    bool operator<(ZeroCrossingEvent const& other) const {
+        return time < other.time;
+    }
+    bool operator>(ZeroCrossingEvent const& other) const {
+        return time > other.time;
+    }
+};
+
+double calcZeroCrossingTime(double y1, double y2);
 
 } // namespace rlc2ss

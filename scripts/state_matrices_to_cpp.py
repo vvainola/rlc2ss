@@ -24,6 +24,14 @@ from dataclasses import dataclass
 import sympy
 
 @dataclass
+class Diode:
+    name: str
+    pos_node: str
+    neg_node: str
+    current: str
+    switch: str
+
+@dataclass
 class StateSpaceMatrices:
     component_names: list[str]
     states: list[sympy.Symbol]
@@ -36,7 +44,10 @@ class StateSpaceMatrices:
     C1: sympy.Matrix
     D1: sympy.Matrix
 
-def matrices_to_cpp(model_name: str, circuit_combinations: dict[int, StateSpaceMatrices], switches: list[str]):
+def matrices_to_cpp(model_name: str,
+                    circuit_combinations: dict[int, StateSpaceMatrices],
+                    switches: list[str],
+                    diodes: list[Diode]):
     hpp = open(f'{model_name}_matrices.hpp', 'w')
     cpp = open(f'{model_name}_matrices.cpp', 'w')
     ss = circuit_combinations[0]
@@ -176,6 +187,8 @@ class {class_name} {{
     Switches switches = {{.all = 0}};
 
   private:
+    void stepInternal(double dt);
+
     Inputs m_inputs;
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
@@ -219,6 +232,8 @@ class {class_name} {{
 
     cpp.write(f'''
 #include "{os.path.basename(model_name)}_matrices.hpp"
+#include "rlc2ss.h"
+#include <optional>
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -241,6 +256,53 @@ static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
     return ss;
 }}
 
+static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_name}& circuit, {class_name}::Outputs const& prev_outputs) {{
+    std::priority_queue<rlc2ss::ZeroCrossingEvent,
+                        std::vector<rlc2ss::ZeroCrossingEvent>,
+                        std::greater<rlc2ss::ZeroCrossingEvent>>
+        events;
+''')
+    for diode in diodes:
+        # Handle either node being ground
+        pos_node = f'circuit.outputs.{diode.pos_node}'
+        prev_pos_node = f'prev_outputs.{diode.pos_node}'
+        if diode.pos_node == '0':
+            pos_node = '0'
+            prev_pos_node = '0'
+        neg_node = f'circuit.outputs.{diode.neg_node}'
+        prev_neg_node = f'prev_outputs.{diode.neg_node}'
+        if diode.neg_node == '0':
+            neg_node = '0'
+            prev_neg_node = '0'
+
+        cpp.write(f'''
+    double V_{diode.name} = {pos_node} - {neg_node};
+    if (V_{diode.name} > 0 && !circuit.switches.{diode.switch}) {{
+        double V_{diode.name}_prev = {prev_pos_node} - {prev_neg_node};
+        events.push(rlc2ss::ZeroCrossingEvent{{
+            .time = rlc2ss::calcZeroCrossingTime(V_{diode.name}_prev, V_{diode.name}),
+            .event_callback = [&]() {{
+                circuit.switches.{diode.switch} = 1;
+            }}
+        }});
+    }}
+    if (circuit.outputs.{diode.current} < 0 && circuit.switches.{diode.switch}) {{
+        events.push(rlc2ss::ZeroCrossingEvent{{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.{diode.current}, circuit.outputs.{diode.current}),
+            .event_callback = [&]() {{
+                circuit.switches.{diode.switch} = 0;
+            }}
+        }});
+    }}
+''')
+
+    cpp.write(f'''
+    if (events.size() > 0) {{
+        return events.top();
+    }}
+    return std::nullopt;
+}}
+
 {class_name}::{class_name}(Components const& c)
     : components(c),
       m_components_DO_NOT_TOUCH(c) {{
@@ -253,6 +315,32 @@ static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
     cpp.write(f'''
 void {class_name}::step(double dt, Inputs const& inputs_) {{
     inputs.data = inputs_.data;
+
+    // Copy previous state and outputs if step needs to be redone
+    Model_diode::States prev_state;
+    Model_diode::Outputs prev_outputs;
+    prev_state.data = states.data;
+    prev_outputs.data = outputs.data;
+
+    stepInternal(dt);
+    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+    while (zc_event) {{
+        // Redo step
+        states.data = prev_state.data;
+        stepInternal(zc_event->time * dt);
+        // Process event
+        zc_event->event_callback();
+        // Run remaining time
+        prev_state.data = states.data;
+        prev_outputs.data = outputs.data;
+        dt = dt * (1 - zc_event->time);
+        stepInternal(dt);
+        // Check for new events
+        zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+    }}
+}}
+
+void {class_name}::stepInternal(double dt) {{
     // Update state-space matrices if needed
     if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {{
 {verify_components}

@@ -29,6 +29,8 @@
 #include <stack>
 #include <assert.h>
 
+constexpr double EPSILON_MIN = 1e-12;
+
 namespace rlc2ss {
 
 static bool isOperator(char c);
@@ -260,6 +262,18 @@ std::string loadTextResource(int resource_id) {
         return std::string(reinterpret_cast<char*>(ptr), size_bytes);
     }
     return "";
+}
+
+template <typename T>
+int sign(T val) {
+    return (T(0) < val) - (val < T(0));
+}
+
+double calcZeroCrossingTime(double y1, double y2) {
+    if (sign(y1) == sign(y2)) {
+        return EPSILON_MIN;
+    }
+    return abs(y1) / (abs(y1) + abs(y2));
 }
 
 } // namespace rlc2ss

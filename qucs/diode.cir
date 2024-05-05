@@ -1,0 +1,8 @@
+D1 N_D1_pos  N_D_neg
+D2 N_D2_pos  N_D_neg
+L1 _net0 N_D2_pos
+R1 _net2 N_D1_pos I;
+R2 0 N_D2_pos I;
+R3 N_D_neg _net0
+S1 _net1  _net2
+V1 _net1 0

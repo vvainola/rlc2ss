@@ -46,6 +46,7 @@ shared_library('circuit_tester',
         'src/circuit_tester.cpp',
         'src/rlc2ss.cpp',
         'schematics/RL3_matrices.cpp',
+        'qucs/diode_matrices.cpp',
     ],
     include_directories: [
         'src'

@@ -168,6 +168,31 @@ def parse_netlist(filename):
             control_section = False
     return parsed_netlist
 
+def replace_diodes(netlist : list[str]) -> tuple[list[str], list[state_matrices_to_cpp.Diode]]:
+    new_netlist = []
+    diodes: list[state_matrices_to_cpp.Diode] = []
+    for line in netlist:
+        if line.startswith('D'):
+            line_split = line.split()
+            name = line_split[0]
+            pos_node = line_split[1]
+            neg_node = line_split[2]
+            new_netlist.append(f'V_{name} {pos_node} N_{name}_1 Vp;')
+            new_netlist.append(f'S_{name} N_{name}_1 N_{name}_2')
+            new_netlist.append(f'R_{name} N_{name}_2 {neg_node} Vn;I;')
+            diodes.append(
+                state_matrices_to_cpp.Diode(
+                    name= name,
+                    pos_node=pos_node,
+                    neg_node=neg_node,
+                    current=f'I_R_{name}',
+                    switch=f'S_{name}'
+                )
+            )
+        else:
+            new_netlist.append(line)
+    return (new_netlist, diodes)
+
 def get_component(all_components, component_name):
     for c in all_components:
         if c.name == component_name:
@@ -338,6 +363,8 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     outputs = list(set(outputs))
     outputs.sort()
     outputs = [Symbol(output) for output in outputs]
+    if outputs[0] == Symbol('0'):
+        outputs = outputs[1:]
 
     temp_tree = nx.Graph()
     for c in voltage_sources + capacitors + resistors + current_sources + inductors:
@@ -676,6 +703,7 @@ def main():
 
     filename = os.path.splitext(args.netlist)[0]
     netlist = parse_netlist(args.netlist)
+    netlist, diodes = replace_diodes(netlist)
     lines_w_switches, switches, xor_switches, and_switches = lines_with_switches(netlist)
 
     out: dict[int, StateSpaceMatrices] = {}
@@ -684,7 +712,7 @@ def main():
         if args.json:
             state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, args.json, args.dynamic)
         else:
-            state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches)
+            state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches, diodes)
         sys.exit(0)
     else:
         if args.dynamic:
@@ -715,7 +743,7 @@ def main():
     if args.json or args.combination:
         state_matrices_to_json.matrices_to_cpp(filename, out, switches, args.json, args.dynamic)
     else:
-        state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches)
+        state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches, diodes)
 
 if __name__ == '__main__':
     main()
