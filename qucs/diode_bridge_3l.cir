@@ -42,17 +42,13 @@ R_src_c _net27 _net30
 S_0_a N_conv_a  N_dc_0
 S_0_b N_conv_b  N_dc_0
 S_0_c N_conv_c  N_dc_0
-S_n_a N_dc_n  N_conv_a
-S_n_b N_dc_n  N_conv_b
-S_n_c N_dc_n  N_conv_c
-S_p_a N_conv_a  N_dc_p
-S_p_b N_conv_b  N_dc_p
-S_p_c N_conv_c  N_dc_p
+D_n_a N_dc_n  N_conv_a
+D_n_b N_dc_n  N_conv_b
+D_n_c N_dc_n  N_conv_c
+D_p_a N_conv_a  N_dc_p
+D_p_b N_conv_b  N_dc_p
+D_p_c N_conv_c  N_dc_p
 V_dc_src _net35 _net36
 V_src_a _net0 0
 V_src_b _net1 0
 V_src_c _net2 0
-
-X S_p_a S_0_a S_n_a
-X S_p_b S_0_b S_n_b
-X S_p_c S_0_c S_n_c

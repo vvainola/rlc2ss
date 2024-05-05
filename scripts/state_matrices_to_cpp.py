@@ -189,7 +189,6 @@ class {class_name} {{
   private:
     void stepInternal(double dt);
 
-    Inputs m_inputs;
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
         m_solver;
@@ -249,10 +248,10 @@ static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
     Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> const &C1,
     Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> const &D1) {{
     auto ss = std::make_unique<{class_name}::StateSpaceMatrices>();
-    ss->A   = K1.partialPivLu().solve(A1);
-    ss->B   = K1.partialPivLu().solve(B1);
-    ss->C   = (C1 + K2 * ss->A);
-    ss->D   = (D1 + K2 * ss->B);
+    ss->A = K1.partialPivLu().solve(A1);
+    ss->B = K1.partialPivLu().solve(B1);
+    ss->C = (C1 + K2 * ss->A);
+    ss->D = (D1 + K2 * ss->B);
     return ss;
 }}
 
@@ -317,8 +316,8 @@ void {class_name}::step(double dt, Inputs const& inputs_) {{
     inputs.data = inputs_.data;
 
     // Copy previous state and outputs if step needs to be redone
-    Model_diode::States prev_state;
-    Model_diode::Outputs prev_outputs;
+    {class_name}::States prev_state;
+    {class_name}::Outputs prev_outputs;
     prev_state.data = states.data;
     prev_outputs.data = outputs.data;
 

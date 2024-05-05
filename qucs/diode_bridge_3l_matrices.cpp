@@ -1,6 +1,9 @@
 
 #include "diode_bridge_3l_matrices.hpp"
 #include "rlc2ss.h"
+#include <optional>
+#include <fstream>
+#include <format>
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -23,6 +26,132 @@ static std::unique_ptr<Model_diode_bridge_3l::StateSpaceMatrices> calcStateSpace
     return ss;
 }
 
+static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_diode_bridge_3l& circuit, Model_diode_bridge_3l::Outputs const& prev_outputs) {
+    std::priority_queue<rlc2ss::ZeroCrossingEvent,
+                        std::vector<rlc2ss::ZeroCrossingEvent>,
+                        std::greater<rlc2ss::ZeroCrossingEvent>>
+        events;
+
+    double V_D_n_a = circuit.outputs.N_dc_n - circuit.outputs.N_conv_a;
+    if (V_D_n_a > 0 && !circuit.switches.S_D_n_a) {
+        double V_D_n_a_prev = prev_outputs.N_dc_n - prev_outputs.N_conv_a;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_n_a_prev, V_D_n_a),
+            .event_callback = [&]() {
+                circuit.switches.S_D_n_a = 1;
+            }
+        });
+    }
+    if (circuit.outputs.I_R_D_n_a < 0 && circuit.switches.S_D_n_a) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_a, circuit.outputs.I_R_D_n_a),
+            .event_callback = [&]() {
+                circuit.switches.S_D_n_a = 0;
+            }
+        });
+    }
+
+    double V_D_n_b = circuit.outputs.N_dc_n - circuit.outputs.N_conv_b;
+    if (V_D_n_b > 0 && !circuit.switches.S_D_n_b) {
+        double V_D_n_b_prev = prev_outputs.N_dc_n - prev_outputs.N_conv_b;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_n_b_prev, V_D_n_b),
+            .event_callback = [&]() {
+                circuit.switches.S_D_n_b = 1;
+            }
+        });
+    }
+    if (circuit.outputs.I_R_D_n_b < 0 && circuit.switches.S_D_n_b) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_b, circuit.outputs.I_R_D_n_b),
+            .event_callback = [&]() {
+                circuit.switches.S_D_n_b = 0;
+            }
+        });
+    }
+
+    double V_D_n_c = circuit.outputs.N_dc_n - circuit.outputs.N_conv_c;
+    if (V_D_n_c > 0 && !circuit.switches.S_D_n_c) {
+        double V_D_n_c_prev = prev_outputs.N_dc_n - prev_outputs.N_conv_c;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_n_c_prev, V_D_n_c),
+            .event_callback = [&]() {
+                circuit.switches.S_D_n_c = 1;
+            }
+        });
+    }
+    if (circuit.outputs.I_R_D_n_c < 0 && circuit.switches.S_D_n_c) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_c, circuit.outputs.I_R_D_n_c),
+            .event_callback = [&]() {
+                circuit.switches.S_D_n_c = 0;
+            }
+        });
+    }
+
+    double V_D_p_a = circuit.outputs.N_conv_a - circuit.outputs.N_dc_p;
+    if (V_D_p_a > 0 && !circuit.switches.S_D_p_a) {
+        double V_D_p_a_prev = prev_outputs.N_conv_a - prev_outputs.N_dc_p;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_p_a_prev, V_D_p_a),
+            .event_callback = [&]() {
+                circuit.switches.S_D_p_a = 1;
+            }
+        });
+    }
+    if (circuit.outputs.I_R_D_p_a < 0 && circuit.switches.S_D_p_a) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_a, circuit.outputs.I_R_D_p_a),
+            .event_callback = [&]() {
+                circuit.switches.S_D_p_a = 0;
+            }
+        });
+    }
+
+    double V_D_p_b = circuit.outputs.N_conv_b - circuit.outputs.N_dc_p;
+    if (V_D_p_b > 0 && !circuit.switches.S_D_p_b) {
+        double V_D_p_b_prev = prev_outputs.N_conv_b - prev_outputs.N_dc_p;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_p_b_prev, V_D_p_b),
+            .event_callback = [&]() {
+                circuit.switches.S_D_p_b = 1;
+            }
+        });
+    }
+    if (circuit.outputs.I_R_D_p_b < 0 && circuit.switches.S_D_p_b) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_b, circuit.outputs.I_R_D_p_b),
+            .event_callback = [&]() {
+                circuit.switches.S_D_p_b = 0;
+            }
+        });
+    }
+
+    double V_D_p_c = circuit.outputs.N_conv_c - circuit.outputs.N_dc_p;
+    if (V_D_p_c > 0 && !circuit.switches.S_D_p_c) {
+        double V_D_p_c_prev = prev_outputs.N_conv_c - prev_outputs.N_dc_p;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_p_c_prev, V_D_p_c),
+            .event_callback = [&]() {
+                circuit.switches.S_D_p_c = 1;
+            }
+        });
+    }
+    if (circuit.outputs.I_R_D_p_c < 0 && circuit.switches.S_D_p_c) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_c, circuit.outputs.I_R_D_p_c),
+            .event_callback = [&]() {
+                circuit.switches.S_D_p_c = 0;
+            }
+        });
+    }
+
+    if (events.size() > 0) {
+        return events.top();
+    }
+    return std::nullopt;
+}
+
 Model_diode_bridge_3l::Model_diode_bridge_3l(Components const& c)
     : components(c),
       m_components_DO_NOT_TOUCH(c) {
@@ -32,6 +161,32 @@ Model_diode_bridge_3l::Model_diode_bridge_3l(Components const& c)
 
 void Model_diode_bridge_3l::step(double dt, Inputs const& inputs_) {
     inputs.data = inputs_.data;
+
+    // Copy previous state and outputs if step needs to be redone
+    Model_diode_bridge_3l::States prev_state;
+    Model_diode_bridge_3l::Outputs prev_outputs;
+    prev_state.data = states.data;
+    prev_outputs.data = outputs.data;
+
+    stepInternal(dt);
+    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+    while (zc_event) {
+        // Redo step
+        states.data = prev_state.data;
+        stepInternal(zc_event->time * dt);
+        // Process event
+        zc_event->event_callback();
+        // Run remaining time
+        prev_state.data = states.data;
+        prev_outputs.data = outputs.data;
+        dt = dt * (1 - zc_event->time);
+        stepInternal(dt);
+        // Check for new events
+        zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+    }
+}
+
+void Model_diode_bridge_3l::stepInternal(double dt) {
     // Update state-space matrices if needed
     if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {
 		assert(components.L_conv_a != -1);
@@ -75,13 +230,24 @@ void Model_diode_bridge_3l::step(double dt, Inputs const& inputs_) {
 		assert(components.R_src_a != -1);
 		assert(components.R_src_b != -1);
 		assert(components.R_src_c != -1);
+		assert(components.R_D_n_a != -1);
+		assert(components.R_D_n_b != -1);
+		assert(components.R_D_n_c != -1);
+		assert(components.R_D_p_a != -1);
+		assert(components.R_D_p_b != -1);
+		assert(components.R_D_p_c != -1);
         m_components_DO_NOT_TOUCH = components;
         m_switches_DO_NOT_TOUCH.all = switches.all;
         updateStateSpaceMatrices();
         m_solver.updateJacobian(m_ss.A);
         // Solve one step with backward euler to reduce numerical oscillations
         m_Bu = m_ss.B * inputs.data;
-        states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+        if (m_dt_resolution > 0) {
+            double multiple = std::round(dt / m_dt_resolution);
+            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, multiple * m_dt_resolution);
+        } else {
+            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+        }
     } else {
         m_Bu = m_ss.B * inputs.data;
 
@@ -161,7 +327,7 @@ void Model_diode_bridge_3l::updateStateSpaceMatrices() {
     if (m_circuit_json.empty()) {
         m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource(101));
     }
-    assert(!m_circuit_json.empty());
+    assert(m_circuit_json.contains(std::to_string(switches.all)));
 
     // Get the intermediate matrices as string for replacing symbolic components with their values
     std::string s = m_circuit_json[std::to_string(switches.all)].dump();
@@ -206,6 +372,12 @@ void Model_diode_bridge_3l::updateStateSpaceMatrices() {
 	s = rlc2ss::replace(s, "R_src_a", std::to_string(components.R_src_a));
 	s = rlc2ss::replace(s, "R_src_b", std::to_string(components.R_src_b));
 	s = rlc2ss::replace(s, "R_src_c", std::to_string(components.R_src_c));
+	s = rlc2ss::replace(s, "R_D_n_a", std::to_string(components.R_D_n_a));
+	s = rlc2ss::replace(s, "R_D_n_b", std::to_string(components.R_D_n_b));
+	s = rlc2ss::replace(s, "R_D_n_c", std::to_string(components.R_D_n_c));
+	s = rlc2ss::replace(s, "R_D_p_a", std::to_string(components.R_D_p_a));
+	s = rlc2ss::replace(s, "R_D_p_b", std::to_string(components.R_D_p_b));
+	s = rlc2ss::replace(s, "R_D_p_c", std::to_string(components.R_D_p_c));
 
     // Parse json for the intermediate matrices
     nlohmann::json j = nlohmann::json::parse(s);

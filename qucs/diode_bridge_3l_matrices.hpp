@@ -26,8 +26,8 @@ class Model_diode_bridge_3l {
     Model_diode_bridge_3l() {}
     Model_diode_bridge_3l(Components const& c);
 
-    static inline constexpr size_t NUM_INPUTS = 4;
-    static inline constexpr size_t NUM_OUTPUTS = 25;
+    static inline constexpr size_t NUM_INPUTS = 10;
+    static inline constexpr size_t NUM_OUTPUTS = 31;
     static inline constexpr size_t NUM_STATES = 19;
     static inline constexpr size_t NUM_SWITCHES = 9;
 
@@ -60,6 +60,12 @@ class Model_diode_bridge_3l {
             data.setZero();
         }
         struct {
+            double V_D_n_a;
+            double V_D_n_b;
+            double V_D_n_c;
+            double V_D_p_a;
+            double V_D_p_b;
+            double V_D_p_c;
             double V_dc_src;
             double V_src_a;
             double V_src_b;
@@ -85,6 +91,12 @@ class Model_diode_bridge_3l {
             double I_L_src_a;
             double I_L_src_b;
             double I_L_src_c;
+            double I_R_D_n_a;
+            double I_R_D_n_b;
+            double I_R_D_n_c;
+            double I_R_D_p_a;
+            double I_R_D_p_b;
+            double I_R_D_p_c;
             double N_conv_a;
             double N_conv_b;
             double N_conv_c;
@@ -104,17 +116,17 @@ class Model_diode_bridge_3l {
 
     union Switches {
         struct {
-            uint32_t S_0_a : 1;
-            uint32_t S_0_b : 1;
-            uint32_t S_0_c : 1;
-            uint32_t S_n_a : 1;
-            uint32_t S_n_b : 1;
-            uint32_t S_n_c : 1;
-            uint32_t S_p_a : 1;
-            uint32_t S_p_b : 1;
-            uint32_t S_p_c : 1;
+            uint64_t S_0_a : 1;
+            uint64_t S_0_b : 1;
+            uint64_t S_0_c : 1;
+            uint64_t S_D_n_a : 1;
+            uint64_t S_D_n_b : 1;
+            uint64_t S_D_n_c : 1;
+            uint64_t S_D_p_a : 1;
+            uint64_t S_D_p_b : 1;
+            uint64_t S_D_p_c : 1;
         };
-        uint32_t all;
+        uint64_t all;
     };
 
     struct Components {
@@ -159,6 +171,12 @@ class Model_diode_bridge_3l {
         double R_src_a = -1;
         double R_src_b = -1;
         double R_src_c = -1;
+        double R_D_n_a = -1;
+        double R_D_n_b = -1;
+        double R_D_n_c = -1;
+        double R_D_p_a = -1;
+        double R_D_p_b = -1;
+        double R_D_p_c = -1;
 
         bool operator==(Components const& other) const {
             return
@@ -202,7 +220,13 @@ class Model_diode_bridge_3l {
                 R_grid_c == other.R_grid_c &&
                 R_src_a == other.R_src_a &&
                 R_src_b == other.R_src_b &&
-                R_src_c == other.R_src_c;
+                R_src_c == other.R_src_c &&
+                R_D_n_a == other.R_D_n_a &&
+                R_D_n_b == other.R_D_n_b &&
+                R_D_n_c == other.R_D_n_c &&
+                R_D_p_a == other.R_D_p_a &&
+                R_D_p_b == other.R_D_p_b &&
+                R_D_p_c == other.R_D_p_c;
         }
 
         bool operator!=(Components const& other) const {
@@ -256,6 +280,7 @@ class Model_diode_bridge_3l {
     Switches switches = {.all = 0};
 
   private:
+    void stepInternal(double dt);
     void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,

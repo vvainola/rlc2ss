@@ -710,7 +710,7 @@ def main():
     if len(lines_w_switches) == 0:
         out[0] = form_state_space_matrices(netlist)
         if args.json:
-            state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, args.json, args.dynamic)
+            state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, diodes, args.json, args.dynamic)
         else:
             state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches, diodes)
         sys.exit(0)
@@ -741,7 +741,7 @@ def main():
             out[combination_number] = form_state_space_matrices(netlist_wo_switches)
         progress_bar.close()
     if args.json or args.combination:
-        state_matrices_to_json.matrices_to_cpp(filename, out, switches, args.json, args.dynamic)
+        state_matrices_to_json.matrices_to_cpp(filename, out, switches, diodes, args.json, args.dynamic)
     else:
         state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches, diodes)
 

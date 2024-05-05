@@ -42,18 +42,18 @@ class Plant {
   public:
     Plant()
         : m_model(Model_diode_bridge_3l::Components{
-            .L_conv_a = 100e-5,
-            .L_conv_b = 100e-5,
-            .L_conv_c = 100e-5,
-            .L_dc_n = 100e-5,
-            .L_dc_p = 100e-5,
+            .L_conv_a = 1e-3,
+            .L_conv_b = 1e-3,
+            .L_conv_c = 1e-3,
+            .L_dc_n = 1e-3,
+            .L_dc_p = 1e-3,
             .L_dc_src = 100e-4,
-            .L_grid_a = 100e-5,
-            .L_grid_b = 100e-5,
-            .L_grid_c = 100e-5,
-            .L_src_a = 100e-5,
-            .L_src_b = 100e-5,
-            .L_src_c = 100e-5,
+            .L_grid_a = 1e-3,
+            .L_grid_b = 1e-3,
+            .L_grid_c = 1e-3,
+            .L_src_a = 1e-3,
+            .L_src_b = 1e-3,
+            .L_src_c = 1e-3,
             .C_dc_n1 = 10e-3,
             .C_dc_n2 = 10e-3,
             .C_dc_p1 = 10e-3,
@@ -83,14 +83,20 @@ class Plant {
             .R_src_a = 1e-3,
             .R_src_b = 1e-3,
             .R_src_c = 1e-3,
+            .R_D_n_a = 1e-6,
+            .R_D_n_b = 1e-6,
+            .R_D_n_c = 1e-6,
+            .R_D_p_a = 1e-6,
+            .R_D_p_b = 1e-6,
+            .R_D_p_c = 1e-6,
         }) {
         m_model.setTimestepResolution(0.01e-6, Model_diode_bridge_3l::TimestepErrorCorrectionMode::NONE);
     }
 
     void step(double dt, V_abc ugrid) {
-        checkDiodes();
+        // checkDiodes();
 
-        Model_diode_bridge_3l::Inputs inputs;
+        Model_diode_bridge_3l::Inputs inputs{};
         inputs.V_dc_src = v_dc;
         inputs.V_src_a = ugrid.a;
         inputs.V_src_b = ugrid.b;
@@ -99,52 +105,52 @@ class Plant {
         dc_voltage = m_model.outputs.N_dc_p - m_model.outputs.N_dc_n;
     }
 
-    void checkDiodes() {
-        double u_dc = m_model.outputs.N_dc_p - m_model.outputs.N_dc_n;
-        Model_diode_bridge_3l::Switches switches = m_model.switches;
-        // A pos
-        if (m_model.outputs.N_conv_a - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_p_a = 1;
-        }
-        if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_a > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_n_a = 1;
-        }
-        if (m_model.outputs.I_L_conv_a > 0) {
-            m_model.switches.S_p_a = 0;
-        }
-        if (m_model.outputs.I_L_conv_a < 0) {
-            m_model.switches.S_n_a = 0;
-        }
+    // void checkDiodes() {
+    //     double u_dc = m_model.outputs.N_dc_p - m_model.outputs.N_dc_n;
+    //     Model_diode_bridge_3l::Switches switches = m_model.switches;
+    //     // A pos
+    //     if (m_model.outputs.N_conv_a - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
+    //         m_model.switches.S_p_a = 1;
+    //     }
+    //     if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_a > DIODE_ON_THRESHOLD_VOLTAGE) {
+    //         m_model.switches.S_n_a = 1;
+    //     }
+    //     if (m_model.outputs.I_L_conv_a > 0) {
+    //         m_model.switches.S_p_a = 0;
+    //     }
+    //     if (m_model.outputs.I_L_conv_a < 0) {
+    //         m_model.switches.S_n_a = 0;
+    //     }
 
-        if (m_model.outputs.N_conv_b - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_p_b = 1;
-        }
-        if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_b > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_n_b = 1;
-        }
-        if (m_model.outputs.I_L_conv_b > 0) {
-            m_model.switches.S_p_b = 0;
-        }
-        if (m_model.outputs.I_L_conv_b < 0) {
-            m_model.switches.S_n_b = 0;
-        }
+    //    if (m_model.outputs.N_conv_b - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
+    //        m_model.switches.S_p_b = 1;
+    //    }
+    //    if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_b > DIODE_ON_THRESHOLD_VOLTAGE) {
+    //        m_model.switches.S_n_b = 1;
+    //    }
+    //    if (m_model.outputs.I_L_conv_b > 0) {
+    //        m_model.switches.S_p_b = 0;
+    //    }
+    //    if (m_model.outputs.I_L_conv_b < 0) {
+    //        m_model.switches.S_n_b = 0;
+    //    }
 
-        if (m_model.outputs.N_conv_c - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_p_c = 1;
-        }
-        if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_c > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_n_c = 1;
-        }
-        if (m_model.outputs.I_L_conv_c > 0) {
-            m_model.switches.S_p_c = 0;
-        }
-        if (m_model.outputs.I_L_conv_c < 0) {
-            m_model.switches.S_n_c = 0;
-        }
-        /*assert((m_model.switches.S_p_a && m_model.switches.S_n_a));
-        assert((m_model.switches.S_p_b && m_model.switches.S_n_b));
-        assert((m_model.switches.S_p_c && m_model.switches.S_n_c));*/
-    }
+    //    if (m_model.outputs.N_conv_c - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
+    //        m_model.switches.S_p_c = 1;
+    //    }
+    //    if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_c > DIODE_ON_THRESHOLD_VOLTAGE) {
+    //        m_model.switches.S_n_c = 1;
+    //    }
+    //    if (m_model.outputs.I_L_conv_c > 0) {
+    //        m_model.switches.S_p_c = 0;
+    //    }
+    //    if (m_model.outputs.I_L_conv_c < 0) {
+    //        m_model.switches.S_n_c = 0;
+    //    }
+    //    /*assert((m_model.switches.S_p_a && m_model.switches.S_n_a));
+    //    assert((m_model.switches.S_p_b && m_model.switches.S_n_b));
+    //    assert((m_model.switches.S_p_c && m_model.switches.S_n_c));*/
+    //}
 
     Model_diode_bridge_3l m_model;
     double dc_voltage;
@@ -165,22 +171,38 @@ int main() {
     double t_step = 10e-6;
     std::ofstream fout("temp.csv");
 
-    fout << "t" << ","
-         << "N_conv_a" << ","
-         << "N_conv_b" << ","
-         << "N_conv_c" << ","
-         << "I_L_conv_a" << ","
-         << "I_L_conv_b" << ","
-         << "I_L_conv_c" << ","
-         << "N_dc_n" << ","
-         << "N_dc_p" << ","
-         << "S_n_a" << ","
-         << "S_n_b" << ","
-         << "S_n_c" << ","
-         << "S_p_a" << ","
-         << "S_p_b" << ","
-         << "S_p_c" << ","
-         << "N_dc_p - N_dc_n" << ","
+    fout << "t"
+         << ","
+         << "N_conv_a"
+         << ","
+         << "N_conv_b"
+         << ","
+         << "N_conv_c"
+         << ","
+         << "I_L_conv_a"
+         << ","
+         << "I_L_conv_b"
+         << ","
+         << "I_L_conv_c"
+         << ","
+         << "N_dc_n"
+         << ","
+         << "N_dc_p"
+         << ","
+         << "S_n_a"
+         << ","
+         << "S_n_b"
+         << ","
+         << "S_n_c"
+         << ","
+         << "S_p_a"
+         << ","
+         << "S_p_b"
+         << ","
+         << "S_p_c"
+         << ","
+         << "N_dc_p - N_dc_n"
+         << ","
          << "\n";
 
     double t_weird = 11.11e-6;
@@ -190,19 +212,23 @@ int main() {
     DbgGui_create(t_step);
     DbgGui_startUpdateLoop();
     for (; timestamp < 100.2; timestamp += t_step) {
-        DbgGui_sample();
         u_grid.a = amplitude * sin(freq * timestamp + angle);
         u_grid.b = amplitude * sin(freq * timestamp + angle + b_offset);
         u_grid.c = amplitude * sin(freq * timestamp + angle + c_offset);
 
+        double timestamp2 = timestamp;
         double dt_weird = t_next_weird - timestamp;
         double dt = t_step;
         if (dt_weird < dt) {
+            timestamp2 += dt_weird;
             plant.step(dt_weird, u_grid);
+            DbgGui_sampleWithTimestamp(timestamp2);
             t_next_weird += t_weird;
             dt -= dt_weird;
         }
+        timestamp2 += dt;
         plant.step(dt, u_grid);
+        DbgGui_sampleWithTimestamp(timestamp2);
 
         /*fout << t << ","
              << plant.m_model.outputs.N_conv_a << ","
