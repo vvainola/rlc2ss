@@ -185,6 +185,7 @@ def replace_diodes(netlist : list[str]) -> tuple[list[str], list[state_matrices_
                     name= name,
                     pos_node=pos_node,
                     neg_node=neg_node,
+                    forward_voltage=f'V_{name}',
                     current=f'I_R_{name}',
                     switch=f'S_{name}'
                 )

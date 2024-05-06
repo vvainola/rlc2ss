@@ -275,7 +275,7 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
 
         cpp.write(f'''
     double V_{diode.name} = {pos_node} - {neg_node};
-    if (V_{diode.name} > 0 && !circuit.switches.{diode.switch}) {{
+    if (V_{diode.name} > circuit.inputs.{diode.forward_voltage} && !circuit.switches.{diode.switch}) {{
         double V_{diode.name}_prev = {prev_pos_node} - {prev_neg_node};
         events.push(rlc2ss::ZeroCrossingEvent{{
             .time = rlc2ss::calcZeroCrossingTime(V_{diode.name}_prev, V_{diode.name}),
@@ -386,7 +386,6 @@ void {class_name}::stepInternal(double dt) {{
             states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
         }}
     }}
-    m_dt_prev = dt;
 
     // Update output
     outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
