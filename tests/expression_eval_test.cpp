@@ -5,6 +5,8 @@
 TEST_CASE("Evaluate expression") {
     CHECK(rlc2ss::evaluateExpression("1 + 1") == 2);
     CHECK(rlc2ss::evaluateExpression("2^10") == 1024);
+    CHECK(rlc2ss::evaluateExpression("1e3") == 1000);
+    CHECK(rlc2ss::evaluateExpression("1e-3") == 0.001);
     CHECK(rlc2ss::evaluateExpression("1 + -2") == -1);
     CHECK(rlc2ss::evaluateExpression("1 + -(2)") == -1);
     CHECK(rlc2ss::evaluateExpression("-3 * 5") == -15);
