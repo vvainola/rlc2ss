@@ -100,7 +100,7 @@ std::string replace(const std::string& original, const std::string& search, cons
 }
 
 static bool isOperator(char c) {
-    return c == '+' || c == '-' || c == '*' || c == '/';
+    return c == '+' || c == '-' || c == '*' || c == '/' || c == '^';
 }
 
 static int getPrecedence(char op) {
@@ -108,6 +108,8 @@ static int getPrecedence(char op) {
         return 1;
     } else if (op == '*' || op == '/') {
         return 2;
+    } else if (op == '^') {
+        return 3;
     }
     return 0; // Default precedence for non-operators
 }
@@ -118,6 +120,7 @@ double applyOperator(double operand1, double operand2, char op) {
         case '-': return operand1 - operand2;
         case '*': return operand1 * operand2;
         case '/': return operand1 / operand2;
+        case '^': return pow(operand1, operand2);
         default:
             std::cerr << "Invalid operator: " << op << std::endl;
             return 0.0; // Handle invalid operators gracefully

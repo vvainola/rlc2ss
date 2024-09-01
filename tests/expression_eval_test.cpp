@@ -4,6 +4,7 @@
 
 TEST_CASE("Evaluate expression") {
     CHECK(rlc2ss::evaluateExpression("1 + 1") == 2);
+    CHECK(rlc2ss::evaluateExpression("2^10") == 1024);
     CHECK(rlc2ss::evaluateExpression("1 + -2") == -1);
     CHECK(rlc2ss::evaluateExpression("1 + -(2)") == -1);
     CHECK(rlc2ss::evaluateExpression("-3 * 5") == -15);
@@ -26,5 +27,10 @@ TEST_CASE("Evaluate expression") {
     CHECK(rlc2ss::evaluateExpression("(7-1)*(3+1)+1*(3-7+1)") == 21);
     CHECK(rlc2ss::evaluateExpression("((7-1)/((3+1)+1))*(3-7-1)") == -6);
     CHECK(rlc2ss::evaluateExpression("((7-1)/-((3+1)/4 + 4 + 4 / 2 / 2))*-(3-7-1)") == -5);
+    CHECK(rlc2ss::evaluateExpression("2^3*3") == 24);
+    CHECK(rlc2ss::evaluateExpression("1 / 2^24") == (1 / pow(2,24)));
+    CHECK(rlc2ss::evaluateExpression("2^ (3+1)") == 16);
+    CHECK(rlc2ss::evaluateExpression("2^ ( (3+1) * 2)") == 256);
+    CHECK(rlc2ss::evaluateExpression("2^ ( (3+1) * 2 + 1)") == 512);
 }
 
