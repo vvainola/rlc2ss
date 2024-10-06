@@ -1,0 +1,11 @@
+[project]
+name = "rlc-to-state-space"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "networkx>=3.3",
+    "sympy>=1.13.3",
+    "tqdm>=4.66.5",
+]
