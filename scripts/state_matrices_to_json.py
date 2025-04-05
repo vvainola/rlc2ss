@@ -188,8 +188,8 @@ class {class_name} {{
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
         m_solver;
     StateSpaceMatrices m_ss;
-    Components m_components_DO_NOT_TOUCH;
-    Switches m_switches_DO_NOT_TOUCH = {{.all = 0}};
+    Components _M_components_DO_NOT_TOUCH;
+    Switches _M_switches_DO_NOT_TOUCH = {{.all = 0}};
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
@@ -303,7 +303,7 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
 
 {class_name}::{class_name}(Components const& c)
     : components(c),
-      m_components_DO_NOT_TOUCH(c) {{
+      _M_components_DO_NOT_TOUCH(c) {{
     updateStateSpaceMatrices();
     m_solver.updateJacobian(m_ss.A);
 }}
@@ -340,10 +340,10 @@ void {class_name}::step(double dt, Inputs const& inputs_) {{
 void {class_name}::stepInternal(double dt) {{
     dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
-    if (components != m_components_DO_NOT_TOUCH || switches.all != m_switches_DO_NOT_TOUCH.all) {{
+    if (components != _M_components_DO_NOT_TOUCH || switches.all != _M_switches_DO_NOT_TOUCH.all) {{
 {verify_components}
-        m_components_DO_NOT_TOUCH = components;
-        m_switches_DO_NOT_TOUCH.all = switches.all;
+        _M_components_DO_NOT_TOUCH = components;
+        _M_switches_DO_NOT_TOUCH.all = switches.all;
         updateStateSpaceMatrices();
         m_solver.updateJacobian(m_ss.A);
         // Solve one step with backward euler to reduce numerical oscillations
