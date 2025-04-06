@@ -10,7 +10,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Core>
 #include <Eigen/LU>
-#include "integrator.h"
+#include "integrator.hpp"
 #include "nlohmann/json.hpp"
 #include <assert.h>
 

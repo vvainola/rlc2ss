@@ -2,7 +2,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Core>
 #include <Eigen/LU>
-#include "integrator.h"
+#include "integrator.hpp"
 #include <assert.h>
 
 class Model_3L {

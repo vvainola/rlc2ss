@@ -21,7 +21,7 @@
 // SOFTWARE.
 
 #define BOOST_ALLOW_DEPRECATED_HEADERS
-#include "integrator.h"
+#include "integrator.hpp"
 
 #include "..\schematics\diode_bridge_matrices.hpp"
 #include <fstream>

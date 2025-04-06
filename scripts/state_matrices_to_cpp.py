@@ -75,7 +75,7 @@ def matrices_to_cpp(model_name: str,
 #include <Eigen/Dense>
 #include <Eigen/Core>
 #include <Eigen/LU>
-#include "integrator.h"
+#include "integrator.hpp"
 #include <assert.h>
 
 class {class_name} {{
