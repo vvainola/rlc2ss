@@ -81,6 +81,10 @@ class Integrator {
         m_caching_enabled = enable;
     }
 
+    bool initialized() const {
+        return m_used_euler_cache != nullptr && m_used_tustin_cache != nullptr;
+    }
+
   private:
     using MatrixHash = uint64_t;
     MatrixHash matrixHash(matrix_t const& matrix);
@@ -96,8 +100,8 @@ class Integrator {
     // Matrx inverse caches
     std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_euler_caches;
     std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_tustin_caches;
-    std::unordered_map<double, matrix_t>* m_used_euler_cache;
-    std::unordered_map<double, matrix_t>* m_used_tustin_cache;
+    std::unordered_map<double, matrix_t>* m_used_euler_cache = nullptr;
+    std::unordered_map<double, matrix_t>* m_used_tustin_cache = nullptr;
     bool m_caching_enabled = false;
 
     bool withinTolerances(vector_t const& x, vector_t const& err) {

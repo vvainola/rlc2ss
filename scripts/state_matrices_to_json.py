@@ -340,7 +340,7 @@ void {class_name}::step(double dt, Inputs const& inputs_) {{
 void {class_name}::stepInternal(double dt) {{
     dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
-    if (components != _M_components_DO_NOT_TOUCH || switches.all != _M_switches_DO_NOT_TOUCH.all) {{
+    if (components != _M_components_DO_NOT_TOUCH || switches.all != _M_switches_DO_NOT_TOUCH.all || !m_solver.initialized()) {{
 {verify_components}
         _M_components_DO_NOT_TOUCH = components;
         _M_switches_DO_NOT_TOUCH.all = switches.all;
@@ -421,9 +421,9 @@ void {class_name}::updateStateSpaceMatrices() {{
     python = sys.executable.replace("\\", "\\\\")
     if dynamic:
         cpp.write(f'''
-    //if (m_circuit_json.empty()) {{
-    //    m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
-    //}}
+    if (m_circuit_json.empty()) {{
+        m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
+    }}
     if (!m_circuit_json.contains(std::to_string(switches.all))) {{
         m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
         if (!m_circuit_json.contains(std::to_string(switches.all))) {{
