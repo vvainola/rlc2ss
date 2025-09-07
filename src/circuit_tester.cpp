@@ -25,10 +25,12 @@
 #include <complex>
 #include "..\schematics\RL3_matrices.hpp"
 #include "..\qucs\diode_matrices.hpp"
+#include "qucs\saturating_inductor_matrices.hpp"
 #include "DbgGui/dbg_gui_wrapper.h"
 
-#define DIODE_TEST
-//#define RL3
+// #define DIODE_TEST
+// #define RL3
+#define SATURATING_INDUCTOR
 
 #if defined RL3
 Model_RL3 circuit(
@@ -52,6 +54,20 @@ Model_diode circuit(Model_diode::Components{
     .R3 = 1,
 });
 #endif
+#if defined SATURATING_INDUCTOR
+double L0 = 0.01;
+double L1 = (0.015 - 0.01) / (2 - 1);
+double L2 = (0.0151 - 0.015) / (5 - 2);
+double L1_act = (L1 * L0) / (L0 - L1);
+double L2_act = (L2 * L1_act) / (L1_act - L2);
+Model_saturating_inductor circuit(Model_saturating_inductor::Components{
+    .L0 = L0,
+    .L1 = L1_act,
+    .L2 = L2_act,
+    .R = 0.1,
+});
+#endif
+
 double debug[20];
 uint32_t temp;
 
@@ -64,15 +80,14 @@ extern "C" __declspec(dllexport) double* DLL_outputs = (double*)&circuit.outputs
 extern "C" __declspec(dllexport) double* DLL_debug = debug;
 
 extern "C" __declspec(dllexport) void DLL_init(double dt) {
-    DbgGui_create(dt);
+    //DbgGui_create(dt);
     DbgGui_startUpdateLoop();
 }
 
 extern "C" __declspec(dllexport) void DLL_update(double current_time, double dt) {
-    circuit.switches.S1 = current_time < 0.485;
-    if (!circuit.switches.S1 && circuit.outputs.I_L1 > 0) {
-        circuit.switches.S_D2 = 1;
-    }
+    double sum = abs(circuit.outputs.I_L0 + circuit.outputs.I_L1 + circuit.outputs.I_L2);
+    circuit.switches.S1 = abs(sum) > 1;
+    circuit.switches.S2 = abs(sum) > 2;
     circuit.step(dt, circuit.inputs);
     DbgGui_sampleWithTimestamp(current_time);
 }

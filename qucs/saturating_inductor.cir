@@ -1,0 +1,18 @@
+* Qucs 1.1.0 C:/Projects/rlc2ss/qucs/saturating_inductor.sch
+.INCLUDE "C:/Programs/qucs_s_win64/share/qucs-s/xspice_cmlib/include/ngspice_mathfunc.inc"
+* Qucs 1.1.0  C:/Projects/rlc2ss/qucs/saturating_inductor.sch
+R 0 _net0  50
+V _net1 0 DC 1
+L0 _net0 _net1  1N 
+L1 _net0 _net2  1N 
+S1 _net1  _net2  _net3  _net4 
+L2 _net0 _net5  1N 
+S2 _net2  _net5  _net6  _net7 
+.control
+set filetype=ascii
+op
+print all > spice4qucs.cir.dc_op
+destroy all
+quit
+.endc
+.end
