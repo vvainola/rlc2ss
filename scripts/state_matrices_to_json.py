@@ -47,7 +47,7 @@ def write_cpp_files(
     check_for_invalid_names(ss.component_names)
 
     class_name = 'Model_' + os.path.basename(model_name)
-    components_list = "\n".join([f'\t\tdouble {str(component)} = -1;' for component in ss.component_names])
+    components_list = "\n".join([f'\t\tdouble {str(component)} = {ss.default_values.get(str(component), -1)};' for component in ss.component_names])
     components_compare = " &&\n".join([f'\t\t\t\t{str(component)} == other.{str(component)}' for component in ss.component_names])
     verify_components = "\n".join([f'\t\tassert(components.{str(component)} != -1);' for component in ss.component_names])
     states_list = "\n".join([f'\t\t\tdouble {str(state)};' for state in ss.states])

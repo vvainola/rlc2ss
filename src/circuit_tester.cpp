@@ -61,10 +61,6 @@ double L2 = (0.0151 - 0.015) / (5 - 2);
 double L1_act = (L1 * L0) / (L0 - L1);
 double L2_act = (L2 * L1_act) / (L1_act - L2);
 Model_saturating_inductor circuit(Model_saturating_inductor::Components{
-    .L0 = L0,
-    .L1 = L1_act,
-    .L2 = L2_act,
-    .R = 0.1,
 });
 #endif
 

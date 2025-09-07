@@ -35,6 +35,7 @@ class Diode:
 @dataclass
 class StateSpaceMatrices:
     component_names: list[str]
+    default_values: dict[str, float]
     states: list[sympy.Symbol]
     inputs: list[sympy.Symbol]
     outputs: list[sympy.Symbol]
@@ -54,7 +55,7 @@ def matrices_to_cpp(model_name: str,
     ss = circuit_combinations[0]
 
     class_name = 'Model_' + os.path.basename(model_name)
-    components_list = "\n".join([f'\t\tdouble {str(component)} = -1;' for component in ss.component_names])
+    components_list = "\n".join([f'\t\tdouble {str(component)} = {ss.default_values.get(str(component), -1)};' for component in ss.component_names])
     components_compare = " &&\n".join([f'\t\t\t\t{str(component)} == other.{str(component)}' for component in ss.component_names])
     verify_components = "\n".join([f'\t\tassert(components.{str(component)} != -1);' for component in ss.component_names])
     states_list = "\n".join([f'\t\t\tdouble {str(state)};' for state in ss.states])

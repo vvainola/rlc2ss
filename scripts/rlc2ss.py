@@ -50,12 +50,23 @@ class Node:
 
 
 class Component:
-    def __init__(self, name: str, pos_node: Node, neg_node: Node):
+    def __init__(self, name: str, pos_node: Node, neg_node: Node, default_value: str):
         self.name: str = name
         self.pos_node: Node = pos_node
         self.neg_node: Node = neg_node
         self.pos_src = None
         self.neg_src = None
+        if default_value.endswith("N"):
+            self.default_value = float(default_value[:-1]) * 1e-9
+        elif default_value.endswith("U"):
+            self.default_value = float(default_value[:-1]) * 1e-6
+        elif default_value.endswith("M"):
+            self.default_value = float(default_value[:-1]) * 1e-3
+        else:
+            try:
+                self.default_value = float(default_value)
+            except (ValueError, TypeError):
+                self.default_value = -1.0
 
         if name[0] == 'V':
             self._voltage = Symbol(self.name)
@@ -267,6 +278,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     DEP_V_SRC_POS = 3
     DEP_V_SRC_NEG = 4
     DEP_I_SRC = 3
+    DEFAULT_VALUE = 3
     netlist = parsed_netlist
     nodes: T.List[Node] = []
     components: T.List[Component] = []
@@ -303,8 +315,8 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
 
         pos_node = nodes[nodes.index(Node(line_split[POS_NODE]))]
         neg_node = nodes[nodes.index(Node(line_split[NEG_NODE]))]
-
-        component = Component(line_split[NAME], pos_node, neg_node)
+        default_value = line_split[DEFAULT_VALUE] if len(line_split) > DEFAULT_VALUE else '-1'
+        component = Component(line_split[NAME], pos_node, neg_node, default_value)
         neg_node.connections.append(component)
         pos_node.connections.append(component)
         components.append(component)
@@ -668,10 +680,13 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     # D = D1 + C2 * H1 * K_inv * B1     ( D1 + K2 * K1_inv * B1 )
 
     component_names = [c.name for c in inductors + capacitors + resistors + vv_sources + iv_sources + vi_sources + ii_sources]
+    default_values = {c.name: c.default_value for c in components}
     for Lm in mutual_inductors:
         component_names.append(Lm[0])
+    component_names.sort()
     ss = StateSpaceMatrices(
         component_names = component_names,
+        default_values = default_values,
         states = states,
         inputs = inputs,
         outputs = outputs,

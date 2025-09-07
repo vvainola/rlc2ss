@@ -86,10 +86,10 @@ class Model_saturating_inductor {
     };
 
     struct Components {
-        double L0 = -1;
-        double L1 = -1;
-        double L2 = -1;
-        double R = -1;
+        double L0 = 0.01;
+        double L1 = 0.009999999999999997;
+        double L2 = 3.344481605351208e-05;
+        double R = 0.1;
 
         bool operator==(Components const& other) const {
             return
