@@ -2,15 +2,6 @@ version = 1
 requires-python = ">=3.11"
 
 [[package]]
-name = "bottle"
-version = "0.12.25"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fd/04/1c09ab851a52fe6bc063fd0df758504edede5cc741bd2e807bf434a09215/bottle-0.12.25.tar.gz", hash = "sha256:e1a9c94970ae6d710b3fb4526294dfeb86f2cb4a81eff3a4b98dc40fb0e5e021", size = 74231 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/1f/5977ea88c6a3df6199db97d320e5da816d415d1eb75a987a1f6823d5cc9d/bottle-0.12.25-py3-none-any.whl", hash = "sha256:d6f15f9d422670b7c073d63bd8d287b135388da187a0f3e3c19293626ce034ea", size = 90181 },
-]
-
-[[package]]
 name = "certifi"
 version = "2024.8.30"
 source = { registry = "https://pypi.org/simple" }
@@ -69,27 +60,20 @@ wheels = [
 
 [[package]]
 name = "conan"
-version = "1.59.0"
+version = "2.20.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "bottle" },
     { name = "colorama" },
-    { name = "distro", marker = "sys_platform == 'linux' or sys_platform == 'linux2'" },
+    { name = "distro", marker = "platform_system == 'FreeBSD' or platform_system == 'Linux'" },
     { name = "fasteners" },
     { name = "jinja2" },
-    { name = "node-semver" },
     { name = "patch-ng" },
-    { name = "pluginbase" },
-    { name = "pygments" },
-    { name = "pyjwt" },
     { name = "python-dateutil" },
     { name = "pyyaml" },
     { name = "requests" },
-    { name = "six" },
-    { name = "tqdm" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/41/b2/839b3bdd1a02e0d32c13a49ce6fe8239535997736cafab864a0eb351e5ac/conan-1.59.0.tar.gz", hash = "sha256:161c8f2d3193c209a1e9525fe7d6c600688da529a9864e6ef557133e93131952", size = 780999 }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/f1/b8c340a1d2fc019bf5849d1884bd9b823ab2c151c224a89327ff5e45ee53/conan-2.20.1.tar.gz", hash = "sha256:3d2eb33c78a8b2ea78592415dae3799074d90eb42bfcbe28bf6b6b7848e0fa03", size = 530031 }
 
 [[package]]
 name = "distro"
@@ -186,43 +170,10 @@ wheels = [
 ]
 
 [[package]]
-name = "node-semver"
-version = "0.6.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f1/4e/1d9a619dcfd9f42d0e874a5b47efa0923e84829886e6a47b45328a1f32f1/node-semver-0.6.1.tar.gz", hash = "sha256:4016f7c1071b0493f18db69ea02d3763e98a633606d7c7beca811e53b5ac66b7", size = 10972 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/51/6cf3a2b18ca35cbe4ad3c7538a7c3dc0cb24e71629fb16e729c137d06432/node_semver-0.6.1-py3-none-any.whl", hash = "sha256:d4bf83873894591a0cbb6591910d96917fbadc9731e8e39e782d3a2fbc2b841e", size = 10937 },
-]
-
-[[package]]
 name = "patch-ng"
-version = "1.17.4"
+version = "1.18.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c1/b2/ad3cd464101435fdf642d20e0e5e782b4edaef1affdf2adfc5c75660225b/patch-ng-1.17.4.tar.gz", hash = "sha256:627abc5bd723c8b481e96849b9734b10065426224d4d22cd44137004ac0d4ace", size = 17395 }
-
-[[package]]
-name = "pluginbase"
-version = "1.0.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f3/07/753451e80d2b0bf3bceec1162e8d23638ac3cb18d1c38ad340c586e90b42/pluginbase-1.0.1.tar.gz", hash = "sha256:ff6c33a98fce232e9c73841d787a643de574937069f0d18147028d70d7dee287", size = 43588 }
-
-[[package]]
-name = "pygments"
-version = "2.18.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8e/62/8336eff65bcbc8e4cb5d05b55faf041285951b6e80f33e2bff2024788f31/pygments-2.18.0.tar.gz", hash = "sha256:786ff802f32e91311bff3889f6e9a86e81505fe99f2735bb6d60ae0c5004f199", size = 4891905 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/3f/01c8b82017c199075f8f788d0d906b9ffbbc5a47dc9918a945e13d5a2bda/pygments-2.18.0-py3-none-any.whl", hash = "sha256:b8e6aca0523f3ab76fee51799c488e38782ac06eafcf95e7ba832985c8e7b13a", size = 1205513 },
-]
-
-[[package]]
-name = "pyjwt"
-version = "2.9.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fb/68/ce067f09fca4abeca8771fe667d89cc347d1e99da3e093112ac329c6020e/pyjwt-2.9.0.tar.gz", hash = "sha256:7e1e5b56cc735432a7369cbfa0efe50fa113ebecdc04ae6922deba8b84582d0c", size = 78825 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/84/0fdf9b18ba31d69877bd39c9cd6052b47f3761e9910c15de788e519f079f/PyJWT-2.9.0-py3-none-any.whl", hash = "sha256:3b02fb0f44517787776cf48f2ae25d8e14f300e6d7545a4315cee571a415e850", size = 22344 },
-]
+sdist = { url = "https://files.pythonhosted.org/packages/ee/c0/53a2f017ac5b5397a7064c2654b73c3334ac8461315707cbede6c12199eb/patch-ng-1.18.1.tar.gz", hash = "sha256:52fd46ee46f6c8667692682c1fd7134edc65a2d2d084ebec1d295a6087fc0291", size = 17913 }
 
 [[package]]
 name = "python-dateutil"
@@ -280,7 +231,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "conan", specifier = "==1.59.0" },
+    { name = "conan", specifier = ">=2.0" },
     { name = "meson", specifier = ">=1.5.2" },
     { name = "networkx", specifier = ">=3.3" },
     { name = "sympy", specifier = ">=1.13.3" },

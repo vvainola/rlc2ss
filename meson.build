@@ -1,4 +1,4 @@
-project('RLC_to_SS',
+project('rlc2ss',
     'cpp',
     version : '0.8.0',
     default_options : [
