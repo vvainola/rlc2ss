@@ -26,11 +26,13 @@
 #include "..\schematics\RL3_matrices.hpp"
 #include "..\qucs\diode_matrices.hpp"
 #include "qucs\saturating_inductor_matrices.hpp"
+#include "qucs\mutual_inductor_matrices.hpp"
 #include "DbgGui/dbg_gui_wrapper.h"
 
-// #define DIODE_TEST
+#define DIODE_TEST
 // #define RL3
-#define SATURATING_INDUCTOR
+// #define SATURATING_INDUCTOR
+// #define MUTUAL_INDUCTOR
 
 #if defined RL3
 Model_RL3 circuit(
@@ -43,25 +45,24 @@ Model_RL3 circuit(
      .Kab = 0.9934,
      .Kbc = 0.9934,
      .Kca = 0.9934});
-#endif
-#if defined DIODE_TEST
+#elif defined DIODE_TEST
 Model_diode circuit(Model_diode::Components{
     .L1 = 1e-2,
-    .R_D1 = 1e-6,
-    .R_D2 = 1e-6,
-    .R1 = 1,
-    .R2 = 1e-3,
-    .R3 = 1,
+    .R1 = 0.1,
+    .R2 = 1.0,
+    .R3 = 1.0,
+    .R_D2 = 1e-3,
+    .R_D3 = 1e-3,
 });
-#endif
-#if defined SATURATING_INDUCTOR
+#elif defined SATURATING_INDUCTOR
 double L0 = 0.01;
 double L1 = (0.015 - 0.01) / (2 - 1);
 double L2 = (0.0151 - 0.015) / (5 - 2);
 double L1_act = (L1 * L0) / (L0 - L1);
 double L2_act = (L2 * L1_act) / (L1_act - L2);
-Model_saturating_inductor circuit(Model_saturating_inductor::Components{
-});
+Model_saturating_inductor circuit(Model_saturating_inductor::Components{});
+#elif defined MUTUAL_INDUCTOR
+Model_mutual_inductor circuit(Model_mutual_inductor::Components{});
 #endif
 
 double debug[20];
@@ -76,14 +77,17 @@ extern "C" __declspec(dllexport) double* DLL_outputs = (double*)&circuit.outputs
 extern "C" __declspec(dllexport) double* DLL_debug = debug;
 
 extern "C" __declspec(dllexport) void DLL_init(double dt) {
-    //DbgGui_create(dt);
+    DbgGui_create(dt);
     DbgGui_startUpdateLoop();
 }
 
 extern "C" __declspec(dllexport) void DLL_update(double current_time, double dt) {
+#if defined SATURATING_INDUCTOR
     double sum = abs(circuit.outputs.I_L0 + circuit.outputs.I_L1 + circuit.outputs.I_L2);
     circuit.switches.S1 = abs(sum) > 1;
     circuit.switches.S2 = abs(sum) > 2;
+#endif
+    circuit.switches.S1 = current_time < 0.6;
     circuit.step(dt, circuit.inputs);
     DbgGui_sampleWithTimestamp(current_time);
 }

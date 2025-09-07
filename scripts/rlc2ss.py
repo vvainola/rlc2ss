@@ -292,7 +292,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     iv_sources: T.List[Component] = []
     vi_sources: T.List[Component] = []
     ii_sources: T.List[Component] = []
-    mutual_inductors = []
+    mutual_inductors: T.List[T.Tuple[str, Component, Component]] = []
     for line in netlist:
         line_split = line.split()
         if line_split[NAME][0] == 'K' or line_split[NAME][0] == 'X' or line_split[NAME][0] == 'Y':
@@ -308,7 +308,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         if line_split[NAME][0] == 'K':
             L1 = get_component(components, line_split[1])
             L2 = get_component(components, line_split[2])
-            mutual_inductors.append([line_split[NAME], L1, L2])
+            mutual_inductors.append((line_split[NAME], L1, L2))
             continue
         elif line_split[NAME][0] == 'X' or line_split[NAME][0] == 'Y':
             continue

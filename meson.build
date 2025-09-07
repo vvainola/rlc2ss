@@ -48,6 +48,7 @@ shared_library('circuit_tester',
         'schematics/RL3_matrices.cpp',
         'qucs/diode_matrices.cpp',
         'qucs/saturating_inductor_matrices.cpp',
+        'qucs/mutual_inductor_matrices.cpp',
     ],
     include_directories: [
         'src'

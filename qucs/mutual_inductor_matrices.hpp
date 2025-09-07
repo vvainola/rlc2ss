@@ -13,7 +13,7 @@
 #include "integrator.hpp"
 #include <assert.h>
 
-class Model_diode {
+class Model_mutual_inductor {
   public:
     struct Components;
     union Inputs;
@@ -23,13 +23,13 @@ class Model_diode {
     struct StateSpaceMatrices;
     static StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
-    Model_diode() {}
-    Model_diode(Components const& c);
+    Model_mutual_inductor() {}
+    Model_mutual_inductor(Components const& c);
 
     static inline constexpr size_t NUM_INPUTS = 4;
-    static inline constexpr size_t NUM_OUTPUTS = 9;
-    static inline constexpr size_t NUM_STATES = 2;
-    static inline constexpr size_t NUM_SWITCHES = 3;
+    static inline constexpr size_t NUM_OUTPUTS = 3;
+    static inline constexpr size_t NUM_STATES = 3;
+    static inline constexpr size_t NUM_SWITCHES = 0;
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
@@ -61,9 +61,9 @@ class Model_diode {
         }
         struct {
             double V1;
-            double V_D2;
-            double V_D3;
-            double V_internal;
+            double V2;
+            double V3;
+            double VPr1;
         };
         Eigen::Vector<double, NUM_INPUTS> data;
     };
@@ -75,46 +75,40 @@ class Model_diode {
         struct {
             double I_L1;
             double I_L2;
-            double I_R_D2;
-            double I_R_D3;
-            double N_D2_neg;
-            double N_D2_pos;
-            double N_D3_neg;
-            double N_D3_pos;
-            double V_L1;
+            double I_L3;
         };
         Eigen::Vector<double, NUM_OUTPUTS> data;
     };
 
     union Switches {
         struct {
-            uint64_t S1 : 1;
-            uint64_t S_D2 : 1;
-            uint64_t S_D3 : 1;
+
         };
         uint64_t all;
     };
 
     struct Components {
-        double L1 = 0.001;
-        double L2 = 0.01;
-        double R1 = -1.0;
-        double R2 = -1.0;
-        double R3 = -1.0;
-        double R4 = 1.0;
-        double R_D2 = -1.0;
-        double R_D3 = -1.0;
+        double K12 = -1;
+        double K21 = -1;
+        double K31 = -1;
+        double L1 = 1.0;
+        double L2 = 1.0;
+        double L3 = 1.0;
+        double R1 = 10.0;
+        double R2 = 10.0;
+        double R3 = 10.0;
 
         bool operator==(Components const& other) const {
             return
+                K12 == other.K12 &&
+                K21 == other.K21 &&
+                K31 == other.K31 &&
                 L1 == other.L1 &&
                 L2 == other.L2 &&
+                L3 == other.L3 &&
                 R1 == other.R1 &&
                 R2 == other.R2 &&
-                R3 == other.R3 &&
-                R4 == other.R4 &&
-                R_D2 == other.R_D2 &&
-                R_D3 == other.R_D3;
+                R3 == other.R3;
         }
 
         bool operator!=(Components const& other) const {
@@ -129,6 +123,7 @@ class Model_diode {
         struct {
             double I_L1;
             double I_L2;
+            double I_L3;
         };
         Eigen::Vector<double, NUM_STATES> data;
     };
@@ -151,8 +146,7 @@ class Model_diode {
     Switches switches = {.all = 0};
 
   private:
-    void stepInternal(double dt, bool zc_event);
-    void checkTopology();
+    void stepInternal(double dt);
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>

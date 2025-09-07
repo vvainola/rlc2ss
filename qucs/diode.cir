@@ -1,8 +1,20 @@
-D1 N_D1_pos  N_D_neg
-D2 N_D2_pos  N_D_neg
-L1 _net0 N_D2_pos
-R1 _net2 N_D1_pos I;
-R2 0 N_D2_pos I;
-R3 N_D_neg _net0
-S1 _net1  _net2
-V1 _net1 0
+* Qucs 1.1.0 C:/Projects/rlc2ss/qucs/diode.sch
+.INCLUDE "C:/Programs/qucs_s_win64/share/qucs-s/xspice_cmlib/include/ngspice_mathfunc.inc"
+* Qucs 1.1.0  C:/Projects/rlc2ss/qucs/diode.sch
+L1 _net0 _net1  1M Vc;
+R3 N_D2_neg _net0  1K
+V1 N_D3_neg 0 DC 1
+S1 N_D3_neg  N_D3_pos  _net2  _net3 
+D2 N_D2_pos  N_D2_neg 
+R2 0 N_D2_pos  1K
+D3 N_D3_pos  N_D3_neg 
+R1 N_D3_pos N_D2_neg  1K
+V_internal N_D2_pos _net1 DC 1
+.control
+set filetype=ascii
+op
+print all > spice4qucs.cir.dc_op
+destroy all
+quit
+.endc
+.end
