@@ -650,6 +650,9 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     for c in voltage_sources + current_sources:
         if not (c.name.startswith('I_switch_')) and not (c.name.startswith('V_switch_')):
             inputs.append(Symbol(c.name))
+    inputs = [str(s) for s in inputs]
+    inputs.sort()
+    inputs = [Symbol(s) for s in inputs]
     B1, _ = sy.linear_eq_to_matrix(Bu, inputs)
 
     Cx_Du = Matrix(sy.zeros(len(outputs), 1))
