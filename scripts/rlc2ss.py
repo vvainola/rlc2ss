@@ -386,7 +386,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     ground = nodes[nodes.index(Node('0'))]
     for node in nodes:
         if not nx.has_path(temp_tree, node.name, ground.name):
-            component = Component(f'V_switch_{node.name}', node, ground)
+            component = Component(f'V_switch_{node.name}', node, ground, '0')
             voltage_sources.append(component)
             components.append(component)
             temp_tree.add_edge(node.name, ground.name, edge_idx=components.index(component))
