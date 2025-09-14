@@ -281,7 +281,6 @@ void Model_diode_bridge_3l::stepInternal(double dt) {
             states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
         }
     }
-    m_dt_prev = dt;
 
     // Update output
     outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;

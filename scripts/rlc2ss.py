@@ -54,8 +54,8 @@ class Component:
         self.name: str = name
         self.pos_node: Node = pos_node
         self.neg_node: Node = neg_node
-        self.pos_src = None
-        self.neg_src = None
+        self.pos_src: T.Optional[Symbol] = None
+        self.neg_src: T.Optional[Symbol] = None
         if default_value.endswith("N"):
             self.default_value = float(default_value[:-1]) * 1e-9
         elif default_value.endswith("U"):
@@ -343,7 +343,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
             component.update_voltage(Symbol(line_split[NAME]) * (pos - neg))
         elif component.name[0] == 'F':
             ii_sources.append(component)
-            src = Symbol(line_split[DEP_I_SRC])
+            src = Symbol(f'I_{line_split[DEP_I_SRC]}')
             component.update_src(src)
             component.update_current(Symbol(line_split[NAME]) * src)
         elif component.name[0] == 'G':

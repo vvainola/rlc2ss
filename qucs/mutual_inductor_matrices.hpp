@@ -26,9 +26,9 @@ class Model_mutual_inductor {
     Model_mutual_inductor() {}
     Model_mutual_inductor(Components const& c);
 
-    static inline constexpr size_t NUM_INPUTS = 3;
-    static inline constexpr size_t NUM_OUTPUTS = 8;
-    static inline constexpr size_t NUM_STATES = 3;
+    static inline constexpr size_t NUM_INPUTS = 4;
+    static inline constexpr size_t NUM_OUTPUTS = 10;
+    static inline constexpr size_t NUM_STATES = 4;
     static inline constexpr size_t NUM_SWITCHES = 0;
 
     enum class TimestepErrorCorrectionMode {
@@ -63,6 +63,7 @@ class Model_mutual_inductor {
             double V1;
             double V2;
             double V3;
+            double VSRC1;
         };
         Eigen::Vector<double, NUM_INPUTS> data;
     };
@@ -76,10 +77,12 @@ class Model_mutual_inductor {
             double I_L2;
             double I_L3;
             double I_R3;
+            double I_R4;
             double I_V3;
             double N1;
             double N2;
             double N3;
+            double V_Cf;
         };
         Eigen::Vector<double, NUM_OUTPUTS> data;
     };
@@ -92,6 +95,8 @@ class Model_mutual_inductor {
     };
 
     struct Components {
+        double Cf = 0.0001;
+        double FSRC1 = -1.0;
         double K12 = -1;
         double K21 = -1;
         double K31 = -1;
@@ -101,9 +106,12 @@ class Model_mutual_inductor {
         double R1 = 10.0;
         double R2 = 10.0;
         double R3 = 0.01;
+        double R4 = 10.0;
 
         bool operator==(Components const& other) const {
             return
+                Cf == other.Cf &&
+                FSRC1 == other.FSRC1 &&
                 K12 == other.K12 &&
                 K21 == other.K21 &&
                 K31 == other.K31 &&
@@ -112,7 +120,8 @@ class Model_mutual_inductor {
                 L3 == other.L3 &&
                 R1 == other.R1 &&
                 R2 == other.R2 &&
-                R3 == other.R3;
+                R3 == other.R3 &&
+                R4 == other.R4;
         }
 
         bool operator!=(Components const& other) const {
@@ -128,6 +137,7 @@ class Model_mutual_inductor {
             double I_L1;
             double I_L2;
             double I_L3;
+            double V_Cf;
         };
         Eigen::Vector<double, NUM_STATES> data;
     };

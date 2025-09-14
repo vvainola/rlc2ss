@@ -3,16 +3,20 @@
 * Qucs 1.1.0  C:/Projects/rlc2ss/qucs/mutual_inductor.sch
 V1 _net0 0 DC 1
 V2 _net1 0 DC 1
-L1 N1 0  1 
-L2 N2 0  1 
-L3 N3 0  1 
+L1 N1 _net2  1 
+L2 N2 _net2  1 
+L3 N3 _net2  1 
 K12 L1 L2 0.9 
 K21 L2 L3 0.9 
 K31 L3 L1 0.9 
 R2 _net1 N2  10
 R1 _net0 N1  10
-R3 _net2 N3  10E-3;I;
-V3 _net2 0 DC 1I;
+R3 _net3 N3  10E-3;I;
+V3 _net3 0 DC 1I;
+R4 _net4 _net5  10;I;
+FSRC1 _net4 0  VSRC1 10
+VSRC1 _net2 0 DC 0
+Cf 0 _net5  100E-6 
 .control
 set filetype=ascii
 op

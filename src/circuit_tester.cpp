@@ -65,6 +65,7 @@ double L2_act = (L2 * L1_act) / (L1_act - L2);
 Model_saturating_inductor circuit(Model_saturating_inductor::Components{});
 #elif defined MUTUAL_INDUCTOR
 Model_mutual_inductor circuit(Model_mutual_inductor::Components {
+    .FSRC1 = -100.0,
     .K12 = 0.5,
     .K21 = 0.5,
     .K31 = 0.5,

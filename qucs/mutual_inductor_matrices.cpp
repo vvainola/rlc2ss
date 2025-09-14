@@ -75,6 +75,8 @@ void Model_mutual_inductor::stepInternal(double dt) {
     dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
     if (components != _M_components_DO_NOT_TOUCH || switches.all != _M_switches_DO_NOT_TOUCH.all) {
+		assert(components.Cf != -1);
+		assert(components.FSRC1 != -1);
 		assert(components.K12 != -1);
 		assert(components.K21 != -1);
 		assert(components.K31 != -1);
@@ -84,6 +86,7 @@ void Model_mutual_inductor::stepInternal(double dt) {
 		assert(components.R1 != -1);
 		assert(components.R2 != -1);
 		assert(components.R3 != -1);
+		assert(components.R4 != -1);
         _M_components_DO_NOT_TOUCH = components;
         _M_switches_DO_NOT_TOUCH.all = switches.all;
         m_ss = calculateStateSpace(components, switches);
@@ -136,6 +139,7 @@ void Model_mutual_inductor::stepInternal(double dt) {
 	states.I_L1 = outputs.I_L1;
 	states.I_L2 = outputs.I_L2;
 	states.I_L3 = outputs.I_L3;
+	states.V_Cf = outputs.V_Cf;
 }
 std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calculateStateSpace_0(Model_mutual_inductor::Components const& c);
 
@@ -172,6 +176,8 @@ Model_mutual_inductor::StateSpaceMatrices Model_mutual_inductor::calculateStateS
 
 std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calculateStateSpace_0(Model_mutual_inductor::Components const& c) // 
 {
+	double Cf = c.Cf;
+	double FSRC1 = c.FSRC1;
 	double K12 = c.K12;
 	double K21 = c.K21;
 	double K31 = c.K31;
@@ -181,52 +187,62 @@ std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calculateStateSpace_0
 	double R1 = c.R1;
 	double R2 = c.R2;
 	double R3 = c.R3;
+	double R4 = c.R4;
 
 
     Eigen::Matrix<double, Model_mutual_inductor::NUM_STATES, Model_mutual_inductor::NUM_STATES> K1 {
-		{ L1, K12*sqrt(L1*L2), K31*sqrt(L1*L3) },
-		{ K12*sqrt(L1*L2), L2, K21*sqrt(L2*L3) },
-		{ K31*sqrt(L1*L3), K21*sqrt(L2*L3), L3 } };
+		{ L1, K12*sqrt(L1*L2), K31*sqrt(L1*L3), 0 },
+		{ K12*sqrt(L1*L2), L2, K21*sqrt(L2*L3), 0 },
+		{ K31*sqrt(L1*L3), K21*sqrt(L2*L3), L3, 0 },
+		{ 0, 0, 0, Cf } };
 
     Eigen::Matrix<double, Model_mutual_inductor::NUM_OUTPUTS, Model_mutual_inductor::NUM_STATES> K2 {
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ L1, 0, 0 },
-		{ 0, L2, 0 },
-		{ 0, 0, L3} };
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0} };
 
     Eigen::Matrix<double, Model_mutual_inductor::NUM_STATES, Model_mutual_inductor::NUM_STATES> A1 {
-		{ -R1, 0, 0 },
-		{ 0, -R2, 0 },
-		{ 0, 0, -R3 } };
+		{ -R1, 0, 0, 0 },
+		{ 0, -R2, 0, 0 },
+		{ 0, 0, -R3, 0 },
+		{ FSRC1, FSRC1, FSRC1, 0 } };
 
     Eigen::Matrix<double, Model_mutual_inductor::NUM_STATES, Model_mutual_inductor::NUM_INPUTS> B1 {
-		{ 1, 0, 0 },
-		{ 0, 1, 0 },
-		{ 0, 0, 1 } };
+		{ 1, 0, 0, -1 },
+		{ 0, 1, 0, -1 },
+		{ 0, 0, 1, -1 },
+		{ 0, 0, 0, 0 } };
 
     Eigen::Matrix<double, Model_mutual_inductor::NUM_OUTPUTS, Model_mutual_inductor::NUM_STATES> C1 {
-		{ 1, 0, 0 },
-		{ 0, 1, 0 },
-		{ 0, 0, 1 },
-		{ 0, 0, 1 },
-		{ 0, 0, -1 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 } };
+		{ 1, 0, 0, 0 },
+		{ 0, 1, 0, 0 },
+		{ 0, 0, 1, 0 },
+		{ 0, 0, 1, 0 },
+		{ -FSRC1, -FSRC1, -FSRC1, 0 },
+		{ 0, 0, -1, 0 },
+		{ -R1, 0, 0, 0 },
+		{ 0, -R2, 0, 0 },
+		{ 0, 0, -R3, 0 },
+		{ 0, 0, 0, 1 } };
 
     Eigen::Matrix<double, Model_mutual_inductor::NUM_OUTPUTS, Model_mutual_inductor::NUM_INPUTS> D1 {
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 } };
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 0, 0, 0, 0 },
+		{ 1, 0, 0, 0 },
+		{ 0, 1, 0, 0 },
+		{ 0, 0, 1, 0 },
+		{ 0, 0, 0, 0 } };
 
     return calcStateSpace(K1, A1, B1, K2, C1, D1);
 }
