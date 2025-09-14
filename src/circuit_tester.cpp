@@ -27,12 +27,14 @@
 #include "..\qucs\diode_matrices.hpp"
 #include "qucs\saturating_inductor_matrices.hpp"
 #include "qucs\mutual_inductor_matrices.hpp"
+#include "qucs\controlled_sources_matrices.hpp"
 #include "DbgGui/dbg_gui_wrapper.h"
 
 // #define DIODE_TEST
 // #define RL3
 // #define SATURATING_INDUCTOR
-#define MUTUAL_INDUCTOR
+// #define MUTUAL_INDUCTOR
+#define CONTROLLED_SOURCES
 
 #if defined RL3
 Model_RL3 circuit(
@@ -64,11 +66,19 @@ double L1_act = (L1 * L0) / (L0 - L1);
 double L2_act = (L2 * L1_act) / (L1_act - L2);
 Model_saturating_inductor circuit(Model_saturating_inductor::Components{});
 #elif defined MUTUAL_INDUCTOR
-Model_mutual_inductor circuit(Model_mutual_inductor::Components {
+Model_mutual_inductor circuit(Model_mutual_inductor::Components{
     .FSRC1 = -100.0,
     .K12 = 0.5,
     .K21 = 0.5,
     .K31 = 0.5,
+});
+#elif defined CONTROLLED_SOURCES
+Model_controlled_sources circuit(Model_controlled_sources::Components{
+    .ESRC3 = 0.1,
+    .FSRC5 = -2.0,
+    .GSRC1 = 30.0,
+    .HSRC4 = 10.0,
+    .L1 = 0.1,
 });
 #endif
 

@@ -43,12 +43,13 @@ executable('mutual_inductance',
 
 shared_library('circuit_tester',
     sources : [
+        'qucs/controlled_sources_matrices.cpp',
+        'qucs/diode_matrices.cpp',
+        'qucs/mutual_inductor_matrices.cpp',
+        'qucs/saturating_inductor_matrices.cpp',
+        'schematics/RL3_matrices.cpp',
         'src/circuit_tester.cpp',
         'src/rlc2ss.cpp',
-        'schematics/RL3_matrices.cpp',
-        'qucs/diode_matrices.cpp',
-        'qucs/saturating_inductor_matrices.cpp',
-        'qucs/mutual_inductor_matrices.cpp',
     ],
     include_directories: [
         'src'

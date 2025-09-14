@@ -347,16 +347,16 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
             component.update_src(src)
             component.update_current(Symbol(line_split[NAME]) * src)
         elif component.name[0] == 'G':
+            vi_sources.append(component)
             pos = Symbol(line_split[DEP_V_SRC_POS])
             neg = Symbol(line_split[DEP_V_SRC_NEG])
             component.update_src(pos, neg)
             component.update_current(Symbol(line_split[NAME]) * (pos - neg))
-            vi_sources.append(component)
         elif component.name[0] == 'H':
-            src = Symbol(line_split[DEP_I_SRC])
+            iv_sources.append(component)
+            src = Symbol(f'I_{line_split[DEP_I_SRC]}')
             component.update_src(src)
             component.update_voltage(Symbol(line_split[NAME]) * src)
-            iv_sources.append(component)
         else:
             assert False, f"Unknown component type {component.name}"
 
@@ -386,7 +386,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         outputs = outputs[1:]
 
     temp_tree = nx.Graph()
-    for c in voltage_sources + capacitors + resistors + current_sources + inductors:
+    for c in components:
         temp_tree.add_edge(c.pos_node.name, c.neg_node.name, edge_idx=components.index(c))
 
     ground = nodes[nodes.index(Node('0'))]
