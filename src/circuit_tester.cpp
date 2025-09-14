@@ -74,7 +74,9 @@ Model_mutual_inductor circuit(Model_mutual_inductor::Components{
 });
 #elif defined CONTROLLED_SOURCES
 Model_controlled_sources circuit(Model_controlled_sources::Components{
-    .ESRC3 = 0.1,
+    .C_1 = 100e-3,
+    .C_2 = 10e-3,
+    .ESRC3 = 1,
     .FSRC5 = -2.0,
     .GSRC1 = 30.0,
     .HSRC4 = 10.0,

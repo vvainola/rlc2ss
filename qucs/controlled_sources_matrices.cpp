@@ -87,6 +87,8 @@ void Model_controlled_sources::stepInternal(double dt) {
 		assert(components.R3 != -1);
 		assert(components.R4 != -1);
 		assert(components.R5 != -1);
+		assert(components.R6 != -1);
+		assert(components.R7 != -1);
         _M_components_DO_NOT_TOUCH = components;
         _M_switches_DO_NOT_TOUCH.all = switches.all;
         m_ss = calculateStateSpace(components, switches);
@@ -187,34 +189,39 @@ std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> calculateStateSpac
 	double R3 = c.R3;
 	double R4 = c.R4;
 	double R5 = c.R5;
+	double R6 = c.R6;
+	double R7 = c.R7;
 
 
     Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> K1 {
+		{ FSRC5*GSRC1*L1*R6, 0, -C_2*R6 },
 		{ -FSRC5*GSRC1*L1*R3 + L1, 0, 0 },
-		{ GSRC1*L1, C_1, 0 },
-		{ -FSRC5*GSRC1*L1, 0, C_2 } };
+		{ GSRC1*L1, C_1, 0 } };
 
     Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> K2 {
+		{ 0, 0, C_2 },
 		{ 0, 0, 0 },
 		{ 0, 0, 0 },
 		{ 0, 0, 0} };
 
     Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> A1 {
+		{ 0, 0, R6/R7 + 1 },
 		{ HSRC4 - R1 - R3 - R5, ESRC3, 0 },
-		{ 0, 0, 0 },
 		{ 0, 0, 0 } };
 
     Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_INPUTS> B1 {
-		{ 1, -1, 0 },
 		{ 0, 0, 0 },
+		{ 1, -1, 0 },
 		{ 0, 0, 0 } };
 
     Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> C1 {
+		{ 0, 0, 0 },
 		{ 1, 0, 0 },
 		{ 0, 1, 0 },
 		{ 0, 0, 1 } };
 
     Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_INPUTS> D1 {
+		{ 0, 0, 0 },
 		{ 0, 0, 0 },
 		{ 0, 0, 0 },
 		{ 0, 0, 0 } };

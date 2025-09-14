@@ -27,7 +27,7 @@ class Model_controlled_sources {
     Model_controlled_sources(Components const& c);
 
     static inline constexpr size_t NUM_INPUTS = 3;
-    static inline constexpr size_t NUM_OUTPUTS = 3;
+    static inline constexpr size_t NUM_OUTPUTS = 4;
     static inline constexpr size_t NUM_STATES = 3;
     static inline constexpr size_t NUM_SWITCHES = 0;
 
@@ -72,6 +72,7 @@ class Model_controlled_sources {
             data.setZero();
         }
         struct {
+            double I_C_2;
             double I_L1;
             double V_C_1;
             double V_C_2;
@@ -88,7 +89,7 @@ class Model_controlled_sources {
 
     struct Components {
         double C_1 = 9.999999999999999e-05;
-        double C_2 = 9.999999999999999e-05;
+        double C_2 = 0.0001;
         double ESRC3 = -1.0;
         double FSRC5 = -1.0;
         double GSRC1 = -1.0;
@@ -99,6 +100,8 @@ class Model_controlled_sources {
         double R3 = 1.0;
         double R4 = 1.0;
         double R5 = 1.0;
+        double R6 = 1.0;
+        double R7 = 1000.0;
 
         bool operator==(Components const& other) const {
             return
@@ -113,7 +116,9 @@ class Model_controlled_sources {
                 R2 == other.R2 &&
                 R3 == other.R3 &&
                 R4 == other.R4 &&
-                R5 == other.R5;
+                R5 == other.R5 &&
+                R6 == other.R6 &&
+                R7 == other.R7;
         }
 
         bool operator!=(Components const& other) const {
