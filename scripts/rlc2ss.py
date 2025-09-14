@@ -287,7 +287,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     resistors: T.List[Component] = []
     capacitors: T.List[Component] = []
     inductors: T.List[Component] = []
-    outputs: T.List[Symbol] = []
+    outputs: T.List[str] = []
     vv_sources: T.List[Component] = []
     iv_sources: T.List[Component] = []
     vi_sources: T.List[Component] = []
@@ -316,6 +316,8 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         pos_node = nodes[nodes.index(Node(line_split[POS_NODE]))]
         neg_node = nodes[nodes.index(Node(line_split[NEG_NODE]))]
         default_value = line_split[DEFAULT_VALUE] if len(line_split) > DEFAULT_VALUE else '-1'
+        # The default value may have output specifiers after ;
+        default_value = default_value.split(';')[0]
         component = Component(line_split[NAME], pos_node, neg_node, default_value)
         neg_node.connections.append(component)
         pos_node.connections.append(component)
@@ -359,6 +361,10 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
             assert False, f"Unknown component type {component.name}"
 
         comp_outputs = line_split[-1]
+        if pos_node.name.startswith('N'):
+            outputs.append((pos_node.name))
+        if neg_node.name.startswith('N'):
+            outputs.append((neg_node.name))
         if 'Vp;' in comp_outputs:
             outputs.append((pos_node.name))
         if 'Vn;' in comp_outputs:

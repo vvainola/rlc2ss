@@ -26,8 +26,8 @@ class Model_mutual_inductor {
     Model_mutual_inductor() {}
     Model_mutual_inductor(Components const& c);
 
-    static inline constexpr size_t NUM_INPUTS = 4;
-    static inline constexpr size_t NUM_OUTPUTS = 3;
+    static inline constexpr size_t NUM_INPUTS = 3;
+    static inline constexpr size_t NUM_OUTPUTS = 8;
     static inline constexpr size_t NUM_STATES = 3;
     static inline constexpr size_t NUM_SWITCHES = 0;
 
@@ -63,7 +63,6 @@ class Model_mutual_inductor {
             double V1;
             double V2;
             double V3;
-            double VPr1;
         };
         Eigen::Vector<double, NUM_INPUTS> data;
     };
@@ -76,6 +75,11 @@ class Model_mutual_inductor {
             double I_L1;
             double I_L2;
             double I_L3;
+            double I_R3;
+            double I_V3;
+            double N1;
+            double N2;
+            double N3;
         };
         Eigen::Vector<double, NUM_OUTPUTS> data;
     };
@@ -96,7 +100,7 @@ class Model_mutual_inductor {
         double L3 = 1.0;
         double R1 = 10.0;
         double R2 = 10.0;
-        double R3 = 10.0;
+        double R3 = 0.01;
 
         bool operator==(Components const& other) const {
             return

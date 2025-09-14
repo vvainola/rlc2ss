@@ -191,7 +191,12 @@ std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calculateStateSpace_0
     Eigen::Matrix<double, Model_mutual_inductor::NUM_OUTPUTS, Model_mutual_inductor::NUM_STATES> K2 {
 		{ 0, 0, 0 },
 		{ 0, 0, 0 },
-		{ 0, 0, 0} };
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+		{ L1, 0, 0 },
+		{ 0, L2, 0 },
+		{ 0, 0, L3} };
 
     Eigen::Matrix<double, Model_mutual_inductor::NUM_STATES, Model_mutual_inductor::NUM_STATES> A1 {
 		{ -R1, 0, 0 },
@@ -199,19 +204,29 @@ std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calculateStateSpace_0
 		{ 0, 0, -R3 } };
 
     Eigen::Matrix<double, Model_mutual_inductor::NUM_STATES, Model_mutual_inductor::NUM_INPUTS> B1 {
-		{ 1, 0, 0, -1 },
-		{ 0, 1, 0, -1 },
-		{ 0, 0, 1, -1 } };
-
-    Eigen::Matrix<double, Model_mutual_inductor::NUM_OUTPUTS, Model_mutual_inductor::NUM_STATES> C1 {
 		{ 1, 0, 0 },
 		{ 0, 1, 0 },
 		{ 0, 0, 1 } };
 
+    Eigen::Matrix<double, Model_mutual_inductor::NUM_OUTPUTS, Model_mutual_inductor::NUM_STATES> C1 {
+		{ 1, 0, 0 },
+		{ 0, 1, 0 },
+		{ 0, 0, 1 },
+		{ 0, 0, 1 },
+		{ 0, 0, -1 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 } };
+
     Eigen::Matrix<double, Model_mutual_inductor::NUM_OUTPUTS, Model_mutual_inductor::NUM_INPUTS> D1 {
-		{ 0, 0, 0, 0 },
-		{ 0, 0, 0, 0 },
-		{ 0, 0, 0, 0 } };
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 } };
 
     return calcStateSpace(K1, A1, B1, K2, C1, D1);
 }
