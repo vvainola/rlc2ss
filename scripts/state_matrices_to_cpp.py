@@ -454,12 +454,12 @@ std::unique_ptr<{class_name}::StateSpaceMatrices> calculateStateSpace_{i}({class
 {write_components}
 ''')
 
-        K1 = str(ss.K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K1])
-        K2 = str(ss.K2).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K2])
-        A1 = str(ss.A1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in A1])
-        B1 = str(ss.B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in B1])
-        C1 = str(ss.C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in C1])
-        D1 = str(ss.D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in D1])
+        K1 = str(ss.K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('**', '^').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K1])
+        K2 = str(ss.K2).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('**', '^').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in K2])
+        A1 = str(ss.A1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('**', '^').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in A1])
+        B1 = str(ss.B1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('**', '^').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in B1])
+        C1 = str(ss.C1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('**', '^').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in C1])
+        D1 = str(ss.D1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('**', '^').replace('],', ' },\n\t\t{') #",".join([str(coeff) for coeff in D1])
         cpp.write(f'''
     Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> K1 {{\n\t\t{{ {K1} }} }};\n
     Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> K2 {{\n\t\t{{ {K2}}} }};\n
