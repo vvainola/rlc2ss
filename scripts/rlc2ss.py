@@ -720,7 +720,7 @@ def main():
     parser.add_argument('netlist', type=str)
     parser.add_argument('--json', type=int, help='Store circuit in JSON format. The default is C++. The json number is the resource id.')
     parser.add_argument('--dynamic', action='store_true', help='Solve only one combination with all switches open and the rest dynamically at runtime by calling this script')
-    parser.add_argument('--combination', type=int, default=0, help='Solve the circuit only for given combination and update the json. This option is only used by generated code from dynamic option.')
+    parser.add_argument('--combination', type=int, default=-1, help='Solve the circuit only for given combination and update the json. This option is only used by generated code from dynamic option.')
     args = parser.parse_args()
 
     if args.dynamic and not args.json:
@@ -742,7 +742,7 @@ def main():
     else:
         if args.dynamic:
             combinations = [int_to_combination(0, len(lines_w_switches))]
-        elif args.combination:
+        elif args.combination != -1:
             combinations = [int_to_combination(args.combination, len(lines_w_switches))]
         else:
             combinations = list(itertools.product([0, 1], repeat=len(lines_w_switches)))
