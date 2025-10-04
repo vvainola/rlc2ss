@@ -117,6 +117,9 @@ class {class_name} {{
         Inputs() {{
             data.setZero();
         }}
+        Inputs(const Inputs& other) {{
+            data = other.data;
+        }}
         struct {{
 {inputs_list}
         }};
@@ -126,6 +129,9 @@ class {class_name} {{
     union Outputs {{
         Outputs() {{
             data.setZero();
+        }}
+        Outputs(const Outputs& other) {{
+            data = other.data;
         }}
         struct {{
 {outputs_list}
@@ -156,6 +162,9 @@ class {class_name} {{
     union States {{
         States() {{
             data.setZero();
+        }}
+        States(const States& other) {{
+            data = other.data;
         }}
         struct {{
 {states_list}
