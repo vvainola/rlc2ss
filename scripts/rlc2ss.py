@@ -233,6 +233,8 @@ def lines_with_switches(netlist):
             # Check for invalid switches
             if set(switches).intersection(set(and_switch_combination)) != set(and_switch_combination):
                 sys.exit(f'Invalid switch in {and_switch_combination}')
+    lines_w_switches.sort()
+    switches.sort()
     return lines_w_switches, switches, xor_switches, and_switches
 
 def is_invalid_switch_combination(combination, switches, xor_switches, and_switches):
