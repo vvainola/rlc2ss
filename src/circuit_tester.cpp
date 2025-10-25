@@ -28,13 +28,15 @@
 #include "qucs\saturating_inductor_matrices.hpp"
 #include "qucs\mutual_inductor_matrices.hpp"
 #include "qucs\controlled_sources_matrices.hpp"
+#include "qucs\converter_matrices.hpp"
 #include "DbgGui/dbg_gui_wrapper.h"
 
 // #define DIODE_TEST
 // #define RL3
 // #define SATURATING_INDUCTOR
 // #define MUTUAL_INDUCTOR
-#define CONTROLLED_SOURCES
+// #define CONTROLLED_SOURCES
+#define CONVERTER
 
 #if defined RL3
 Model_RL3 circuit(
@@ -82,16 +84,43 @@ Model_controlled_sources circuit(Model_controlled_sources::Components{
     .HSRC4 = 10.0,
     .L1 = 0.1,
 });
+#elif defined CONVERTER
+Model_converter circuit(Model_converter::Components {
+    .C_n = 100e-3,
+    .C_p = 100e-3,
+    .L_a = 100e-6,
+    .L_b = 100e-6,
+    .L_c = 100e-6,
+    .R_D_a_n = 1e-3,
+    .R_D_a_p = 1e-3,
+    .R_D_b_n = 1e-3,
+    .R_D_b_p = 1e-3,
+    .R_D_c_n = 1e-3,
+    .R_D_c_p = 1e-3,
+    .R_a = 1,
+    .R_b = 1,
+    .R_c = 1,
+    .R_dc = 1,
+    .R_n_p = 1e3,
+    .R_n_s = 10e-3,
+    .R_p_p = 1e3,
+    .R_p_s = 10e-3,
+
+});
 #endif
 
 double debug[20];
+#if defined CONVERTER
+Model_converter::Switches temp;
+#else
 uint32_t temp;
+#endif
 
 extern "C" __declspec(dllexport) int DLL_input_count = circuit.NUM_INPUTS;
 extern "C" __declspec(dllexport) int DLL_output_count = circuit.NUM_OUTPUTS;
 extern "C" __declspec(dllexport) int DLL_switch_count = circuit.NUM_SWITCHES;
 extern "C" __declspec(dllexport) double* DLL_inputs = (double*)&circuit.inputs;
-extern "C" __declspec(dllexport) uint32_t* DLL_switches = &temp; //(uint32_t*)&circuit.switches2;
+extern "C" __declspec(dllexport) uint32_t* DLL_switches = (uint32_t*)&temp; //(uint32_t*)&circuit.switches2;
 extern "C" __declspec(dllexport) double* DLL_outputs = (double*)&circuit.outputs;
 extern "C" __declspec(dllexport) double* DLL_debug = debug;
 
@@ -110,6 +139,34 @@ extern "C" __declspec(dllexport) void DLL_update(double current_time, double dt)
     circuit.inputs.V_D3 = 0.1;
     circuit.inputs.V_D4 = 0.1;
     circuit.switches.S1 = temp & 1;
+#elif defined CONVERTER
+    circuit.switches.S_a_p = temp.S_a_p;
+    circuit.switches.S_a_n = temp.S_a_n;
+    circuit.switches.S_b_p = temp.S_b_p;
+    circuit.switches.S_b_n = temp.S_b_n;
+    circuit.switches.S_c_p = temp.S_c_p;
+    circuit.switches.S_c_n = temp.S_c_n;
+
+    if (!circuit.switches.S_a_p && !circuit.switches.S_a_n && circuit.outputs.I_L_a > 0) {
+        circuit.switches.S_D_a_n = 1;
+    }
+    if (!circuit.switches.S_a_p && !circuit.switches.S_a_n && circuit.outputs.I_L_a < 0) {
+        circuit.switches.S_D_a_p = 1;
+    }
+
+    if (!circuit.switches.S_b_p && !circuit.switches.S_b_n && circuit.outputs.I_L_b > 0) {
+        circuit.switches.S_D_b_n = 1;
+    }
+    if (!circuit.switches.S_b_p && !circuit.switches.S_b_n && circuit.outputs.I_L_b < 0) {
+        circuit.switches.S_D_b_p = 1;
+    }
+
+    if (!circuit.switches.S_c_p && !circuit.switches.S_c_n && circuit.outputs.I_L_c > 0) {
+        circuit.switches.S_D_c_n = 1;
+    }
+    if (!circuit.switches.S_c_p && !circuit.switches.S_c_n && circuit.outputs.I_L_c < 0) {
+        circuit.switches.S_D_c_p = 1;
+    }
 #endif
     circuit.step(dt, circuit.inputs);
     DbgGui_sampleWithTimestamp(current_time);

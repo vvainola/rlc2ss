@@ -1,0 +1,40 @@
+* Qucs 1.1.0 C:/Projects/rlc2ss/qucs/converter.sch
+.INCLUDE "C:/Programs/qucs_s_win64/share/qucs-s/xspice_cmlib/include/ngspice_mathfunc.inc"
+* Qucs 1.1.0  C:/Projects/rlc2ss/qucs/converter.sch
+R_p_p 0 N_dc_p  1E3
+R_n_p N_dc_n 0  1E3
+V_dc _net0 N_dc_n DC 1
+D_a_p N_c_a  N_dc_p 
+D_b_p N_c_b  N_dc_p 
+S_a_p N_c_a  N_dc_p  _net1  _net2 
+S_c_p N_c_c  N_dc_p  _net3  _net4 
+D_c_p N_c_c  N_dc_p 
+S_b_p N_c_b  N_dc_p  _net5  _net6 
+S_a_n N_dc_n  N_c_a  _net7  _net8 
+D_a_n N_dc_n  N_c_a 
+S_b_n N_dc_n  N_c_b  _net9  _net10 
+D_b_n N_dc_n  N_c_b 
+S_c_n N_dc_n  N_c_c  _net11  _net12 
+D_c_n N_dc_n  N_c_c 
+V_a _net13 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
+V_c _net15 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
+V_b _net16 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
+L_b _net17 _net16  1M 
+L_a _net18 _net13  1M 
+L_c _net19 _net15  1M 
+C_p 0 _net20  10E-3;I; 
+C_n _net21 0  10E-3;I; 
+R_n_s N_dc_n _net21  10E-3
+R_p_s _net20 N_dc_p  10E-3
+R_a N_c_a _net18  10E-3
+R_b N_c_b _net17  10E-3
+R_c N_c_c _net19  10E-3
+R_dc _net0 N_dc_p  1;I;
+.control
+set filetype=ascii
+op
+print all > spice4qucs.cir.dc_op
+destroy all
+quit
+.endc
+.end
