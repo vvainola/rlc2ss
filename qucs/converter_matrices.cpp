@@ -11,8 +11,6 @@
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
-Model_converter::StateSpaceMatrices getStateSpaceMatrices(Model_converter::Components const& components, Model_converter::Switches const& switches);
-
 static std::unique_ptr<Model_converter::StateSpaceMatrices> calcStateSpace(
     Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_STATES> const& K1,
     Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_STATES> const& A1,
@@ -163,12 +161,39 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_co
 Model_converter::Model_converter(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
-    m_ss = getStateSpaceMatrices(components, switches);
+    updateStateSpaceMatrices();
     m_solver.updateJacobian(m_ss.A);
 }
 
 void Model_converter::step(double dt, Inputs const& inputs_) {
     inputs.data = inputs_.data;
+
+    // Step to the next switching event
+    double smallest_dt = switches.smallestDelay();
+    while (smallest_dt < dt) {
+        switches.step(smallest_dt);
+        stepWithZeroCrossingDetection(smallest_dt);
+        dt -= smallest_dt;
+        smallest_dt = switches.smallestDelay();
+    }
+
+    // Step remaining time
+    switches.step(dt);
+    stepWithZeroCrossingDetection(dt);
+}
+
+void Model_converter::stepWithZeroCrossingDetection(double dt) {
+    // No need to do anything
+    if (dt < rlc2ss::MINIMUM_TIMESTEP) {
+        return;
+    }
+
+    if (!switches.S_a_p && !switches.S_a_n && outputs.I_L_a > 0) switches.S_D_a_n = true;
+    if (!switches.S_a_p && !switches.S_a_n && outputs.I_L_a < 0) switches.S_D_a_p = true;
+    if (!switches.S_b_p && !switches.S_b_n && outputs.I_L_b > 0) switches.S_D_b_n = true;
+    if (!switches.S_b_p && !switches.S_b_n && outputs.I_L_b < 0) switches.S_D_b_p = true;
+    if (!switches.S_c_p && !switches.S_c_n && outputs.I_L_c > 0) switches.S_D_c_n = true;
+    if (!switches.S_c_p && !switches.S_c_n && outputs.I_L_c < 0) switches.S_D_c_p = true;
 
     // Copy previous state and outputs if step needs to be redone
     Model_converter::States prev_state;
@@ -176,50 +201,50 @@ void Model_converter::step(double dt, Inputs const& inputs_) {
     prev_state.data = states.data;
     prev_outputs.data = outputs.data;
 
-    stepInternal(dt);
+    stepModel(dt);
     std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
     while (zc_event) {
         // Redo step
         states.data = prev_state.data;
-        stepInternal(zc_event->time * dt);
+        stepModel(zc_event->time * dt);
         // Process event
         zc_event->event_callback();
         // Run remaining time
         prev_state.data = states.data;
         prev_outputs.data = outputs.data;
         dt = dt * (1 - zc_event->time);
-        stepInternal(dt);
+        stepModel(dt);
         // Check for new events
         zc_event = checkZeroCrossingEvents(*this, prev_outputs);
     }
 }
 
-void Model_converter::stepInternal(double dt) {
+void Model_converter::stepModel(double dt) {
     dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
-    if (components != _M_components_DO_NOT_TOUCH || switches.all != _M_switches_DO_NOT_TOUCH.all || !m_solver.initialized()) {
-		assert(components.C_n != -1);
-		assert(components.C_p != -1);
-		assert(components.L_a != -1);
-		assert(components.L_b != -1);
-		assert(components.L_c != -1);
-		assert(components.R_D_a_n != -1);
-		assert(components.R_D_a_p != -1);
-		assert(components.R_D_b_n != -1);
-		assert(components.R_D_b_p != -1);
-		assert(components.R_D_c_n != -1);
-		assert(components.R_D_c_p != -1);
-		assert(components.R_a != -1);
-		assert(components.R_b != -1);
-		assert(components.R_c != -1);
-		assert(components.R_dc != -1);
-		assert(components.R_n_p != -1);
-		assert(components.R_n_s != -1);
-		assert(components.R_p_p != -1);
-		assert(components.R_p_s != -1);
+    if (components != _M_components_DO_NOT_TOUCH || switches.all() != _M_switches_DO_NOT_TOUCH.all() || !m_solver.initialized()) {
+        assert(components.C_n != -1);
+        assert(components.C_p != -1);
+        assert(components.L_a != -1);
+        assert(components.L_b != -1);
+        assert(components.L_c != -1);
+        assert(components.R_D_a_n != -1);
+        assert(components.R_D_a_p != -1);
+        assert(components.R_D_b_n != -1);
+        assert(components.R_D_b_p != -1);
+        assert(components.R_D_c_n != -1);
+        assert(components.R_D_c_p != -1);
+        assert(components.R_a != -1);
+        assert(components.R_b != -1);
+        assert(components.R_c != -1);
+        assert(components.R_dc != -1);
+        assert(components.R_n_p != -1);
+        assert(components.R_n_s != -1);
+        assert(components.R_p_p != -1);
+        assert(components.R_p_s != -1);
         _M_components_DO_NOT_TOUCH = components;
-        _M_switches_DO_NOT_TOUCH.all = switches.all;
-        m_ss = getStateSpaceMatrices(components, switches);
+        _M_switches_DO_NOT_TOUCH = switches;
+        updateStateSpaceMatrices();
         m_solver.updateJacobian(m_ss.A);
         // Solve one step with backward euler to reduce numerical oscillations
         m_Bu = m_ss.B * inputs.data;
@@ -266,11 +291,11 @@ void Model_converter::stepInternal(double dt) {
     outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
 
     // Update states from outputs to have correct values for dependent states
-	states.I_L_a = outputs.I_L_a;
-	states.I_L_b = outputs.I_L_b;
-	states.I_L_c = outputs.I_L_c;
-	states.V_C_n = outputs.V_C_n;
-	states.V_C_p = outputs.V_C_p;
+    states.I_L_a = outputs.I_L_a;
+    states.I_L_b = outputs.I_L_b;
+    states.I_L_c = outputs.I_L_c;
+    states.V_C_n = outputs.V_C_n;
+    states.V_C_p = outputs.V_C_p;
 }
 
 struct Model_converter_Topology {
@@ -279,33 +304,32 @@ struct Model_converter_Topology {
     std::unique_ptr<Model_converter::StateSpaceMatrices> state_space;
 };
 
-Model_converter::StateSpaceMatrices getStateSpaceMatrices(Model_converter::Components const& components, Model_converter::Switches const& switches) {
+void Model_converter::updateStateSpaceMatrices() {
     static std::vector<Model_converter_Topology> state_space_cache;
     auto it = std::find_if(
         state_space_cache.begin(), state_space_cache.end(), [&](Model_converter_Topology const& t) {
-            return t.components == components && t.switches.all == switches.all;
+            return t.components == components && t.switches.all() == switches.all();
         });
     if (it != state_space_cache.end()) {
-        return *it->state_space;
+        m_ss = *it->state_space;
+        return;
     }
 
-    // The json file with symbolic intermediate matrices
-    static nlohmann::json circuit_json;
-    if (circuit_json.empty()) {
-        circuit_json = nlohmann::json::parse(std::ifstream("c:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
+    if (m_circuit_json.empty()) {
+        m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource(101));
     }
-    if (!circuit_json.contains(std::to_string(switches.all))) {
-        circuit_json = nlohmann::json::parse(std::ifstream("c:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
-        if (!circuit_json.contains(std::to_string(switches.all))) {
-            system(std::format("C:\\Projects\\rlc2ss\\.venv\\Scripts\\python.exe C:\\Projects\\rlc2ss\\scripts\\rlc2ss.py. c:\\Projects\\rlc2ss\\qucs\\converter.cir --combination={}", switches.all).c_str());
+    if (!m_circuit_json.contains(std::to_string(switches.all()))) {
+        m_circuit_json = nlohmann::json::parse(std::ifstream("c:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
+        if (!m_circuit_json.contains(std::to_string(switches.all()))) {
+            system(std::format("C:\\Projects\\rlc2ss\\.venv\\Scripts\\python.exe C:\\Projects\\rlc2ss\\scripts\\rlc2ss.py c:\\Projects\\rlc2ss\\qucs\\converter.cir --combination={}", switches.all()).c_str());
         }
-        circuit_json = nlohmann::json::parse(std::ifstream("c:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
+        m_circuit_json = nlohmann::json::parse(std::ifstream("c:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
     }
-    
-    assert(circuit_json.contains(std::to_string(switches.all)));
+
+    assert(m_circuit_json.contains(std::to_string(switches.all())));
 
     // Get the intermediate matrices as string for replacing symbolic components with their values
-    std::string s = circuit_json[std::to_string(switches.all)].dump();
+    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
 	s = rlc2ss::replace(s, "C_n", std::to_string(components.C_n));
 	s = rlc2ss::replace(s, "C_p", std::to_string(components.C_p));
 	s = rlc2ss::replace(s, "L_a", std::to_string(components.L_a));
@@ -348,5 +372,52 @@ Model_converter::StateSpaceMatrices getStateSpaceMatrices(Model_converter::Compo
         .switches = switches,
         .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)});
 
-    return *topology.state_space;
+    m_ss = *topology.state_space;
+}
+
+uint64_t Model_converter::Switches::all() const {
+    return 0 |
+        (S_D_a_n << 0) |
+        (S_D_a_p << 1) |
+        (S_D_b_n << 2) |
+        (S_D_b_p << 3) |
+        (S_D_c_n << 4) |
+        (S_D_c_p << 5) |
+        (S_a_n << 6) |
+        (S_a_p << 7) |
+        (S_b_n << 8) |
+        (S_b_p << 9) |
+        (S_c_n << 10) |
+        (S_c_p << 11);
+}
+
+double Model_converter::Switches::smallestDelay() {
+    return std::min({double(rlc2ss::OnOffDelay::MAX_DELAY),
+                    S_D_a_n.pendingTime(),
+                    S_D_a_p.pendingTime(),
+                    S_D_b_n.pendingTime(),
+                    S_D_b_p.pendingTime(),
+                    S_D_c_n.pendingTime(),
+                    S_D_c_p.pendingTime(),
+                    S_a_n.pendingTime(),
+                    S_a_p.pendingTime(),
+                    S_b_n.pendingTime(),
+                    S_b_p.pendingTime(),
+                    S_c_n.pendingTime(),
+                    S_c_p.pendingTime()});
+}
+
+void Model_converter::Switches::step(double dt) {
+    S_D_a_n.step(dt);
+    S_D_a_p.step(dt);
+    S_D_b_n.step(dt);
+    S_D_b_p.step(dt);
+    S_D_c_n.step(dt);
+    S_D_c_p.step(dt);
+    S_a_n.step(dt);
+    S_a_p.step(dt);
+    S_b_n.step(dt);
+    S_b_p.step(dt);
+    S_c_n.step(dt);
+    S_c_p.step(dt);
 }

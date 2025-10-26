@@ -27,6 +27,8 @@
 
 namespace rlc2ss {
 
+inline constexpr double MINIMUM_TIMESTEP = 1e-12;
+
 std::string readFile(const std::string& filename);
 std::string replace(const std::string& original, const std::string& search, const std::string& replacement);
 std::vector<double> getCommaDelimitedValues(std::string const s);

@@ -85,7 +85,7 @@ Model_controlled_sources circuit(Model_controlled_sources::Components{
     .L1 = 0.1,
 });
 #elif defined CONVERTER
-Model_converter circuit(Model_converter::Components {
+Model_converter circuit(Model_converter::Components{
     .C_n = 100e-3,
     .C_p = 100e-3,
     .L_a = 100e-6,
@@ -110,11 +110,7 @@ Model_converter circuit(Model_converter::Components {
 #endif
 
 double debug[20];
-#if defined CONVERTER
-Model_converter::Switches temp;
-#else
 uint32_t temp;
-#endif
 
 extern "C" __declspec(dllexport) int DLL_input_count = circuit.NUM_INPUTS;
 extern "C" __declspec(dllexport) int DLL_output_count = circuit.NUM_OUTPUTS;
@@ -140,33 +136,20 @@ extern "C" __declspec(dllexport) void DLL_update(double current_time, double dt)
     circuit.inputs.V_D4 = 0.1;
     circuit.switches.S1 = temp & 1;
 #elif defined CONVERTER
-    circuit.switches.S_a_p = temp.S_a_p;
-    circuit.switches.S_a_n = temp.S_a_n;
-    circuit.switches.S_b_p = temp.S_b_p;
-    circuit.switches.S_b_n = temp.S_b_n;
-    circuit.switches.S_c_p = temp.S_c_p;
-    circuit.switches.S_c_n = temp.S_c_n;
+    double on_delay = 15e-6;
+    circuit.switches.S_a_n.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_a_p.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_b_n.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_b_p.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_c_n.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_c_p.setOnOffDelays(on_delay, 0);
 
-    if (!circuit.switches.S_a_p && !circuit.switches.S_a_n && circuit.outputs.I_L_a > 0) {
-        circuit.switches.S_D_a_n = 1;
-    }
-    if (!circuit.switches.S_a_p && !circuit.switches.S_a_n && circuit.outputs.I_L_a < 0) {
-        circuit.switches.S_D_a_p = 1;
-    }
-
-    if (!circuit.switches.S_b_p && !circuit.switches.S_b_n && circuit.outputs.I_L_b > 0) {
-        circuit.switches.S_D_b_n = 1;
-    }
-    if (!circuit.switches.S_b_p && !circuit.switches.S_b_n && circuit.outputs.I_L_b < 0) {
-        circuit.switches.S_D_b_p = 1;
-    }
-
-    if (!circuit.switches.S_c_p && !circuit.switches.S_c_n && circuit.outputs.I_L_c > 0) {
-        circuit.switches.S_D_c_n = 1;
-    }
-    if (!circuit.switches.S_c_p && !circuit.switches.S_c_n && circuit.outputs.I_L_c < 0) {
-        circuit.switches.S_D_c_p = 1;
-    }
+    circuit.switches.S_a_n = temp & 1 << 6;
+    circuit.switches.S_a_p = temp & 1 << 7;
+    circuit.switches.S_b_n = temp & 1 << 8;
+    circuit.switches.S_b_p = temp & 1 << 9;
+    circuit.switches.S_c_n = temp & 1 << 10;
+    circuit.switches.S_c_p = temp & 1 << 11;
 #endif
     circuit.step(dt, circuit.inputs);
     DbgGui_sampleWithTimestamp(current_time);

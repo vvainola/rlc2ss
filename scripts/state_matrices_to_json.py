@@ -26,6 +26,8 @@ import json
 import sys
 import typing as T
 
+TAB = "    "
+
 def check_for_invalid_names(component_names: list[str]):
     for name in component_names:
         for name2 in component_names:
@@ -47,14 +49,23 @@ def write_cpp_files(
     check_for_invalid_names(ss.component_names)
 
     class_name = 'Model_' + os.path.basename(model_name)
-    components_list = "\n".join([f'\t\tdouble {str(component)} = {ss.default_values.get(str(component), -1)};' for component in ss.component_names])
-    components_compare = " &&\n".join([f'\t\t\t\t{str(component)} == other.{str(component)}' for component in ss.component_names])
-    verify_components = "\n".join([f'\t\tassert(components.{str(component)} != -1);' for component in ss.component_names])
-    states_list = "\n".join([f'\t\t\tdouble {str(state)};' for state in ss.states])
-    inputs_list = "\n".join([f'\t\t\tdouble {str(input)};' for input in ss.inputs])
-    outputs_list = "\n".join([f'\t\t\tdouble {str(output)};' for output in ss.outputs])
-    switches_list = "\n".join([f'\t\t\tuint64_t {str(switch)} : 1;' for switch in switches])
-    update_states = "\n".join([f'\tstates.{state} = outputs.{state};' for state in ss.states])
+    components_list = "\n".join([f'{TAB*2}double {str(component)} = {ss.default_values.get(str(component), -1)};' for component in ss.component_names])
+    components_compare = " &&\n".join([f'{TAB*4}{str(component)} == other.{str(component)}' for component in ss.component_names])
+    verify_components = "\n".join([f'{TAB*2}assert(components.{str(component)} != -1);' for component in ss.component_names])
+    states_list = "\n".join([f'{TAB*3}double {str(state)};' for state in ss.states])
+    inputs_list = "\n".join([f'{TAB*3}double {str(input)};' for input in ss.inputs])
+    outputs_list = "\n".join([f'{TAB*3}double {str(output)};' for output in ss.outputs])
+    switches_list = "\n".join([f'{TAB*2}rlc2ss::OnOffDelay {str(switch)};' for switch in switches])
+    update_states = "\n".join([f'{TAB}states.{state} = outputs.{state};' for state in ss.states])
+    switches_to_int = "0 |" + " |".join(f"\n{TAB*2}({switch} << {i})" for i, switch in enumerate(switches))
+    switches_min_delay = (
+        "std::min({double(rlc2ss::OnOffDelay::MAX_DELAY),\n" + TAB * 5
+        + f",\n{TAB * 5}".join(
+            f"{switch}.pendingTime()" for switch in switches
+        )
+        + "})"
+    )
+    switches_step = f"\n{TAB}".join([f'{str(switch)}.step(dt);' for switch in switches])
 
     template = '''
 #pragma once
@@ -65,6 +76,7 @@ def write_cpp_files(
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
+#include "on_off_delay.hpp"
 #include <Eigen/Dense>
 #include <Eigen/Core>
 #include <Eigen/LU>
@@ -78,7 +90,7 @@ class {class_name} {{
     union Inputs;
     union Outputs;
     union States;
-    union Switches;
+    struct Switches;
     struct StateSpaceMatrices;
 
     {class_name}() {{}}
@@ -114,12 +126,8 @@ class {class_name} {{
     void step(double dt, Inputs const& inputs_);
 
     union Inputs {{
-        Inputs() {{
-            data.setZero();
-        }}
-        Inputs(const Inputs& other) {{
-            data = other.data;
-        }}
+        Inputs() {{ data.setZero(); }}
+        Inputs(const Inputs& other) {{ data = other.data; }}
         struct {{
 {inputs_list}
         }};
@@ -127,23 +135,20 @@ class {class_name} {{
     }};
 
     union Outputs {{
-        Outputs() {{
-            data.setZero();
-        }}
-        Outputs(const Outputs& other) {{
-            data = other.data;
-        }}
+        Outputs() {{ data.setZero(); }}
+        Outputs(const Outputs& other) {{ data = other.data; }}
         struct {{
 {outputs_list}
         }};
         Eigen::Vector<double, NUM_OUTPUTS> data;
     }};
 
-    union Switches {{
-        struct {{
+    struct Switches {{
 {switches_list}
-        }};
-        uint64_t all;
+
+        uint64_t all() const;
+        double smallestDelay();
+        void step(double dt);
     }};
 
     struct Components {{
@@ -187,10 +192,11 @@ class {class_name} {{
     Inputs inputs;
     States states;
     Outputs outputs;
-    Switches switches = {{.all = 0}};
+    Switches switches;
 
   private:
-    void stepInternal(double dt);
+    void stepWithZeroCrossingDetection(double dt);
+    void stepModel(double dt);
     void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
@@ -198,7 +204,7 @@ class {class_name} {{
         m_solver;
     StateSpaceMatrices m_ss;
     Components _M_components_DO_NOT_TOUCH;
-    Switches _M_switches_DO_NOT_TOUCH = {{.all = 0}};
+    Switches _M_switches_DO_NOT_TOUCH;
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
@@ -231,7 +237,7 @@ class {class_name} {{
         outputs_list = outputs_list,
         switches_list = switches_list,
         update_states = update_states,
-    ).replace('\t', '    '))
+    ).replace('\t', TAB))
     hpp.close()
 
     cpp.write(f'''
@@ -283,6 +289,7 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
             prev_neg_node = '0'
 
         cpp.write(f'''
+    // Diode {diode.name}
     double V_{diode.name} = {pos_node} - {neg_node};
     if (V_{diode.name} > circuit.inputs.{diode.forward_voltage} && !circuit.switches.{diode.switch}) {{
         double V_{diode.name}_prev = {prev_pos_node} - {prev_neg_node};
@@ -322,37 +329,57 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
 void {class_name}::step(double dt, Inputs const& inputs_) {{
     inputs.data = inputs_.data;
 
+    // Step to the next switching event
+    double smallest_dt = switches.smallestDelay();
+    while (smallest_dt < dt) {{
+        switches.step(smallest_dt);
+        stepWithZeroCrossingDetection(smallest_dt);
+        dt -= smallest_dt;
+        smallest_dt = switches.smallestDelay();
+    }}
+
+    // Step remaining time
+    switches.step(dt);
+    stepWithZeroCrossingDetection(dt);
+}}
+
+void {class_name}::stepWithZeroCrossingDetection(double dt) {{
+    // No need to do anything
+    if (dt < rlc2ss::MINIMUM_TIMESTEP) {{
+        return;
+    }}
+
     // Copy previous state and outputs if step needs to be redone
     {class_name}::States prev_state;
     {class_name}::Outputs prev_outputs;
     prev_state.data = states.data;
     prev_outputs.data = outputs.data;
 
-    stepInternal(dt);
+    stepModel(dt);
     std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
     while (zc_event) {{
         // Redo step
         states.data = prev_state.data;
-        stepInternal(zc_event->time * dt);
+        stepModel(zc_event->time * dt);
         // Process event
         zc_event->event_callback();
         // Run remaining time
         prev_state.data = states.data;
         prev_outputs.data = outputs.data;
         dt = dt * (1 - zc_event->time);
-        stepInternal(dt);
+        stepModel(dt);
         // Check for new events
         zc_event = checkZeroCrossingEvents(*this, prev_outputs);
     }}
 }}
 
-void {class_name}::stepInternal(double dt) {{
+void {class_name}::stepModel(double dt) {{
     dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
-    if (components != _M_components_DO_NOT_TOUCH || switches.all != _M_switches_DO_NOT_TOUCH.all || !m_solver.initialized()) {{
+    if (components != _M_components_DO_NOT_TOUCH || switches.all() != _M_switches_DO_NOT_TOUCH.all() || !m_solver.initialized()) {{
 {verify_components}
         _M_components_DO_NOT_TOUCH = components;
-        _M_switches_DO_NOT_TOUCH.all = switches.all;
+        _M_switches_DO_NOT_TOUCH = switches;
         updateStateSpaceMatrices();
         m_solver.updateJacobian(m_ss.A);
         // Solve one step with backward euler to reduce numerical oscillations
@@ -415,7 +442,7 @@ void {class_name}::updateStateSpaceMatrices() {{
     static std::vector<{class_name}_Topology> state_space_cache;
     auto it = std::find_if(
         state_space_cache.begin(), state_space_cache.end(), [&]({class_name}_Topology const& t) {{
-            return t.components == components && t.switches.all == switches.all;
+            return t.components == components && t.switches.all() == switches.all();
         }});
     if (it != state_space_cache.end()) {{
         m_ss = *it->state_space;
@@ -426,17 +453,17 @@ void {class_name}::updateStateSpaceMatrices() {{
     netlist_abspath_without_extension = os.path.abspath(model_name)
     netlist_abspath = f'{netlist_abspath_without_extension}.cir'.replace("\\", "\\\\")
     json_abspath = f'{netlist_abspath_without_extension}_matrices.json'.replace("\\", "\\\\")
-    rlc2ss_py = f'{os.path.dirname(os.path.realpath(__file__))}\\rlc2ss.py.'.replace("\\", "\\\\")
+    rlc2ss_py = f'{os.path.dirname(os.path.realpath(__file__))}\\rlc2ss.py'.replace("\\", "\\\\")
     python = sys.executable.replace("\\", "\\\\")
     if dynamic:
         cpp.write(f'''
     if (m_circuit_json.empty()) {{
         m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
     }}
-    if (!m_circuit_json.contains(std::to_string(switches.all))) {{
+    if (!m_circuit_json.contains(std::to_string(switches.all()))) {{
         m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
-        if (!m_circuit_json.contains(std::to_string(switches.all))) {{
-            system(std::format("{python} {rlc2ss_py} {netlist_abspath} --combination={{}}", switches.all).c_str());
+        if (!m_circuit_json.contains(std::to_string(switches.all()))) {{
+            system(std::format("{python} {rlc2ss_py} {netlist_abspath} --combination={{}}", switches.all()).c_str());
         }}
         m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
     }}
@@ -448,10 +475,10 @@ void {class_name}::updateStateSpaceMatrices() {{
     }}''')
 
     cpp.write(f'''
-    assert(m_circuit_json.contains(std::to_string(switches.all)));
+    assert(m_circuit_json.contains(std::to_string(switches.all())));
 
     // Get the intermediate matrices as string for replacing symbolic components with their values
-    std::string s = m_circuit_json[std::to_string(switches.all)].dump();
+    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
 ''')
 
     for component in ss.component_names:
@@ -481,6 +508,18 @@ void {class_name}::updateStateSpaceMatrices() {{
         .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)}});
 
     m_ss = *topology.state_space;
+}}
+
+uint64_t {class_name}::Switches::all() const {{
+    return {switches_to_int};
+}}
+
+double {class_name}::Switches::smallestDelay() {{
+    return {switches_min_delay};
+}}
+
+void {class_name}::Switches::step(double dt) {{
+    {switches_step}
 }}
 ''')
     cpp.close()
