@@ -52,9 +52,7 @@ class OnOffDelay {
     double pendingTime() const {
         if (m_input != m_output) {
             double delay = m_input ? m_on_delay_time : m_off_delay_time;
-            double pending_time = delay - m_timer;
-            assert(pending_time >= 0.0);
-            return pending_time;
+            return delay - m_timer;
         }
         return MAX_DELAY;
     }

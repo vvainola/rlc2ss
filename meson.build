@@ -6,20 +6,38 @@ project('rlc2ss',
         'b_vscrt=md',
         'warning_level=3',
     ])
+deps = [dependency('eigen3'), dependency('nlohmann_json')]
+lib_rlc2ss = static_library('rlc2ss',
+    sources : [
+        'src/rlc2ss.cpp',
+    ],
+    include_directories : [
+        'include',
+        'src'
+    ],
+)
+if meson.is_subproject()
+    lib_rlc2ss_dep = declare_dependency(
+        link_with : lib_rlc2ss,
+        include_directories : 'include',
+        dependencies : deps
+    )
+    subdir_done()
+endif
+
 add_project_arguments('-DNOMINMAX', language : 'cpp')
 windows = import('windows')
 
-deps = [dependency('eigen3'), dependency('nlohmann_json')]
 gui = subproject('gui').get_variable('lib_gui_dep')
 
 diode_bridge_resource = windows.compile_resources('schematics/diode_bridge_matrices.rc', depend_files : 'schematics/diode_bridge_matrices.json')
 diode_bridge = executable('diode_bridge',
     sources : [
         'src/diode_bridge.cpp',
-        'src/rlc2ss.cpp',
         'schematics/diode_bridge_matrices.cpp',
         diode_bridge_resource
     ],
+    link_with : [lib_rlc2ss],
     include_directories: ['src'],
     dependencies : deps + [gui]
 )
@@ -32,12 +50,12 @@ diode_bridge = executable('diode_bridge',
 executable('mutual_inductance',
     sources : [
         'src/mutual_inductance.cpp',
-        'src/rlc2ss.cpp',
         'schematics/RL3_matrices.cpp',
     ],
     include_directories: [
         'src'
     ],
+    link_with : [lib_rlc2ss],
     dependencies : deps
 )
 
@@ -50,11 +68,11 @@ shared_library('circuit_tester',
         'qucs/converter_matrices.cpp',
         'schematics/RL3_matrices.cpp',
         'src/circuit_tester.cpp',
-        'src/rlc2ss.cpp',
     ],
     include_directories: [
         'src'
     ],
+    link_with : [lib_rlc2ss],
     dependencies : deps + [gui]
 )
 
@@ -62,23 +80,23 @@ diode_bridge_3L_resource = windows.compile_resources('qucs/diode_bridge_3l_matri
 diode_bridge_3L = executable('diode_bridge_3L',
     sources : [
         'src/diode_bridge_3L.cpp',
-        'src/rlc2ss.cpp',
         'qucs/diode_bridge_3l_matrices.cpp',
         diode_bridge_3L_resource,
     ],
     include_directories: [
         'src'
     ],
+    link_with : [lib_rlc2ss],
     dependencies : deps + [gui]
 )
 
 executable('tests',
     sources : [
-        'src/rlc2ss.cpp',
         'tests/expression_eval_test.cpp',
     ],
     include_directories: [
         'src'
     ],
+    link_with : [lib_rlc2ss],
     dependencies: dependency('catch2-with-main')
 )
