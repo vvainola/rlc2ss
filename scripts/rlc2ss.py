@@ -188,9 +188,9 @@ def replace_diodes(netlist : list[str]) -> tuple[list[str], list[state_matrices_
             name = line_split[0]
             pos_node = line_split[1]
             neg_node = line_split[2]
-            new_netlist.append(f'V_{name} {pos_node} N_{name}_1 Vp;')
-            new_netlist.append(f'S_{name} N_{name}_1 N_{name}_2')
-            new_netlist.append(f'R_{name} N_{name}_2 {neg_node} Vn;I;')
+            new_netlist.append(f'V_{name} {pos_node} _N_{name}_1 Vp;')
+            new_netlist.append(f'S_{name} _N_{name}_1 _N_{name}_2')
+            new_netlist.append(f'R_{name} _N_{name}_2 {neg_node} Vn;I;')
             diodes.append(
                 state_matrices_to_cpp.Diode(
                     name= name,
