@@ -21,10 +21,33 @@
 # SOFTWARE.
 import os
 from dataclasses import dataclass
-from state_matrices_to_cpp import StateSpaceMatrices, Diode
 import json
 import sys
 import typing as T
+import sympy
+
+@dataclass
+class Diode:
+    name: str
+    pos_node: str
+    neg_node: str
+    forward_voltage: str
+    current: str
+    switch: str
+
+@dataclass
+class StateSpaceMatrices:
+    component_names: list[str]
+    default_values: dict[str, float]
+    states: list[sympy.Symbol]
+    inputs: list[sympy.Symbol]
+    outputs: list[sympy.Symbol]
+    K1: sympy.Matrix
+    K2: sympy.Matrix
+    A1: sympy.Matrix
+    B1: sympy.Matrix
+    C1: sympy.Matrix
+    D1: sympy.Matrix
 
 TAB = "    "
 

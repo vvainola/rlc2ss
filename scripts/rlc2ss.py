@@ -29,9 +29,8 @@ from sympy import Symbol, Matrix
 import typing as T
 import networkx as nx
 import sys
-import state_matrices_to_cpp
 import state_matrices_to_json
-from state_matrices_to_cpp import StateSpaceMatrices
+from state_matrices_to_json import StateSpaceMatrices, Diode
 import itertools
 import argparse
 from tqdm import tqdm
@@ -179,9 +178,9 @@ def parse_netlist(filename):
             control_section = False
     return parsed_netlist
 
-def replace_diodes(netlist : list[str]) -> tuple[list[str], list[state_matrices_to_cpp.Diode]]:
+def replace_diodes(netlist : list[str]) -> tuple[list[str], list[Diode]]:
     new_netlist = []
-    diodes: list[state_matrices_to_cpp.Diode] = []
+    diodes: list[Diode] = []
     for line in netlist:
         if line.startswith('D'):
             line_split = line.split()
@@ -192,7 +191,7 @@ def replace_diodes(netlist : list[str]) -> tuple[list[str], list[state_matrices_
             new_netlist.append(f'S_{name} _N_{name}_1 _N_{name}_2')
             new_netlist.append(f'R_{name} _N_{name}_2 {neg_node} Vn;I;')
             diodes.append(
-                state_matrices_to_cpp.Diode(
+                Diode(
                     name= name,
                     pos_node=pos_node,
                     neg_node=neg_node,
@@ -720,7 +719,7 @@ def int_to_combination(num : int, switch_count : int) -> tuple:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('netlist', type=str)
-    parser.add_argument('--json', type=int, help='Store circuit in JSON format. The default is C++. The json number is the resource id.')
+    parser.add_argument('--json', required=True, type=int, help='Store circuit in JSON format. The json number is the resource id.')
     parser.add_argument('--dynamic', action='store_true', help='Solve only one combination with all switches open and the rest dynamically at runtime by calling this script')
     parser.add_argument('--combination', type=int, default=-1, help='Solve the circuit only for given combination and update the json. This option is only used by generated code from dynamic option.')
     args = parser.parse_args()
@@ -736,10 +735,7 @@ def main():
     out: dict[int, StateSpaceMatrices] = {}
     if len(lines_w_switches) == 0:
         out[0] = form_state_space_matrices(netlist)
-        if args.json:
-            state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, diodes, args.json, args.dynamic)
-        else:
-            state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches, diodes)
+        state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, diodes, args.json, args.dynamic)
         sys.exit(0)
     else:
         if args.dynamic:
@@ -767,10 +763,7 @@ def main():
             combination_number = int("".join(c), 2)
             out[combination_number] = form_state_space_matrices(netlist_wo_switches)
         progress_bar.close()
-    if args.json or args.combination:
-        state_matrices_to_json.matrices_to_cpp(filename, out, switches, diodes, args.json, args.dynamic)
-    else:
-        state_matrices_to_cpp.matrices_to_cpp(f'{filename}', out, switches, diodes)
+    state_matrices_to_json.matrices_to_cpp(filename, out, switches, diodes, args.json, args.dynamic)
 
 if __name__ == '__main__':
     main()
