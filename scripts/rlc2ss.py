@@ -719,13 +719,9 @@ def int_to_combination(num : int, switch_count : int) -> tuple:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('netlist', type=str)
-    parser.add_argument('--json', required=True, type=int, help='Store circuit in JSON format. The json number is the resource id.')
     parser.add_argument('--dynamic', action='store_true', help='Solve only one combination with all switches open and the rest dynamically at runtime by calling this script')
     parser.add_argument('--combination', type=int, default=-1, help='Solve the circuit only for given combination and update the json. This option is only used by generated code from dynamic option.')
     args = parser.parse_args()
-
-    if args.dynamic and not args.json:
-        sys.exit("Dynamic solving requires json")
 
     filename = os.path.splitext(args.netlist)[0]
     netlist = parse_netlist(args.netlist)
@@ -735,7 +731,7 @@ def main():
     out: dict[int, StateSpaceMatrices] = {}
     if len(lines_w_switches) == 0:
         out[0] = form_state_space_matrices(netlist)
-        state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, diodes, args.json, args.dynamic)
+        state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, diodes, args.dynamic, False)
         sys.exit(0)
     else:
         if args.dynamic:
@@ -763,7 +759,8 @@ def main():
             combination_number = int("".join(c), 2)
             out[combination_number] = form_state_space_matrices(netlist_wo_switches)
         progress_bar.close()
-    state_matrices_to_json.matrices_to_cpp(filename, out, switches, diodes, args.json, args.dynamic)
+    update_existing = args.combination != -1
+    state_matrices_to_json.matrices_to_cpp(filename, out, switches, diodes, args.dynamic, update_existing)
 
 if __name__ == '__main__':
     main()

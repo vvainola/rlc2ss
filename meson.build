@@ -19,6 +19,9 @@ lib_rlc2ss = static_library('rlc2ss',
         'src'
     ],
 )
+generate_hexdump_headers = find_program('generate_hexdump_headers.py', dirs : [meson.current_source_dir() / 'scripts'])
+# Expose the program to the parent project
+meson.override_find_program('generate_hexdump_headers', generate_hexdump_headers)
 if meson.is_subproject()
     lib_rlc2ss_dep = declare_dependency(
         link_with : lib_rlc2ss,
@@ -37,26 +40,31 @@ else
     gui = []
 endif
 
-if WINDOWS
-    diode_bridge_resource = windows.compile_resources('qucs/diode_bridge_matrices.rc', depend_files : 'qucs/diode_bridge_matrices.json')
-else
-    # Embed the JSON file as a C array
-    diode_bridge_json_h = custom_target(
-        'diode_bridge_json_h',
-        input : 'qucs/diode_bridge_matrices.json',
-        output : 'diode_bridge_matrices_json.h',
-        command : [
-            'xxd', '-n', 'diode_bridge_matrices_json', '-i', '@INPUT@', '@OUTPUT@'
-        ]
-    )
-    diode_bridge_resource = diode_bridge_json_h
-endif
+
+# Embed the JSON file as a C array
+circuit_json_headers  = custom_target('circuit_json_headers',
+    input : [
+        'qucs/diode_bridge_matrices.json',
+        'qucs/diode_bridge_3l_matrices.json',
+    ],
+    output : [
+        'diode_bridge_matrices_json.h',
+        'diode_bridge_3l_matrices_json.h',
+    ],
+    command : [generate_hexdump_headers,
+        '--input_files', '@INPUT0@', '@INPUT1@',
+        '--output_files', '@OUTPUT0@', '@OUTPUT1@',
+        '--varnames',
+        'diode_bridge_matrices_json',
+        'diode_bridge_3l_matrices_json',
+    ]
+)
 
 diode_bridge = executable('diode_bridge',
     sources : [
         'src/diode_bridge.cpp',
         'qucs/diode_bridge_matrices.cpp',
-        diode_bridge_resource
+        circuit_json_headers
     ],
     link_with : [lib_rlc2ss],
     include_directories: [

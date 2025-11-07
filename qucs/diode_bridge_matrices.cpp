@@ -5,9 +5,7 @@
 #include <fstream>
 #include <format>
 #include <memory>
-#if !defined(_WIN32)
 #include "diode_bridge_matrices_json.h"
-#endif
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -308,11 +306,7 @@ void Model_diode_bridge::updateStateSpaceMatrices() {
     }
 
     if (m_circuit_json.empty()) {
-#if defined(_WIN32)
-        m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource(101));
-#else
         m_circuit_json = nlohmann::json::parse(std::string(diode_bridge_matrices_json, diode_bridge_matrices_json + diode_bridge_matrices_json_len));
-#endif
     }
     assert(m_circuit_json.contains(std::to_string(switches.all())));
 

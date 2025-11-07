@@ -63,7 +63,6 @@ def write_cpp_files(
     circuit_combinations: dict[int, StateSpaceMatrices],
     switches: list[str],
     diodes: list[Diode],
-    resource_id: int,
     dynamic: bool,
 ):
     hpp = open(f'{model_name}_matrices.hpp', 'w')
@@ -271,9 +270,7 @@ class {class_name} {{
 #include <fstream>
 #include <format>
 #include <memory>
-#if !defined(_WIN32)
 #include "{model_basename}_matrices_json.h"
-#endif
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -486,11 +483,7 @@ void {class_name}::updateStateSpaceMatrices() {{
     if dynamic:
         cpp.write(f'''
     if (m_circuit_json.empty()) {{
-#if defined(_WIN32)
-        m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
-#else
         m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json, {model_basename}_matrices_json + {model_basename}_matrices_json_len));
-#endif
     }}
     if (!m_circuit_json.contains(std::to_string(switches.all()))) {{
         m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
@@ -503,11 +496,7 @@ void {class_name}::updateStateSpaceMatrices() {{
     else:
         cpp.write(f'''
     if (m_circuit_json.empty()) {{
-#if defined(_WIN32)
-        m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
-#else
         m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json, {model_basename}_matrices_json + {model_basename}_matrices_json_len));
-#endif
     }}''')
 
     cpp.write(f'''
@@ -566,12 +555,12 @@ def matrices_to_cpp(
     circuit_combinations: dict[int, StateSpaceMatrices],
     switches: list[str],
     diodes: list[Diode],
-    resource_id: int | None,
     dynamic: bool,
+    update_existing: bool,
 ):
     ss = circuit_combinations[list(circuit_combinations.keys())[0]]
-    if resource_id != None:
-        write_cpp_files(model_name, circuit_combinations, switches, diodes, resource_id, dynamic)
+    if not(update_existing):
+        write_cpp_files(model_name, circuit_combinations, switches, diodes, dynamic)
         circuits = {}
     else:
         circuits = json.load(open(f"{model_name}_matrices.json", "r"))
@@ -598,8 +587,3 @@ def matrices_to_cpp(
 
     with open(f"{model_name}_matrices.json", "w") as outfile:
         json.dump(circuits, outfile, indent=4)
-
-    if resource_id != None:
-        with open(f"{model_name}_matrices.rc", "w") as outfile:
-            name = os.path.basename(model_name)
-            outfile.write(f'#define {name}_matrices_json {resource_id} \n{name}_matrices_json    TEXT    "{name}_matrices.json"')

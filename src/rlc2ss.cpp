@@ -205,27 +205,6 @@ std::vector<std::string> split(const std::string& s, char delim) {
     return elems;
 }
 
-#if defined(_WIN32)
-std::string loadTextResource(int resource_id) {
-    HRSRC resource_handle = FindResource(nullptr, MAKEINTRESOURCEA(resource_id), "TEXT");
-    if (resource_handle == nullptr) {
-        return "";
-    }
-    HGLOBAL memory_handle = LoadResource(nullptr, resource_handle);
-    if (memory_handle == nullptr) {
-        return "";
-    }
-
-    size_t size_bytes = SizeofResource(nullptr, resource_handle);
-    void* ptr = LockResource(memory_handle);
-
-    if (ptr != nullptr) {
-        return std::string(reinterpret_cast<char*>(ptr), size_bytes);
-    }
-    return "";
-}
-#endif
-
 template <typename T>
 int sign(T val) {
     return (T(0) < val) - (val < T(0));
