@@ -234,6 +234,7 @@ class {class_name} {{
 #include "{os.path.basename(model_name)}_matrices.hpp"
 #include "rlc2ss.h"
 #include <optional>
+#include <memory>
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced

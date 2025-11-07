@@ -13,5 +13,18 @@
             "args": ["schematics/LCL.cir"],
             "justMyCode": true
         },
+        {
+            "name": "Launch diode_bridge with gdb",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/diode_bridge",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb"
+        }
     ]
 }

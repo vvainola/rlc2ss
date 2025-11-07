@@ -29,10 +29,11 @@ namespace rlc2ss {
 
 inline constexpr double MINIMUM_TIMESTEP = 1e-12;
 
-std::string readFile(const std::string& filename);
 std::string replace(const std::string& original, const std::string& search, const std::string& replacement);
 std::vector<double> getCommaDelimitedValues(std::string const s);
+#if defined(_WIN32)
 std::string loadTextResource(int resource_id);
+#endif
 double evaluateExpression(std::string expression);
 
 struct ZeroCrossingEvent {

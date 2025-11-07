@@ -23,7 +23,7 @@
 #define BOOST_ALLOW_DEPRECATED_HEADERS
 #include "integrator.hpp"
 
-#include "..\schematics\diode_bridge_matrices.hpp"
+#include "qucs/diode_bridge_matrices.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -53,17 +53,22 @@ int sign(T val) {
 class DiodeBridge {
   public:
     DiodeBridge()
-        : m_model(Model_diode_bridge::Components {
+        : m_model(Model_diode_bridge::Components{
+              .C_dc = 10e-3,
               .L_a = 100e-5,
               .L_b = 100e-5,
               .L_c = 100e-5,
-              .C_dc = 10e-3,
+              .R_D_n_a = 1e-3,
+              .R_D_n_b = 1e-3,
+              .R_D_n_c = 1e-3,
+              .R_D_p_a = 1e-3,
+              .R_D_p_b = 1e-3,
+              .R_D_p_c = 1e-3,
               .R_a = 1e-3,
               .R_b = 1e-3,
               .R_c = 1e-3,
               .R_dc = 1e-6,
-              .R_load = 1
-    }){
+              .R_load = 1}) {
     }
 
     void step(double dt, abc ugrid) {
@@ -72,67 +77,16 @@ class DiodeBridge {
         inputs.V_a = ugrid.a;
         inputs.V_b = ugrid.b;
         inputs.V_c = ugrid.c;
+        inputs.V_D_n_a = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_n_b = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_n_c = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_p_a = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_p_b = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_p_c = DIODE_ON_THRESHOLD_VOLTAGE;
         m_model.step(dt, inputs);
-        checkDiodes();
     }
 
     Model_diode_bridge m_model;
-
-    void checkDiodes() {
-        double u_dc = m_model.outputs.Vdc_p - m_model.outputs.Vdc_n;
-        Model_diode_bridge::Switches switches = m_model.switches;
-        // A pos
-        if (m_model.outputs.V3_a - m_model.outputs.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_p_a = 1;
-        }
-        if (m_model.outputs.Vdc_n - m_model.outputs.V3_a > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_n_a = 1;
-        }
-        if (m_model.outputs.I_L_a > 0) {
-            m_model.switches.S_n_a = 0;
-        }
-        if (m_model.outputs.I_L_a < 0) {
-            m_model.switches.S_p_a = 0;
-        }
-
-        if (m_model.outputs.V3_b - m_model.outputs.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_p_b = 1;
-        }
-        if (m_model.outputs.Vdc_n - m_model.outputs.V3_b > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_n_b = 1;
-        }
-        if (m_model.outputs.I_L_b > 0) {
-            m_model.switches.S_n_b = 0;
-        }
-        if (m_model.outputs.I_L_b < 0) {
-            m_model.switches.S_p_b = 0;
-        }
-
-        if (m_model.outputs.V3_c - m_model.outputs.Vdc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_p_c = 1;
-        }
-        if (m_model.outputs.Vdc_n - m_model.outputs.V3_c > DIODE_ON_THRESHOLD_VOLTAGE) {
-            m_model.switches.S_n_c = 1;
-        }
-        if (m_model.outputs.I_L_c > 0) {
-            m_model.switches.S_n_c = 0;
-        }
-        if (m_model.outputs.I_L_c < 0) {
-            m_model.switches.S_p_c = 0;
-        }
-
-        // clang-format off
-        // Keep always one switch on so that the DC is connected to ground
-        if (m_model.switches.all == 0) {
-            if (m_model.switches.all == 0 && switches.S_n_a) m_model.switches.S_n_a = 1;
-            if (m_model.switches.all == 0 && switches.S_n_b) m_model.switches.S_n_b = 1;
-            if (m_model.switches.all == 0 && switches.S_n_c) m_model.switches.S_n_c = 1;
-            if (m_model.switches.all == 0 && switches.S_p_a) m_model.switches.S_p_a = 1;
-            if (m_model.switches.all == 0 && switches.S_p_b) m_model.switches.S_p_b = 1;
-            if (m_model.switches.all == 0 && switches.S_p_c) m_model.switches.S_p_c = 1;
-        }
-        // clang-format on
-    }
 };
 
 int main() {

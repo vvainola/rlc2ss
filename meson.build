@@ -6,7 +6,10 @@ project('rlc2ss',
         'b_vscrt=md',
         'warning_level=3',
     ])
+WINDOWS = (host_machine.system() == 'windows')
+LINUX = (host_machine.system() == 'linux')
 deps = [dependency('eigen3'), dependency('nlohmann_json')]
+add_project_arguments('-DNOMINMAX', language : 'cpp')
 lib_rlc2ss = static_library('rlc2ss',
     sources : [
         'src/rlc2ss.cpp',
@@ -25,39 +28,47 @@ if meson.is_subproject()
     subdir_done()
 endif
 
-add_project_arguments('-DNOMINMAX', language : 'cpp')
 windows = import('windows')
 
-gui = subproject('gui').get_variable('lib_gui_dep')
+if WINDOWS
+    gui = [subproject('gui').get_variable('lib_gui_dep')]
+else
+    # GUI is not available on non-Windows platforms
+    gui = []
+endif
 
-diode_bridge_resource = windows.compile_resources('schematics/diode_bridge_matrices.rc', depend_files : 'schematics/diode_bridge_matrices.json')
+if WINDOWS
+    diode_bridge_resource = windows.compile_resources('qucs/diode_bridge_matrices.rc', depend_files : 'qucs/diode_bridge_matrices.json')
+else
+    # Embed the JSON file as a C array
+    diode_bridge_json_h = custom_target(
+        'diode_bridge_json_h',
+        input : 'qucs/diode_bridge_matrices.json',
+        output : 'diode_bridge_matrices_json.h',
+        command : [
+            'xxd', '-n', 'diode_bridge_matrices_json', '-i', '@INPUT@', '@OUTPUT@'
+        ]
+    )
+    diode_bridge_resource = diode_bridge_json_h
+endif
+
 diode_bridge = executable('diode_bridge',
     sources : [
         'src/diode_bridge.cpp',
-        'schematics/diode_bridge_matrices.cpp',
+        'qucs/diode_bridge_matrices.cpp',
         diode_bridge_resource
     ],
     link_with : [lib_rlc2ss],
-    include_directories: ['src'],
+    include_directories: [
+        'src',
+        'include'
+    ],
     dependencies : deps + [gui]
 )
 
-#transformer = executable('transformer',
-#    sources : 'src/transformer.cpp',
-#    dependencies : deps
-#)
-
-executable('mutual_inductance',
-    sources : [
-        'src/mutual_inductance.cpp',
-        'schematics/RL3_matrices.cpp',
-    ],
-    include_directories: [
-        'src'
-    ],
-    link_with : [lib_rlc2ss],
-    dependencies : deps
-)
+if LINUX
+    subdir_done()
+endif
 
 shared_library('circuit_tester',
     sources : [
@@ -66,14 +77,14 @@ shared_library('circuit_tester',
         'qucs/mutual_inductor_matrices.cpp',
         'qucs/saturating_inductor_matrices.cpp',
         'qucs/converter_matrices.cpp',
-        'schematics/RL3_matrices.cpp',
         'src/circuit_tester.cpp',
     ],
     include_directories: [
-        'src'
+        'src',
+        'include'
     ],
     link_with : [lib_rlc2ss],
-    dependencies : deps + [gui]
+    dependencies : deps + gui
 )
 
 diode_bridge_3L_resource = windows.compile_resources('qucs/diode_bridge_3l_matrices.rc', depend_files : 'qucs/diode_bridge_3l_matrices.json')
@@ -84,10 +95,11 @@ diode_bridge_3L = executable('diode_bridge_3L',
         diode_bridge_3L_resource,
     ],
     include_directories: [
-        'src'
+        'src',
+        'include'
     ],
     link_with : [lib_rlc2ss],
-    dependencies : deps + [gui]
+    dependencies : deps + gui
 )
 
 executable('tests',
@@ -95,7 +107,8 @@ executable('tests',
         'tests/expression_eval_test.cpp',
     ],
     include_directories: [
-        'src'
+        'src',
+        'include'
     ],
     link_with : [lib_rlc2ss],
     dependencies: dependency('catch2-with-main')

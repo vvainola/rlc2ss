@@ -23,7 +23,6 @@
 #include "integrator.hpp"
 
 #include <complex>
-#include "..\schematics\RL3_matrices.hpp"
 #include "..\qucs\diode_matrices.hpp"
 #include "qucs\saturating_inductor_matrices.hpp"
 #include "qucs\mutual_inductor_matrices.hpp"

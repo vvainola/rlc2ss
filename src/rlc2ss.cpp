@@ -25,9 +25,15 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <windows.h>
 #include <stack>
 #include <assert.h>
+#include <format>
+#include <cmath>
+#include <exception>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 constexpr double EPSILON_MIN = 1e-12;
 
@@ -37,55 +43,6 @@ static bool isOperator(char c);
 static int getPrecedence(char op);
 static double applyOperator(double operand1, double operand2, char op);
 static std::vector<std::string> split(const std::string& s, char delim);
-
-std::string readFile(const std::string& filename) {
-    HANDLE file_handle = CreateFileA(
-        filename.c_str(),
-        GENERIC_READ,
-        FILE_SHARE_READ,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-
-    if (file_handle == INVALID_HANDLE_VALUE) {
-        std::cerr << "Error opening file: " << filename << std::endl;
-        return "";
-    }
-
-    LARGE_INTEGER file_size;
-    if (!GetFileSizeEx(file_handle, &file_size)) {
-        std::cerr << "Error getting file size: " << filename << std::endl;
-        CloseHandle(file_handle);
-        return "";
-    }
-
-    HANDLE file_mapping = CreateFileMapping(file_handle, nullptr, PAGE_READONLY, 0, 0, nullptr);
-    if (file_mapping == nullptr) {
-        std::cerr << "Error creating file mapping: " << filename << std::endl;
-        CloseHandle(file_handle);
-        return "";
-    }
-
-    char* file_contents = static_cast<char*>(MapViewOfFile(file_mapping, FILE_MAP_READ, 0, 0, file_size.QuadPart));
-    if (file_contents == nullptr) {
-        std::cerr << "Error mapping file to memory: " << filename << std::endl;
-        CloseHandle(file_mapping);
-        CloseHandle(file_handle);
-        return "";
-    }
-
-    std::string result(file_contents, file_size.QuadPart);
-
-    if (!UnmapViewOfFile(file_contents)) {
-        std::cerr << "Error unmapping file: " << filename << std::endl;
-    }
-
-    CloseHandle(file_mapping);
-    CloseHandle(file_handle);
-
-    return result;
-}
 
 std::string replace(const std::string& original, const std::string& search, const std::string& replacement) {
     std::string result = original;
@@ -248,6 +205,7 @@ std::vector<std::string> split(const std::string& s, char delim) {
     return elems;
 }
 
+#if defined(_WIN32)
 std::string loadTextResource(int resource_id) {
     HRSRC resource_handle = FindResource(nullptr, MAKEINTRESOURCEA(resource_id), "TEXT");
     if (resource_handle == nullptr) {
@@ -266,6 +224,7 @@ std::string loadTextResource(int resource_id) {
     }
     return "";
 }
+#endif
 
 template <typename T>
 int sign(T val) {
@@ -276,7 +235,7 @@ double calcZeroCrossingTime(double y1, double y2) {
     if (sign(y1) == sign(y2)) {
         return EPSILON_MIN;
     }
-    return abs(y1) / (abs(y1) + abs(y2));
+    return fabs(y1) / (fabs(y1) + fabs(y2));
 }
 
 } // namespace rlc2ss

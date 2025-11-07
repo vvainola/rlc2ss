@@ -218,7 +218,7 @@ wheels = [
 ]
 
 [[package]]
-name = "rlc-to-state-space"
+name = "rlc2ss"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

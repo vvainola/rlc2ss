@@ -48,7 +48,8 @@ def write_cpp_files(
     ss = circuit_combinations[list(circuit_combinations.keys())[0]]
     check_for_invalid_names(ss.component_names)
 
-    class_name = 'Model_' + os.path.basename(model_name)
+    model_basename = os.path.basename(model_name)
+    class_name = 'Model_' + model_basename
     components_list = "\n".join([f'{TAB*2}double {str(component)} = {ss.default_values.get(str(component), -1)};' for component in ss.component_names])
     components_compare = " &&\n".join([f'{TAB*4}{str(component)} == other.{str(component)}' for component in ss.component_names])
     verify_components = "\n".join([f'{TAB*2}assert(components.{str(component)} != -1);' for component in ss.component_names])
@@ -241,11 +242,15 @@ class {class_name} {{
     hpp.close()
 
     cpp.write(f'''
-#include "{os.path.basename(model_name)}_matrices.hpp"
+#include "{model_basename}_matrices.hpp"
 #include "rlc2ss.h"
 #include <optional>
 #include <fstream>
 #include <format>
+#include <memory>
+#if !defined(_WIN32)
+#include "{model_basename}_matrices_json.h"
+#endif
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -458,7 +463,11 @@ void {class_name}::updateStateSpaceMatrices() {{
     if dynamic:
         cpp.write(f'''
     if (m_circuit_json.empty()) {{
+#if defined(_WIN32)
         m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
+#else
+        m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json, {model_basename}_matrices_json + {model_basename}_matrices_json_len));
+#endif
     }}
     if (!m_circuit_json.contains(std::to_string(switches.all()))) {{
         m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
@@ -471,7 +480,11 @@ void {class_name}::updateStateSpaceMatrices() {{
     else:
         cpp.write(f'''
     if (m_circuit_json.empty()) {{
+#if defined(_WIN32)
         m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource({resource_id}));
+#else
+        m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json, {model_basename}_matrices_json + {model_basename}_matrices_json_len));
+#endif
     }}''')
 
     cpp.write(f'''
