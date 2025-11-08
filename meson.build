@@ -31,8 +31,6 @@ if meson.is_subproject()
     subdir_done()
 endif
 
-windows = import('windows')
-
 if WINDOWS
     gui = [subproject('gui').get_variable('lib_gui_dep')]
 else
@@ -46,17 +44,16 @@ circuit_json_headers  = custom_target('circuit_json_headers',
     input : [
         'qucs/diode_bridge_matrices.json',
         'qucs/diode_bridge_3l_matrices.json',
+        'qucs/converter_matrices.json',
     ],
     output : [
         'diode_bridge_matrices_json.h',
         'diode_bridge_3l_matrices_json.h',
+        'converter_matrices_json.h',
     ],
     command : [generate_hexdump_headers,
-        '--input_files', '@INPUT0@', '@INPUT1@',
-        '--output_files', '@OUTPUT0@', '@OUTPUT1@',
-        '--varnames',
-        'diode_bridge_matrices_json',
-        'diode_bridge_3l_matrices_json',
+        '--input_files', '@INPUT0@', '@INPUT1@', '@INPUT2@',
+        '--output_files', '@OUTPUT0@', '@OUTPUT1@', '@OUTPUT2@',
     ]
 )
 
@@ -86,6 +83,7 @@ shared_library('circuit_tester',
         'qucs/saturating_inductor_matrices.cpp',
         'qucs/converter_matrices.cpp',
         'src/circuit_tester.cpp',
+        circuit_json_headers
     ],
     include_directories: [
         'src',
@@ -95,12 +93,11 @@ shared_library('circuit_tester',
     dependencies : deps + gui
 )
 
-diode_bridge_3L_resource = windows.compile_resources('qucs/diode_bridge_3l_matrices.rc', depend_files : 'qucs/diode_bridge_3l_matrices.json')
 diode_bridge_3L = executable('diode_bridge_3L',
     sources : [
         'src/diode_bridge_3L.cpp',
         'qucs/diode_bridge_3l_matrices.cpp',
-        diode_bridge_3L_resource,
+        circuit_json_headers,
     ],
     include_directories: [
         'src',

@@ -42,54 +42,54 @@ class Plant {
   public:
     Plant()
         : m_model(Model_diode_bridge_3l::Components{
-            .L_conv_a = 1e-3,
-            .L_conv_b = 1e-3,
-            .L_conv_c = 1e-3,
-            .L_dc_n = 1e-3,
-            .L_dc_p = 1e-3,
-            .L_dc_src = 100e-4,
-            .L_grid_a = 1e-3,
-            .L_grid_b = 1e-3,
-            .L_grid_c = 1e-3,
-            .L_src_a = 1e-3,
-            .L_src_b = 1e-3,
-            .L_src_c = 1e-3,
-            .C_dc_n1 = 10e-3,
-            .C_dc_n2 = 10e-3,
-            .C_dc_p1 = 10e-3,
-            .C_dc_p2 = 10e-3,
-            .C_f_a = 1e-5,
-            .C_f_b = 1e-5,
-            .C_f_c = 1e-5,
-            .R_conv_a = 1e-3,
-            .R_conv_b = 1e-3,
-            .R_conv_c = 1e-3,
-            .R_dc_pn1 = 100,
-            .R_dc_pn2 = 100,
-            .R_dc_pp1 = 100,
-            .R_dc_pp2 = 100,
-            .R_dc_sn1 = 1e-3,
-            .R_dc_sn2 = 1e-3,
-            .R_dc_sp1 = 1e-3,
-            .R_dc_sp2 = 1e-3,
-            .R_dc_src_s = 10,
-            .R_dc_src_p = 1,
-            .R_f_a = 1e-3,
-            .R_f_b = 1e-3,
-            .R_f_c = 1e-3,
-            .R_grid_a = 1e-3,
-            .R_grid_b = 1e-3,
-            .R_grid_c = 1e-3,
-            .R_src_a = 1e-3,
-            .R_src_b = 1e-3,
-            .R_src_c = 1e-3,
-            .R_D_n_a = 1e-6,
-            .R_D_n_b = 1e-6,
-            .R_D_n_c = 1e-6,
-            .R_D_p_a = 1e-6,
-            .R_D_p_b = 1e-6,
-            .R_D_p_c = 1e-6,
-        }) {
+              .C_dc_n1 = 10e-3,
+              .C_dc_n2 = 10e-3,
+              .C_dc_p1 = 10e-3,
+              .C_dc_p2 = 10e-3,
+              .C_f_a = 1e-5,
+              .C_f_b = 1e-5,
+              .C_f_c = 1e-5,
+              .L_conv_a = 1e-3,
+              .L_conv_b = 1e-3,
+              .L_conv_c = 1e-3,
+              .L_dc_n = 1e-3,
+              .L_dc_p = 1e-3,
+              .L_dc_src = 100e-4,
+              .L_grid_a = 1e-3,
+              .L_grid_b = 1e-3,
+              .L_grid_c = 1e-3,
+              .L_src_a = 1e-3,
+              .L_src_b = 1e-3,
+              .L_src_c = 1e-3,
+              .R_D_n_a = 1e-6,
+              .R_D_n_b = 1e-6,
+              .R_D_n_c = 1e-6,
+              .R_D_p_a = 1e-6,
+              .R_D_p_b = 1e-6,
+              .R_D_p_c = 1e-6,
+              .R_conv_a = 1e-3,
+              .R_conv_b = 1e-3,
+              .R_conv_c = 1e-3,
+              .R_dc_pn1 = 100,
+              .R_dc_pn2 = 100,
+              .R_dc_pp1 = 100,
+              .R_dc_pp2 = 100,
+              .R_dc_sn1 = 1e-3,
+              .R_dc_sn2 = 1e-3,
+              .R_dc_sp1 = 1e-3,
+              .R_dc_sp2 = 1e-3,
+              .R_dc_src_p = 1,
+              .R_dc_src_s = 10,
+              .R_f_a = 1e-3,
+              .R_f_b = 1e-3,
+              .R_f_c = 1e-3,
+              .R_grid_a = 1e-3,
+              .R_grid_b = 1e-3,
+              .R_grid_c = 1e-3,
+              .R_src_a = 1e-3,
+              .R_src_b = 1e-3,
+              .R_src_c = 1e-3,
+          }) {
         m_model.setTimestepResolution(0.01e-6, Model_diode_bridge_3l::TimestepErrorCorrectionMode::NONE);
     }
 
@@ -97,6 +97,12 @@ class Plant {
         // checkDiodes();
 
         Model_diode_bridge_3l::Inputs inputs{};
+        inputs.V_D_n_a = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_n_b = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_n_c = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_p_a = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_p_b = DIODE_ON_THRESHOLD_VOLTAGE;
+        inputs.V_D_p_c = DIODE_ON_THRESHOLD_VOLTAGE;
         inputs.V_dc_src = v_dc;
         inputs.V_src_a = ugrid.a;
         inputs.V_src_b = ugrid.b;
@@ -104,53 +110,6 @@ class Plant {
         m_model.step(dt, inputs);
         dc_voltage = m_model.outputs.N_dc_p - m_model.outputs.N_dc_n;
     }
-
-    // void checkDiodes() {
-    //     double u_dc = m_model.outputs.N_dc_p - m_model.outputs.N_dc_n;
-    //     Model_diode_bridge_3l::Switches switches = m_model.switches;
-    //     // A pos
-    //     if (m_model.outputs.N_conv_a - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-    //         m_model.switches.S_p_a = 1;
-    //     }
-    //     if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_a > DIODE_ON_THRESHOLD_VOLTAGE) {
-    //         m_model.switches.S_n_a = 1;
-    //     }
-    //     if (m_model.outputs.I_L_conv_a > 0) {
-    //         m_model.switches.S_p_a = 0;
-    //     }
-    //     if (m_model.outputs.I_L_conv_a < 0) {
-    //         m_model.switches.S_n_a = 0;
-    //     }
-
-    //    if (m_model.outputs.N_conv_b - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-    //        m_model.switches.S_p_b = 1;
-    //    }
-    //    if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_b > DIODE_ON_THRESHOLD_VOLTAGE) {
-    //        m_model.switches.S_n_b = 1;
-    //    }
-    //    if (m_model.outputs.I_L_conv_b > 0) {
-    //        m_model.switches.S_p_b = 0;
-    //    }
-    //    if (m_model.outputs.I_L_conv_b < 0) {
-    //        m_model.switches.S_n_b = 0;
-    //    }
-
-    //    if (m_model.outputs.N_conv_c - m_model.outputs.N_dc_p > DIODE_ON_THRESHOLD_VOLTAGE) {
-    //        m_model.switches.S_p_c = 1;
-    //    }
-    //    if (m_model.outputs.N_dc_n - m_model.outputs.N_conv_c > DIODE_ON_THRESHOLD_VOLTAGE) {
-    //        m_model.switches.S_n_c = 1;
-    //    }
-    //    if (m_model.outputs.I_L_conv_c > 0) {
-    //        m_model.switches.S_p_c = 0;
-    //    }
-    //    if (m_model.outputs.I_L_conv_c < 0) {
-    //        m_model.switches.S_n_c = 0;
-    //    }
-    //    /*assert((m_model.switches.S_p_a && m_model.switches.S_n_a));
-    //    assert((m_model.switches.S_p_b && m_model.switches.S_n_b));
-    //    assert((m_model.switches.S_p_c && m_model.switches.S_n_c));*/
-    //}
 
     Model_diode_bridge_3l m_model;
     double dc_voltage;
@@ -209,9 +168,9 @@ int main() {
     double t_next_weird = t_weird;
     double t_next = timestamp + t_step;
 
-    DbgGui_create(t_step);
+    // DbgGui_create(t_step);
     DbgGui_startUpdateLoop();
-    for (; timestamp < 100.2; timestamp += t_step) {
+    for (; timestamp < 1.2; timestamp += t_step) {
         u_grid.a = amplitude * sin(freq * timestamp + angle);
         u_grid.b = amplitude * sin(freq * timestamp + angle + b_offset);
         u_grid.c = amplitude * sin(freq * timestamp + angle + c_offset);
@@ -230,7 +189,7 @@ int main() {
         plant.step(dt, u_grid);
         DbgGui_sampleWithTimestamp(timestamp2);
 
-        /*fout << t << ","
+        fout << timestamp << ","
              << plant.m_model.outputs.N_conv_a << ","
              << plant.m_model.outputs.N_conv_b << ","
              << plant.m_model.outputs.N_conv_c << ","
@@ -239,18 +198,18 @@ int main() {
              << plant.m_model.outputs.I_L_conv_c << ","
              << plant.m_model.outputs.N_dc_n << ","
              << plant.m_model.outputs.N_dc_p << ","
-             << plant.m_model.switches.S_n_a << ","
-             << plant.m_model.switches.S_n_b << ","
-             << plant.m_model.switches.S_n_c << ","
-             << plant.m_model.switches.S_p_a << ","
-             << plant.m_model.switches.S_p_b << ","
-             << plant.m_model.switches.S_p_c << ","
+             << plant.m_model.switches.S_D_n_a << ","
+             << plant.m_model.switches.S_D_n_b << ","
+             << plant.m_model.switches.S_D_n_c << ","
+             << plant.m_model.switches.S_D_p_a << ","
+             << plant.m_model.switches.S_D_p_b << ","
+             << plant.m_model.switches.S_D_p_c << ","
              << plant.m_model.outputs.N_dc_p - plant.m_model.outputs.N_dc_n << ","
              << "\n";
         i_conv = V_xy({plant.m_model.outputs.I_L_conv_a,
                        plant.m_model.outputs.I_L_conv_b,
                        plant.m_model.outputs.I_L_conv_c});
-        fout.flush();*/
+        fout.flush();
         t_next = timestamp + t_step;
     }
     fout.close();

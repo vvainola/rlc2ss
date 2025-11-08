@@ -7,6 +7,7 @@
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
+#include "on_off_delay.hpp"
 #include <Eigen/Dense>
 #include <Eigen/Core>
 #include <Eigen/LU>
@@ -20,14 +21,14 @@ class Model_diode_bridge_3l {
     union Inputs;
     union Outputs;
     union States;
-    union Switches;
+    struct Switches;
     struct StateSpaceMatrices;
 
     Model_diode_bridge_3l() {}
     Model_diode_bridge_3l(Components const& c);
 
     static inline constexpr size_t NUM_INPUTS = 10;
-    static inline constexpr size_t NUM_OUTPUTS = 31;
+    static inline constexpr size_t NUM_OUTPUTS = 35;
     static inline constexpr size_t NUM_STATES = 19;
     static inline constexpr size_t NUM_SWITCHES = 9;
 
@@ -56,9 +57,8 @@ class Model_diode_bridge_3l {
     void step(double dt, Inputs const& inputs_);
 
     union Inputs {
-        Inputs() {
-            data.setZero();
-        }
+        Inputs() { data.setZero(); }
+        Inputs(const Inputs& other) { data = other.data; }
         struct {
             double V_D_n_a;
             double V_D_n_b;
@@ -75,9 +75,8 @@ class Model_diode_bridge_3l {
     };
 
     union Outputs {
-        Outputs() {
-            data.setZero();
-        }
+        Outputs() { data.setZero(); }
+        Outputs(const Outputs& other) { data = other.data; }
         struct {
             double I_L_conv_a;
             double I_L_conv_b;
@@ -97,6 +96,10 @@ class Model_diode_bridge_3l {
             double I_R_D_p_a;
             double I_R_D_p_b;
             double I_R_D_p_c;
+            double N_cap_0;
+            double N_cap_a;
+            double N_cap_b;
+            double N_cap_c;
             double N_conv_a;
             double N_conv_b;
             double N_conv_c;
@@ -114,72 +117,80 @@ class Model_diode_bridge_3l {
         Eigen::Vector<double, NUM_OUTPUTS> data;
     };
 
-    union Switches {
-        struct {
-            uint64_t S_0_a : 1;
-            uint64_t S_0_b : 1;
-            uint64_t S_0_c : 1;
-            uint64_t S_D_n_a : 1;
-            uint64_t S_D_n_b : 1;
-            uint64_t S_D_n_c : 1;
-            uint64_t S_D_p_a : 1;
-            uint64_t S_D_p_b : 1;
-            uint64_t S_D_p_c : 1;
-        };
-        uint64_t all;
+    struct Switches {
+        rlc2ss::OnOffDelay S_0_a;
+        rlc2ss::OnOffDelay S_0_b;
+        rlc2ss::OnOffDelay S_0_c;
+        rlc2ss::OnOffDelay S_D_n_a;
+        rlc2ss::OnOffDelay S_D_n_b;
+        rlc2ss::OnOffDelay S_D_n_c;
+        rlc2ss::OnOffDelay S_D_p_a;
+        rlc2ss::OnOffDelay S_D_p_b;
+        rlc2ss::OnOffDelay S_D_p_c;
+
+        uint64_t all() const;
+        double smallestDelay();
+        void step(double dt);
     };
 
     struct Components {
-        double L_conv_a = -1;
-        double L_conv_b = -1;
-        double L_conv_c = -1;
-        double L_dc_n = -1;
-        double L_dc_p = -1;
-        double L_dc_src = -1;
-        double L_grid_a = -1;
-        double L_grid_b = -1;
-        double L_grid_c = -1;
-        double L_src_a = -1;
-        double L_src_b = -1;
-        double L_src_c = -1;
-        double C_dc_n1 = -1;
-        double C_dc_n2 = -1;
-        double C_dc_p1 = -1;
-        double C_dc_p2 = -1;
-        double C_f_a = -1;
-        double C_f_b = -1;
-        double C_f_c = -1;
-        double R_conv_a = -1;
-        double R_conv_b = -1;
-        double R_conv_c = -1;
-        double R_dc_pn1 = -1;
-        double R_dc_pn2 = -1;
-        double R_dc_pp1 = -1;
-        double R_dc_pp2 = -1;
-        double R_dc_sn1 = -1;
-        double R_dc_sn2 = -1;
-        double R_dc_sp1 = -1;
-        double R_dc_sp2 = -1;
-        double R_dc_src_s = -1;
-        double R_dc_src_p = -1;
-        double R_f_a = -1;
-        double R_f_b = -1;
-        double R_f_c = -1;
-        double R_grid_a = -1;
-        double R_grid_b = -1;
-        double R_grid_c = -1;
-        double R_src_a = -1;
-        double R_src_b = -1;
-        double R_src_c = -1;
-        double R_D_n_a = -1;
-        double R_D_n_b = -1;
-        double R_D_n_c = -1;
-        double R_D_p_a = -1;
-        double R_D_p_b = -1;
-        double R_D_p_c = -1;
+        double C_dc_n1 = -1.0;
+        double C_dc_n2 = -1.0;
+        double C_dc_p1 = -1.0;
+        double C_dc_p2 = -1.0;
+        double C_f_a = -1.0;
+        double C_f_b = -1.0;
+        double C_f_c = -1.0;
+        double L_conv_a = -1.0;
+        double L_conv_b = -1.0;
+        double L_conv_c = -1.0;
+        double L_dc_n = -1.0;
+        double L_dc_p = -1.0;
+        double L_dc_src = -1.0;
+        double L_grid_a = -1.0;
+        double L_grid_b = -1.0;
+        double L_grid_c = -1.0;
+        double L_src_a = -1.0;
+        double L_src_b = -1.0;
+        double L_src_c = -1.0;
+        double R_D_n_a = -1.0;
+        double R_D_n_b = -1.0;
+        double R_D_n_c = -1.0;
+        double R_D_p_a = -1.0;
+        double R_D_p_b = -1.0;
+        double R_D_p_c = -1.0;
+        double R_conv_a = -1.0;
+        double R_conv_b = -1.0;
+        double R_conv_c = -1.0;
+        double R_dc_pn1 = -1.0;
+        double R_dc_pn2 = -1.0;
+        double R_dc_pp1 = -1.0;
+        double R_dc_pp2 = -1.0;
+        double R_dc_sn1 = -1.0;
+        double R_dc_sn2 = -1.0;
+        double R_dc_sp1 = -1.0;
+        double R_dc_sp2 = -1.0;
+        double R_dc_src_p = -1.0;
+        double R_dc_src_s = -1.0;
+        double R_f_a = -1.0;
+        double R_f_b = -1.0;
+        double R_f_c = -1.0;
+        double R_grid_a = -1.0;
+        double R_grid_b = -1.0;
+        double R_grid_c = -1.0;
+        double R_src_a = -1.0;
+        double R_src_b = -1.0;
+        double R_src_c = -1.0;
 
         bool operator==(Components const& other) const {
             return
+                C_dc_n1 == other.C_dc_n1 &&
+                C_dc_n2 == other.C_dc_n2 &&
+                C_dc_p1 == other.C_dc_p1 &&
+                C_dc_p2 == other.C_dc_p2 &&
+                C_f_a == other.C_f_a &&
+                C_f_b == other.C_f_b &&
+                C_f_c == other.C_f_c &&
                 L_conv_a == other.L_conv_a &&
                 L_conv_b == other.L_conv_b &&
                 L_conv_c == other.L_conv_c &&
@@ -192,13 +203,12 @@ class Model_diode_bridge_3l {
                 L_src_a == other.L_src_a &&
                 L_src_b == other.L_src_b &&
                 L_src_c == other.L_src_c &&
-                C_dc_n1 == other.C_dc_n1 &&
-                C_dc_n2 == other.C_dc_n2 &&
-                C_dc_p1 == other.C_dc_p1 &&
-                C_dc_p2 == other.C_dc_p2 &&
-                C_f_a == other.C_f_a &&
-                C_f_b == other.C_f_b &&
-                C_f_c == other.C_f_c &&
+                R_D_n_a == other.R_D_n_a &&
+                R_D_n_b == other.R_D_n_b &&
+                R_D_n_c == other.R_D_n_c &&
+                R_D_p_a == other.R_D_p_a &&
+                R_D_p_b == other.R_D_p_b &&
+                R_D_p_c == other.R_D_p_c &&
                 R_conv_a == other.R_conv_a &&
                 R_conv_b == other.R_conv_b &&
                 R_conv_c == other.R_conv_c &&
@@ -210,8 +220,8 @@ class Model_diode_bridge_3l {
                 R_dc_sn2 == other.R_dc_sn2 &&
                 R_dc_sp1 == other.R_dc_sp1 &&
                 R_dc_sp2 == other.R_dc_sp2 &&
-                R_dc_src_s == other.R_dc_src_s &&
                 R_dc_src_p == other.R_dc_src_p &&
+                R_dc_src_s == other.R_dc_src_s &&
                 R_f_a == other.R_f_a &&
                 R_f_b == other.R_f_b &&
                 R_f_c == other.R_f_c &&
@@ -220,13 +230,7 @@ class Model_diode_bridge_3l {
                 R_grid_c == other.R_grid_c &&
                 R_src_a == other.R_src_a &&
                 R_src_b == other.R_src_b &&
-                R_src_c == other.R_src_c &&
-                R_D_n_a == other.R_D_n_a &&
-                R_D_n_b == other.R_D_n_b &&
-                R_D_n_c == other.R_D_n_c &&
-                R_D_p_a == other.R_D_p_a &&
-                R_D_p_b == other.R_D_p_b &&
-                R_D_p_c == other.R_D_p_c;
+                R_src_c == other.R_src_c;
         }
 
         bool operator!=(Components const& other) const {
@@ -237,6 +241,9 @@ class Model_diode_bridge_3l {
     union States {
         States() {
             data.setZero();
+        }
+        States(const States& other) {
+            data = other.data;
         }
         struct {
             double I_L_conv_a;
@@ -277,18 +284,19 @@ class Model_diode_bridge_3l {
     Inputs inputs;
     States states;
     Outputs outputs;
-    Switches switches = {.all = 0};
+    Switches switches;
 
   private:
-    void stepInternal(double dt);
+    void stepWithZeroCrossingDetection(double dt);
+    void stepModel(double dt);
     void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
         m_solver;
     StateSpaceMatrices m_ss;
-    Components m_components_DO_NOT_TOUCH;
-    Switches m_switches_DO_NOT_TOUCH = {.all = 0};
+    Components _M_components_DO_NOT_TOUCH;
+    Switches _M_switches_DO_NOT_TOUCH;
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;

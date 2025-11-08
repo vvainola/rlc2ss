@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
 import argparse
+import os
+
+def make_identifier(name: str) -> str:
+    """Turn filename into a valid C identifier."""
+    base = os.path.basename(name)
+    base = base.replace('.', '_').replace('-', '_')
+    if not base[0].isalpha():
+        base = "_" + base
+    return base
 
 
 def main():
     parser = argparse.ArgumentParser(description="Convert binary files to C headers")
     parser.add_argument("--input_files", nargs='+', help="Input binary files")
     parser.add_argument("--output_files", nargs='+', help="Output header files")
-    parser.add_argument("--varnames", nargs='*', help="Variable names")
     args = parser.parse_args()
 
     if len(args.input_files) != len(args.output_files):
         parser.error("Number of input files and output files must match.")
 
-    if args.varnames and len(args.varnames) != len(args.input_files):
-        parser.error("Number of variable names must match number of input files.")
-
     for idx, infile in enumerate(args.input_files):
         outfile = args.output_files[idx]
-        varname = args.varnames[idx]
+        varname = make_identifier(os.path.splitext(os.path.basename(outfile))[0]) + "_hexdump"
 
         with open(infile, "rb") as f:
             data = f.read()

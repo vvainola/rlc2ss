@@ -306,7 +306,7 @@ void Model_diode_bridge::updateStateSpaceMatrices() {
     }
 
     if (m_circuit_json.empty()) {
-        m_circuit_json = nlohmann::json::parse(std::string(diode_bridge_matrices_json, diode_bridge_matrices_json + diode_bridge_matrices_json_len));
+        m_circuit_json = nlohmann::json::parse(std::string(diode_bridge_matrices_json_hexdump, diode_bridge_matrices_json_hexdump + diode_bridge_matrices_json_hexdump_len));
     }
     assert(m_circuit_json.contains(std::to_string(switches.all())));
 

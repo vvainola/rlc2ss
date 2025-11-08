@@ -28,7 +28,7 @@ class Model_converter {
     Model_converter(Components const& c);
 
     static inline constexpr size_t NUM_INPUTS = 10;
-    static inline constexpr size_t NUM_OUTPUTS = 31;
+    static inline constexpr size_t NUM_OUTPUTS = 19;
     static inline constexpr size_t NUM_STATES = 5;
     static inline constexpr size_t NUM_SWITCHES = 12;
 
@@ -90,18 +90,6 @@ class Model_converter {
             double I_R_D_c_n;
             double I_R_D_c_p;
             double I_R_dc;
-            double N_D_a_n_1;
-            double N_D_a_n_2;
-            double N_D_a_p_1;
-            double N_D_a_p_2;
-            double N_D_b_n_1;
-            double N_D_b_n_2;
-            double N_D_b_p_1;
-            double N_D_b_p_2;
-            double N_D_c_n_1;
-            double N_D_c_n_2;
-            double N_D_c_p_1;
-            double N_D_c_p_2;
             double N_c_a;
             double N_c_b;
             double N_c_c;

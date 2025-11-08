@@ -483,7 +483,7 @@ void {class_name}::updateStateSpaceMatrices() {{
     if dynamic:
         cpp.write(f'''
     if (m_circuit_json.empty()) {{
-        m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json, {model_basename}_matrices_json + {model_basename}_matrices_json_len));
+        m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json_hexdump, {model_basename}_matrices_json_hexdump + {model_basename}_matrices_json_hexdump_len));
     }}
     if (!m_circuit_json.contains(std::to_string(switches.all()))) {{
         m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
@@ -491,12 +491,11 @@ void {class_name}::updateStateSpaceMatrices() {{
             system(std::format("{python} {rlc2ss_py} {netlist_abspath} --combination={{}}", switches.all()).c_str());
         }}
         m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
-    }}
-    ''')
+    }}''')
     else:
         cpp.write(f'''
     if (m_circuit_json.empty()) {{
-        m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json, {model_basename}_matrices_json + {model_basename}_matrices_json_len));
+        m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json_hexdump, {model_basename}_matrices_json_hexdump + {model_basename}_matrices_json_hexdump_len));
     }}''')
 
     cpp.write(f'''

@@ -4,6 +4,8 @@
 #include <optional>
 #include <fstream>
 #include <format>
+#include <memory>
+#include "converter_matrices_json.h"
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -316,16 +318,15 @@ void Model_converter::updateStateSpaceMatrices() {
     }
 
     if (m_circuit_json.empty()) {
-        m_circuit_json = nlohmann::json::parse(rlc2ss::loadTextResource(101));
+        m_circuit_json = nlohmann::json::parse(std::string(converter_matrices_json_hexdump, converter_matrices_json_hexdump + converter_matrices_json_hexdump_len));
     }
     if (!m_circuit_json.contains(std::to_string(switches.all()))) {
-        m_circuit_json = nlohmann::json::parse(std::ifstream("c:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
+        m_circuit_json = nlohmann::json::parse(std::ifstream("C:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
         if (!m_circuit_json.contains(std::to_string(switches.all()))) {
-            system(std::format("C:\\Projects\\rlc2ss\\.venv\\Scripts\\python.exe C:\\Projects\\rlc2ss\\scripts\\rlc2ss.py c:\\Projects\\rlc2ss\\qucs\\converter.cir --combination={}", switches.all()).c_str());
+            system(std::format("C:\\Projects\\rlc2ss\\.venv\\Scripts\\python.exe C:\\Projects\\rlc2ss\\scripts\\rlc2ss.py C:\\Projects\\rlc2ss\\qucs\\converter.cir --combination={}", switches.all()).c_str());
         }
-        m_circuit_json = nlohmann::json::parse(std::ifstream("c:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
+        m_circuit_json = nlohmann::json::parse(std::ifstream("C:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
     }
-
     assert(m_circuit_json.contains(std::to_string(switches.all())));
 
     // Get the intermediate matrices as string for replacing symbolic components with their values
