@@ -279,7 +279,6 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     DEP_V_SRC_POS = 3
     DEP_V_SRC_NEG = 4
     DEP_I_SRC = 3
-    DEFAULT_VALUE = 3
     netlist = parsed_netlist
     nodes: T.List[Node] = []
     components: T.List[Component] = []
@@ -316,9 +315,15 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
 
         pos_node = nodes[nodes.index(Node(line_split[POS_NODE]))]
         neg_node = nodes[nodes.index(Node(line_split[NEG_NODE]))]
-        default_value = line_split[DEFAULT_VALUE] if len(line_split) > DEFAULT_VALUE else '-1'
+        name = line_split[NAME]
+        if name.startswith('V') or name.startswith('I'):
+            default_value_txt = line_split[4]
+        elif name.startswith('R') or name.startswith('R') or name.startswith('R'):
+            default_value_txt = line_split[3]
+        else:
+            default_value_txt = "-1" # Ignore default
         # The default value may have output specifiers after ;
-        default_value = default_value.split(';')[0]
+        default_value = default_value_txt.split(';')[0]
         component = Component(line_split[NAME], pos_node, neg_node, default_value)
         neg_node.connections.append(component)
         pos_node.connections.append(component)
@@ -361,16 +366,17 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         else:
             assert False, f"Unknown component type {component.name}"
 
-        comp_outputs = line_split[-1]
+         # Parse possible extra outputs from default value e.g. "50e-3;I;Vc;"
+        comp_outputs = default_value_txt.upper()
         if pos_node.name.startswith('N'):
             outputs.append((pos_node.name))
         if neg_node.name.startswith('N'):
             outputs.append((neg_node.name))
-        if 'Vp;' in comp_outputs:
+        if 'VP;' in comp_outputs:
             outputs.append((pos_node.name))
-        if 'Vn;' in comp_outputs:
+        if 'VN;' in comp_outputs:
             outputs.append((neg_node.name))
-        if 'Vc;' in comp_outputs:
+        if 'VC;' in comp_outputs:
             if component.name[0] == 'V':
                 outputs.append((component.name))
             else:
