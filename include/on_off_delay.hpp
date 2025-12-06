@@ -45,6 +45,12 @@ class OnOffDelay {
         step(0);
     }
 
+    void forceOutput(bool output) {
+        m_input = output;
+        m_output = output;
+        m_timer = 0.0;
+    }
+
     operator bool() const {
         return m_output;
     }
