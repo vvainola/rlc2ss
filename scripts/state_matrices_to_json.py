@@ -300,6 +300,8 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
         events;
 ''')
 
+    # Sort diodes by their name for deterministic ordering
+    diodes.sort(key=lambda d: d.name)
     for diode in diodes:
         # Handle either node being ground
         pos_node = f'circuit.outputs.{diode.pos_node}'
