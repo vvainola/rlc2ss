@@ -24,10 +24,13 @@
 
 #include <cstdint>
 #include <cassert>
+#include <optional>
 
 namespace rlc2ss {
+inline constexpr double EPSILON = 1e-12;
 
 class OnOffDelay {
+
   public:
     static const uint32_t MAX_DELAY = UINT32_MAX;
     OnOffDelay() {}
@@ -45,15 +48,18 @@ class OnOffDelay {
         step(0);
     }
 
-    void forceOutput(bool output) {
-        m_input = output;
-        m_output = output;
-        m_timer = 0.0;
-    }
-
     operator bool() const {
+        if (m_forced_output) {
+            return *m_forced_output;
+        }
         return m_output;
     }
+
+    bool output() const { return m_output; }
+
+    void forceOutput(std::optional<bool> output) { m_forced_output = output; }
+    std::optional<bool> forcedOutput() const { return m_forced_output; }
+    bool outputForced() const { return m_forced_output.has_value(); }
 
     double pendingTime() const {
         if (m_input != m_output) {
@@ -67,11 +73,16 @@ class OnOffDelay {
         if (m_input != m_output) {
             m_timer += dt;
             double delay = m_input ? m_on_delay_time : m_off_delay_time;
-            if (m_timer >= delay) {
+            if (m_timer + EPSILON >= delay) {
                 m_output = m_input;
                 m_timer = 0.0;
             }
         }
+        if (m_forced_output) {
+            m_actual_output = *m_forced_output;
+            return *m_forced_output;
+        }
+        m_actual_output = m_output;
         return m_output;
     }
 
@@ -85,6 +96,8 @@ class OnOffDelay {
   private:
     bool m_input = false;
     bool m_output = false;
+    bool m_actual_output = false;
+    std::optional<bool> m_forced_output = std::nullopt;
     double m_timer = 0.0;
     double m_on_delay_time = 0.0;
     double m_off_delay_time = 0.0;

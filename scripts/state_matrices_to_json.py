@@ -323,15 +323,15 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
         events.push(rlc2ss::ZeroCrossingEvent{{
             .time = rlc2ss::calcZeroCrossingTime(V_{diode.name}_prev, V_{diode.name}),
             .event_callback = [&]() {{
-                circuit.switches.{diode.switch} = 1;
+                circuit.switches.{diode.switch}.forceOutput(true);
             }}
         }});
     }}
-    if (circuit.outputs.{diode.current} < 0 && circuit.switches.{diode.switch}) {{
+    if (circuit.outputs.{diode.current} < 0 && circuit.switches.{diode.switch}.outputForced()) {{
         events.push(rlc2ss::ZeroCrossingEvent{{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.{diode.current}, circuit.outputs.{diode.current}),
             .event_callback = [&]() {{
-                circuit.switches.{diode.switch} = 0;
+                circuit.switches.{diode.switch}.forceOutput(std::nullopt);
             }}
         }});
     }}
