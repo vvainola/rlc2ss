@@ -318,7 +318,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         name = line_split[NAME]
         if name.startswith('V') or name.startswith('I'):
             default_value_txt = line_split[4] if len(line_split) > 4 else "-1"
-        elif name.startswith('R') or name.startswith('R') or name.startswith('R'):
+        elif name.startswith('R') or name.startswith('L') or name.startswith('C'):
             default_value_txt = line_split[3] if len(line_split) > 3 else "-1"
         else:
             default_value_txt = "-1" # Ignore default
