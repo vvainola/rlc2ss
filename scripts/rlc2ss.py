@@ -517,6 +517,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         u_vec = u_vec.xreplace({i_dep : i_dep_as_i_state})
         output_currents[i_dep] = i_dep_as_i_state
     # Replace voltages in capacitors which are not state variables with state voltages
+    u_deps_as_u_states = {}
     for u_dep in dependent_voltages:
         comp_name = str(u_dep)[2:]
         comp = get_component(components, comp_name)
@@ -525,6 +526,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
             if u_dep in eq.free_symbols:
                 u_dep_as_u_state = sy.solve(eq, u_dep)[0]
         comp.update_voltage(u_dep_as_u_state)
+        u_deps_as_u_states[u_dep] = u_dep_as_u_state
         i_vec = i_vec.xreplace({u_dep : u_dep_as_u_state})
         u_vec = u_vec.xreplace({u_dep : u_dep_as_u_state})
         output_voltages[u_dep] = u_dep_as_u_state
@@ -642,6 +644,9 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     for i_dep, i_states in i_deps_as_i_states.items():
         all_deriv_eqs.append(sy.sympify(str(i_dep - i_states).replace('I_', 'dI_')))
         states.append(i_dep)
+    for u_dep, u_states in u_deps_as_u_states.items():
+        all_deriv_eqs.append(sy.sympify(str(u_dep - u_states).replace('V_', 'dV_')))
+        states.append(u_dep)
     states = [str(s) for s in states]
     states.sort()
     states = [Symbol(s) for s in states]
