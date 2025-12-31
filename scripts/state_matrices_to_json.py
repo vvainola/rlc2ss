@@ -80,7 +80,10 @@ def write_cpp_files(
     outputs_list = "\n".join([f'{TAB*3}double {str(output)};' for output in ss.outputs])
     switches_list = "\n".join([f'{TAB*2}rlc2ss::OnOffDelay {str(switch)};' for switch in switches])
     update_states = "\n".join([f'{TAB}states.{state} = outputs.{state};' for state in ss.states])
-    switches_to_int = "0 |" + " |".join(f"\n{TAB*2}({switch} << {i})" for i, switch in enumerate(switches))
+    if len(switches) > 0:
+        switches_to_int = "0 |" + " |".join(f"\n{TAB*2}({switch} << {i})" for i, switch in enumerate(switches))
+    else:
+        switches_to_int = "0"
     switches_min_delay = (
         "std::min({double(rlc2ss::OnOffDelay::MAX_DELAY),\n" + TAB * 5
         + f",\n{TAB * 5}".join(
