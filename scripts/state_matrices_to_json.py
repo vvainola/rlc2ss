@@ -350,8 +350,6 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
 {class_name}::{class_name}(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {{
-    updateStateSpaceMatrices();
-    m_solver.updateJacobian(m_ss.A);
 }}
 ''')
 
