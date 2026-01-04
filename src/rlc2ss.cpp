@@ -21,6 +21,7 @@
 // SOFTWARE.
 
 #include "rlc2ss.h"
+#include "netlist/str_helpers.h"
 
 #include <iostream>
 #include <fstream>
@@ -42,18 +43,9 @@ namespace rlc2ss {
 static bool isOperator(char c);
 static int getPrecedence(char op);
 static double applyOperator(double operand1, double operand2, char op);
-static std::vector<std::string> split(const std::string& s, char delim);
 
 std::string replace(const std::string& original, const std::string& search, const std::string& replacement) {
-    std::string result = original;
-    size_t pos = 0;
-
-    while ((pos = result.find(search, pos)) != std::string::npos) {
-        result.replace(pos, search.length(), replacement);
-        pos += replacement.length();
-    }
-
-    return result;
+    return str::replaceAll(original, search, replacement);
 }
 
 static bool isOperator(char c) {
@@ -186,23 +178,13 @@ double evaluateExpression(std::string expression) {
 }
 
 std::vector<double> getCommaDelimitedValues(std::string const s) {
-    std::vector<std::string> values_str = rlc2ss::split(s, ',');
+    std::vector<std::string_view> values_str = str::splitSv(s, ',');
     std::vector<double> values;
     values.reserve(values_str.size());
-    for (std::string const& v : values_str) {
-        values.push_back(rlc2ss::evaluateExpression(v));
+    for (std::string_view v : values_str) {
+        values.push_back(evaluateExpression(std::string(v)));
     }
     return values;
-}
-
-std::vector<std::string> split(const std::string& s, char delim) {
-    std::vector<std::string> elems;
-    std::istringstream iss(s);
-    std::string item;
-    while (std::getline(iss, item, delim)) {
-        elems.push_back(item);
-    }
-    return elems;
 }
 
 template <typename T>

@@ -124,7 +124,8 @@ std::string replaceAll(
     string result;
     size_t find_len = find.size();
     size_t pos, from = 0;
-    while (string::npos != (pos = str.find(find, from))) {
+    result.reserve(str.size());
+    while ((pos = str.find(find, from)) != string::npos) {
         result.append(str, from, pos - from);
         result.append(replace);
         from = pos + find_len;
