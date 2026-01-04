@@ -8,16 +8,24 @@ project('rlc2ss',
     ])
 WINDOWS = (host_machine.system() == 'windows')
 LINUX = (host_machine.system() == 'linux')
-deps = [dependency('eigen3'), dependency('nlohmann_json')]
+deps = [
+    dependency('eigen3'),
+    dependency('nlohmann_json'),
+    dependency('symengine')
+]
 add_project_arguments('-DNOMINMAX', language : 'cpp')
 lib_rlc2ss = static_library('rlc2ss',
     sources : [
         'src/rlc2ss.cpp',
+        'src/netlist/netlist.cpp',
+        'src/netlist/state_space.cpp',
+        'src/netlist/str_helpers.cpp',
     ],
     include_directories : [
         'include',
         'src'
     ],
+    dependencies : deps
 )
 generate_hexdump_headers = find_program('generate_hexdump_headers.py', dirs : [meson.current_source_dir() / 'scripts'])
 # Expose the program to the parent project
@@ -45,15 +53,21 @@ circuit_json_headers  = custom_target('circuit_json_headers',
         'qucs/diode_bridge_matrices.json',
         'qucs/diode_bridge_3l_matrices.json',
         'qucs/converter_matrices.json',
+        'qucs/diode_matrices.json',
+        'qucs/controlled_sources_matrices.json',
+        'qucs/mutual_inductor_matrices.json',
     ],
     output : [
         'diode_bridge_matrices_json.h',
         'diode_bridge_3l_matrices_json.h',
         'converter_matrices_json.h',
+        'diode_matrices_json.h',
+        'controlled_sources_matrices_json.h',
+        'mutual_inductor_matrices_json.h',
     ],
     command : [generate_hexdump_headers,
-        '--input_files', '@INPUT0@', '@INPUT1@', '@INPUT2@',
-        '--output_files', '@OUTPUT0@', '@OUTPUT1@', '@OUTPUT2@',
+        '--input_files', '@INPUT0@', '@INPUT1@', '@INPUT2@', '@INPUT3@', '@INPUT4@', '@INPUT5@',
+        '--output_files', '@OUTPUT0@', '@OUTPUT1@', '@OUTPUT2@', '@OUTPUT3@', '@OUTPUT4@', '@OUTPUT5@'
     ]
 )
 
@@ -105,6 +119,20 @@ diode_bridge_3L = executable('diode_bridge_3L',
     ],
     link_with : [lib_rlc2ss],
     dependencies : deps + gui
+)
+
+executable('rlc2ss',
+    sources : [
+        'src/main.cpp',
+    ],
+    include_directories: [
+        'src',
+        'include'
+    ],
+    link_with : [lib_rlc2ss],
+    dependencies : deps + gui + [
+        dependency('cxxopts'),
+    ]
 )
 
 executable('tests',

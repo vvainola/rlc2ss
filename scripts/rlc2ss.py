@@ -696,13 +696,14 @@ def main():
 
     filename = os.path.splitext(args.netlist)[0]
     netlist = parse_netlist(args.netlist)
+    netlist_str = '\\n'.join(netlist)
     netlist, diodes = replace_diodes(netlist)
     lines_w_switches, switches, xor_switches, and_switches = lines_with_switches(netlist)
 
     out: dict[int, StateSpaceMatrices] = {}
     if len(lines_w_switches) == 0:
         out[0] = form_state_space_matrices(netlist)
-        state_matrices_to_json.matrices_to_cpp(f'{filename}', out, switches, diodes, args.dynamic, False)
+        state_matrices_to_json.matrices_to_cpp(netlist_str, f'{filename}', out, switches, diodes, args.dynamic, False)
         sys.exit(0)
     else:
         if args.dynamic:
@@ -731,7 +732,7 @@ def main():
             out[combination_number] = form_state_space_matrices(netlist_wo_switches)
         progress_bar.close()
     update_existing = args.combination != -1
-    state_matrices_to_json.matrices_to_cpp(filename, out, switches, diodes, args.dynamic, update_existing)
+    state_matrices_to_json.matrices_to_cpp(netlist_str, filename, out, switches, diodes, args.dynamic, update_existing)
 
 if __name__ == '__main__':
     main()

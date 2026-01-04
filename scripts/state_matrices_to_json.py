@@ -59,6 +59,7 @@ def check_for_invalid_names(component_names: list[str]):
 
 
 def write_cpp_files(
+    netlist: str,
     model_name: str,
     circuit_combinations: dict[int, StateSpaceMatrices],
     switches: list[str],
@@ -478,56 +479,45 @@ void {class_name}::updateStateSpaceMatrices() {{
     }}
 ''')
 
-    netlist_abspath_without_extension = os.path.abspath(model_name)
-    netlist_abspath = f'{netlist_abspath_without_extension}.cir'.replace("\\", "\\\\")
-    json_abspath = f'{netlist_abspath_without_extension}_matrices.json'.replace("\\", "\\\\")
-    rlc2ss_py = f'{os.path.dirname(os.path.realpath(__file__))}\\rlc2ss.py'.replace("\\", "\\\\")
-    python = sys.executable.replace("\\", "\\\\")
     if dynamic:
-        cpp.write(f'''
+        cpp.write(f'    std::string netlist = \"{netlist}\";\n')
+        cpp.write('    std::unordered_map<std::string, double> component_values;\n')
+        for component in ss.component_names:
+            cpp.write(f'\tcomponent_values["{component}"] = components.{component};\n')
+
+        cpp.write(f'    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, int(switches.all()), component_values);\n')
+    else:
+        cpp.write((f'''
     if (m_circuit_json.empty()) {{
         m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json_hexdump, {model_basename}_matrices_json_hexdump + {model_basename}_matrices_json_hexdump_len));
     }}
-    if (!m_circuit_json.contains(std::to_string(switches.all()))) {{
-        m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
-        if (!m_circuit_json.contains(std::to_string(switches.all()))) {{
-            system(std::format("{python} {rlc2ss_py} {netlist_abspath} --combination={{}}", switches.all()).c_str());
-        }}
-        m_circuit_json = nlohmann::json::parse(std::ifstream("{json_abspath}"));
-    }}''')
-    else:
-        cpp.write(f'''
-    if (m_circuit_json.empty()) {{
-        m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json_hexdump, {model_basename}_matrices_json_hexdump + {model_basename}_matrices_json_hexdump_len));
-    }}''')
-
-    cpp.write(f'''
     assert(m_circuit_json.contains(std::to_string(switches.all())));
 
     // Get the intermediate matrices as string for replacing symbolic components with their values
-    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
-''')
+    std::string s = m_circuit_json[std::to_string(switches.all())].dump();\n'''))
 
-    for component in ss.component_names:
-        cpp.write(f"\ts = rlc2ss::replace(s, \"{component}\", std::to_string(components.{component}));\n")
-
-    cpp.write(f'''
+        for component in ss.component_names:
+            cpp.write(f"{TAB}s = rlc2ss::replace(s, \"{component}\", std::format(\"({{}})\", components.{component}));\n")
+        cpp.write((f'''
     // Parse json for the intermediate matrices
     nlohmann::json j = nlohmann::json::parse(s);
-    std::string K1_str = j["K1"];
-    std::string K2_str = j["K2"];
-    std::string A1_str = j["A1"];
-    std::string B1_str = j["B1"];
-    std::string C1_str = j["C1"];
-    std::string D1_str = j["D1"];
+    rlc2ss::StateSpaceMatrices ss = {{
+        .K1 = j["K1"],
+        .K2 = j["K2"],
+        .A1 = j["A1"],
+        .B1 = j["B1"],
+        .C1 = j["C1"],
+        .D1 = j["D1"],
+    }};'''))
 
+    cpp.write(f'''
     // Create eigen matrices
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(K1_str).data());
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(K2_str).data());
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(A1_str).data());
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(B1_str).data());
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(C1_str).data());
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(D1_str).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
     {class_name}_Topology& topology = state_space_cache.emplace_back({class_name}_Topology{{
         .components = components,
@@ -553,6 +543,7 @@ void {class_name}::Switches::step(double dt) {{
 
 
 def matrices_to_cpp(
+    netlist: str,
     model_name: str,
     circuit_combinations: dict[int, StateSpaceMatrices],
     switches: list[str],
@@ -562,10 +553,12 @@ def matrices_to_cpp(
 ):
     ss = circuit_combinations[list(circuit_combinations.keys())[0]]
     if not(update_existing):
-        write_cpp_files(model_name, circuit_combinations, switches, diodes, dynamic)
+        write_cpp_files(netlist, model_name, circuit_combinations, switches, diodes, dynamic)
         circuits = {}
     else:
         circuits = json.load(open(f"{model_name}_matrices.json", "r"))
+    if dynamic:
+        return
 
     write_components = ''
     for component in ss.component_names:
