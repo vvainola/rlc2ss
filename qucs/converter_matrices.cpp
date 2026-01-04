@@ -34,66 +34,6 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_co
                         std::greater<rlc2ss::ZeroCrossingEvent>>
         events;
 
-    // Diode D_a_p
-    double V_D_a_p = circuit.outputs.N_c_a - circuit.outputs.N_dc_p;
-    if (V_D_a_p > circuit.inputs.V_D_a_p && !circuit.switches.S_D_a_p) {
-        double V_D_a_p_prev = prev_outputs.N_c_a - prev_outputs.N_dc_p;
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(V_D_a_p_prev, V_D_a_p),
-            .event_callback = [&]() {
-                circuit.switches.S_D_a_p = 1;
-            }
-        });
-    }
-    if (circuit.outputs.I_R_D_a_p < 0 && circuit.switches.S_D_a_p) {
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_p, circuit.outputs.I_R_D_a_p),
-            .event_callback = [&]() {
-                circuit.switches.S_D_a_p = 0;
-            }
-        });
-    }
-
-    // Diode D_b_p
-    double V_D_b_p = circuit.outputs.N_c_b - circuit.outputs.N_dc_p;
-    if (V_D_b_p > circuit.inputs.V_D_b_p && !circuit.switches.S_D_b_p) {
-        double V_D_b_p_prev = prev_outputs.N_c_b - prev_outputs.N_dc_p;
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(V_D_b_p_prev, V_D_b_p),
-            .event_callback = [&]() {
-                circuit.switches.S_D_b_p = 1;
-            }
-        });
-    }
-    if (circuit.outputs.I_R_D_b_p < 0 && circuit.switches.S_D_b_p) {
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_p, circuit.outputs.I_R_D_b_p),
-            .event_callback = [&]() {
-                circuit.switches.S_D_b_p = 0;
-            }
-        });
-    }
-
-    // Diode D_c_p
-    double V_D_c_p = circuit.outputs.N_c_c - circuit.outputs.N_dc_p;
-    if (V_D_c_p > circuit.inputs.V_D_c_p && !circuit.switches.S_D_c_p) {
-        double V_D_c_p_prev = prev_outputs.N_c_c - prev_outputs.N_dc_p;
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(V_D_c_p_prev, V_D_c_p),
-            .event_callback = [&]() {
-                circuit.switches.S_D_c_p = 1;
-            }
-        });
-    }
-    if (circuit.outputs.I_R_D_c_p < 0 && circuit.switches.S_D_c_p) {
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_p, circuit.outputs.I_R_D_c_p),
-            .event_callback = [&]() {
-                circuit.switches.S_D_c_p = 0;
-            }
-        });
-    }
-
     // Diode D_a_n
     double V_D_a_n = circuit.outputs.N_dc_n - circuit.outputs.N_c_a;
     if (V_D_a_n > circuit.inputs.V_D_a_n && !circuit.switches.S_D_a_n) {
@@ -101,15 +41,35 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_co
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_a_n_prev, V_D_a_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_a_n = 1;
+                circuit.switches.S_D_a_n.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_a_n < 0 && circuit.switches.S_D_a_n) {
+    if (circuit.outputs.I_R_D_a_n < 0 && circuit.switches.S_D_a_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_n, circuit.outputs.I_R_D_a_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_a_n = 0;
+                circuit.switches.S_D_a_n.forceOutput(std::nullopt);
+            }
+        });
+    }
+
+    // Diode D_a_p
+    double V_D_a_p = circuit.outputs.N_c_a - circuit.outputs.N_dc_p;
+    if (V_D_a_p > circuit.inputs.V_D_a_p && !circuit.switches.S_D_a_p) {
+        double V_D_a_p_prev = prev_outputs.N_c_a - prev_outputs.N_dc_p;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_a_p_prev, V_D_a_p),
+            .event_callback = [&]() {
+                circuit.switches.S_D_a_p.forceOutput(true);
+            }
+        });
+    }
+    if (circuit.outputs.I_R_D_a_p < 0 && circuit.switches.S_D_a_p.outputForced()) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_p, circuit.outputs.I_R_D_a_p),
+            .event_callback = [&]() {
+                circuit.switches.S_D_a_p.forceOutput(std::nullopt);
             }
         });
     }
@@ -121,15 +81,35 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_co
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_b_n_prev, V_D_b_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_b_n = 1;
+                circuit.switches.S_D_b_n.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_b_n < 0 && circuit.switches.S_D_b_n) {
+    if (circuit.outputs.I_R_D_b_n < 0 && circuit.switches.S_D_b_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_n, circuit.outputs.I_R_D_b_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_b_n = 0;
+                circuit.switches.S_D_b_n.forceOutput(std::nullopt);
+            }
+        });
+    }
+
+    // Diode D_b_p
+    double V_D_b_p = circuit.outputs.N_c_b - circuit.outputs.N_dc_p;
+    if (V_D_b_p > circuit.inputs.V_D_b_p && !circuit.switches.S_D_b_p) {
+        double V_D_b_p_prev = prev_outputs.N_c_b - prev_outputs.N_dc_p;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_b_p_prev, V_D_b_p),
+            .event_callback = [&]() {
+                circuit.switches.S_D_b_p.forceOutput(true);
+            }
+        });
+    }
+    if (circuit.outputs.I_R_D_b_p < 0 && circuit.switches.S_D_b_p.outputForced()) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_p, circuit.outputs.I_R_D_b_p),
+            .event_callback = [&]() {
+                circuit.switches.S_D_b_p.forceOutput(std::nullopt);
             }
         });
     }
@@ -141,15 +121,35 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_co
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_c_n_prev, V_D_c_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_c_n = 1;
+                circuit.switches.S_D_c_n.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_c_n < 0 && circuit.switches.S_D_c_n) {
+    if (circuit.outputs.I_R_D_c_n < 0 && circuit.switches.S_D_c_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_n, circuit.outputs.I_R_D_c_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_c_n = 0;
+                circuit.switches.S_D_c_n.forceOutput(std::nullopt);
+            }
+        });
+    }
+
+    // Diode D_c_p
+    double V_D_c_p = circuit.outputs.N_c_c - circuit.outputs.N_dc_p;
+    if (V_D_c_p > circuit.inputs.V_D_c_p && !circuit.switches.S_D_c_p) {
+        double V_D_c_p_prev = prev_outputs.N_c_c - prev_outputs.N_dc_p;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_c_p_prev, V_D_c_p),
+            .event_callback = [&]() {
+                circuit.switches.S_D_c_p.forceOutput(true);
+            }
+        });
+    }
+    if (circuit.outputs.I_R_D_c_p < 0 && circuit.switches.S_D_c_p.outputForced()) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_p, circuit.outputs.I_R_D_c_p),
+            .event_callback = [&]() {
+                circuit.switches.S_D_c_p.forceOutput(std::nullopt);
             }
         });
     }
@@ -163,8 +163,6 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_co
 Model_converter::Model_converter(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
-    updateStateSpaceMatrices();
-    m_solver.updateJacobian(m_ss.A);
 }
 
 void Model_converter::step(double dt, Inputs const& inputs_) {
@@ -190,12 +188,12 @@ void Model_converter::stepWithZeroCrossingDetection(double dt) {
         return;
     }
 
-    if (!switches.S_a_p && !switches.S_a_n && outputs.I_L_a > 0) switches.S_D_a_n = true;
-    if (!switches.S_a_p && !switches.S_a_n && outputs.I_L_a < 0) switches.S_D_a_p = true;
-    if (!switches.S_b_p && !switches.S_b_n && outputs.I_L_b > 0) switches.S_D_b_n = true;
-    if (!switches.S_b_p && !switches.S_b_n && outputs.I_L_b < 0) switches.S_D_b_p = true;
-    if (!switches.S_c_p && !switches.S_c_n && outputs.I_L_c > 0) switches.S_D_c_n = true;
-    if (!switches.S_c_p && !switches.S_c_n && outputs.I_L_c < 0) switches.S_D_c_p = true;
+    if (!switches.S_a_p && !switches.S_a_n && outputs.I_L_a > 0) switches.S_D_a_n.forceOutput(true);
+    if (!switches.S_a_p && !switches.S_a_n && outputs.I_L_a < 0) switches.S_D_a_p.forceOutput(true);
+    if (!switches.S_b_p && !switches.S_b_n && outputs.I_L_b > 0) switches.S_D_b_n.forceOutput(true);
+    if (!switches.S_b_p && !switches.S_b_n && outputs.I_L_b < 0) switches.S_D_b_p.forceOutput(true);
+    if (!switches.S_c_p && !switches.S_c_n && outputs.I_L_c > 0) switches.S_D_c_n.forceOutput(true);
+    if (!switches.S_c_p && !switches.S_c_n && outputs.I_L_c < 0) switches.S_D_c_p.forceOutput(true);
 
     // Copy previous state and outputs if step needs to be redone
     Model_converter::States prev_state;
@@ -316,57 +314,36 @@ void Model_converter::updateStateSpaceMatrices() {
         m_ss = *it->state_space;
         return;
     }
-
-    if (m_circuit_json.empty()) {
-        m_circuit_json = nlohmann::json::parse(std::string(converter_matrices_json_hexdump, converter_matrices_json_hexdump + converter_matrices_json_hexdump_len));
-    }
-    if (!m_circuit_json.contains(std::to_string(switches.all()))) {
-        m_circuit_json = nlohmann::json::parse(std::ifstream("C:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
-        if (!m_circuit_json.contains(std::to_string(switches.all()))) {
-            system(std::format("C:\\Projects\\rlc2ss\\.venv\\Scripts\\python.exe C:\\Projects\\rlc2ss\\scripts\\rlc2ss.py C:\\Projects\\rlc2ss\\qucs\\converter.cir --combination={}", switches.all()).c_str());
-        }
-        m_circuit_json = nlohmann::json::parse(std::ifstream("C:\\Projects\\rlc2ss\\qucs\\converter_matrices.json"));
-    }
-    assert(m_circuit_json.contains(std::to_string(switches.all())));
-
-    // Get the intermediate matrices as string for replacing symbolic components with their values
-    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
-	s = rlc2ss::replace(s, "C_n", std::to_string(components.C_n));
-	s = rlc2ss::replace(s, "C_p", std::to_string(components.C_p));
-	s = rlc2ss::replace(s, "L_a", std::to_string(components.L_a));
-	s = rlc2ss::replace(s, "L_b", std::to_string(components.L_b));
-	s = rlc2ss::replace(s, "L_c", std::to_string(components.L_c));
-	s = rlc2ss::replace(s, "R_D_a_n", std::to_string(components.R_D_a_n));
-	s = rlc2ss::replace(s, "R_D_a_p", std::to_string(components.R_D_a_p));
-	s = rlc2ss::replace(s, "R_D_b_n", std::to_string(components.R_D_b_n));
-	s = rlc2ss::replace(s, "R_D_b_p", std::to_string(components.R_D_b_p));
-	s = rlc2ss::replace(s, "R_D_c_n", std::to_string(components.R_D_c_n));
-	s = rlc2ss::replace(s, "R_D_c_p", std::to_string(components.R_D_c_p));
-	s = rlc2ss::replace(s, "R_a", std::to_string(components.R_a));
-	s = rlc2ss::replace(s, "R_b", std::to_string(components.R_b));
-	s = rlc2ss::replace(s, "R_c", std::to_string(components.R_c));
-	s = rlc2ss::replace(s, "R_dc", std::to_string(components.R_dc));
-	s = rlc2ss::replace(s, "R_n_p", std::to_string(components.R_n_p));
-	s = rlc2ss::replace(s, "R_n_s", std::to_string(components.R_n_s));
-	s = rlc2ss::replace(s, "R_p_p", std::to_string(components.R_p_p));
-	s = rlc2ss::replace(s, "R_p_s", std::to_string(components.R_p_s));
-
-    // Parse json for the intermediate matrices
-    nlohmann::json j = nlohmann::json::parse(s);
-    std::string K1_str = j["K1"];
-    std::string K2_str = j["K2"];
-    std::string A1_str = j["A1"];
-    std::string B1_str = j["B1"];
-    std::string C1_str = j["C1"];
-    std::string D1_str = j["D1"];
+    std::string netlist = "R_p_p 0 N_dc_p 1E3 \nR_n_p N_dc_n 0 1E3 \nV_dc _net0 N_dc_n DC 1 \nD_a_p N_c_a N_dc_p \nD_b_p N_c_b N_dc_p \nS_a_p N_c_a N_dc_p _net1 _net2 \nS_c_p N_c_c N_dc_p _net3 _net4 \nD_c_p N_c_c N_dc_p \nS_b_p N_c_b N_dc_p _net5 _net6 \nS_a_n N_dc_n N_c_a _net7 _net8 \nD_a_n N_dc_n N_c_a \nS_b_n N_dc_n N_c_b _net9 _net10 \nD_b_n N_dc_n N_c_b \nS_c_n N_dc_n N_c_c _net11 _net12 \nD_c_n N_dc_n N_c_c \nV_a _net13 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_c _net15 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_b _net16 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nL_b _net17 _net16 1M \nL_a _net18 _net13 1M \nL_c _net19 _net15 1M \nC_p 0 _net20 10E-3;I; \nC_n _net21 0 10E-3;I; \nR_n_s N_dc_n _net21 10E-3 \nR_p_s _net20 N_dc_p 10E-3 \nR_a N_c_a _net18 10E-3 \nR_b N_c_b _net17 10E-3 \nR_c N_c_c _net19 10E-3 \nR_dc _net0 N_dc_p 1;I; ";
+    std::unordered_map<std::string, double> component_values;
+	component_values["C_n"] = components.C_n;
+	component_values["C_p"] = components.C_p;
+	component_values["L_a"] = components.L_a;
+	component_values["L_b"] = components.L_b;
+	component_values["L_c"] = components.L_c;
+	component_values["R_D_a_n"] = components.R_D_a_n;
+	component_values["R_D_a_p"] = components.R_D_a_p;
+	component_values["R_D_b_n"] = components.R_D_b_n;
+	component_values["R_D_b_p"] = components.R_D_b_p;
+	component_values["R_D_c_n"] = components.R_D_c_n;
+	component_values["R_D_c_p"] = components.R_D_c_p;
+	component_values["R_a"] = components.R_a;
+	component_values["R_b"] = components.R_b;
+	component_values["R_c"] = components.R_c;
+	component_values["R_dc"] = components.R_dc;
+	component_values["R_n_p"] = components.R_n_p;
+	component_values["R_n_s"] = components.R_n_s;
+	component_values["R_p_p"] = components.R_p_p;
+	component_values["R_p_s"] = components.R_p_s;
+    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, int(switches.all()), component_values);
 
     // Create eigen matrices
-    Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(K1_str).data());
-    Eigen::Matrix<double, Model_converter::NUM_OUTPUTS, Model_converter::NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(K2_str).data());
-    Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(A1_str).data());
-    Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(B1_str).data());
-    Eigen::Matrix<double, Model_converter::NUM_OUTPUTS, Model_converter::NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(C1_str).data());
-    Eigen::Matrix<double, Model_converter::NUM_OUTPUTS, Model_converter::NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(D1_str).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
     Model_converter_Topology& topology = state_space_cache.emplace_back(Model_converter_Topology{
         .components = components,
