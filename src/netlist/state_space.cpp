@@ -428,10 +428,7 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     for (int i = 0; i < (int)twigs.size(); ++i) {
         // Remove twig
         Component* twig = twigs[i];
-        size_t id = 0;
-        proper_tree.findEdge(&graph_nodes.at(twig->posNode()->name()), &graph_nodes.at(twig->negNode()->name()), id);
-        assert(id != 0);
-        proper_tree.removeEdge(id);
+        proper_tree.removeEdge(twig->name());
         for (Component* link : links) {
             GraphNode& link_pos_node = graph_nodes.at(link->posNode()->name());
             GraphNode& link_neg_node = graph_nodes.at(link->negNode()->name());
