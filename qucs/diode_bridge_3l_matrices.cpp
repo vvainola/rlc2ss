@@ -41,15 +41,15 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_di
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_n_a_prev, V_D_n_a),
             .event_callback = [&]() {
-                circuit.switches.S_D_n_a = 1;
+                circuit.switches.S_D_n_a.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_n_a < 0 && circuit.switches.S_D_n_a) {
+    if (circuit.outputs.I_R_D_n_a < 0 && circuit.switches.S_D_n_a.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_a, circuit.outputs.I_R_D_n_a),
             .event_callback = [&]() {
-                circuit.switches.S_D_n_a = 0;
+                circuit.switches.S_D_n_a.forceOutput(std::nullopt);
             }
         });
     }
@@ -61,15 +61,15 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_di
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_n_b_prev, V_D_n_b),
             .event_callback = [&]() {
-                circuit.switches.S_D_n_b = 1;
+                circuit.switches.S_D_n_b.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_n_b < 0 && circuit.switches.S_D_n_b) {
+    if (circuit.outputs.I_R_D_n_b < 0 && circuit.switches.S_D_n_b.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_b, circuit.outputs.I_R_D_n_b),
             .event_callback = [&]() {
-                circuit.switches.S_D_n_b = 0;
+                circuit.switches.S_D_n_b.forceOutput(std::nullopt);
             }
         });
     }
@@ -81,15 +81,15 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_di
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_n_c_prev, V_D_n_c),
             .event_callback = [&]() {
-                circuit.switches.S_D_n_c = 1;
+                circuit.switches.S_D_n_c.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_n_c < 0 && circuit.switches.S_D_n_c) {
+    if (circuit.outputs.I_R_D_n_c < 0 && circuit.switches.S_D_n_c.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_c, circuit.outputs.I_R_D_n_c),
             .event_callback = [&]() {
-                circuit.switches.S_D_n_c = 0;
+                circuit.switches.S_D_n_c.forceOutput(std::nullopt);
             }
         });
     }
@@ -101,15 +101,15 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_di
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_p_a_prev, V_D_p_a),
             .event_callback = [&]() {
-                circuit.switches.S_D_p_a = 1;
+                circuit.switches.S_D_p_a.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_p_a < 0 && circuit.switches.S_D_p_a) {
+    if (circuit.outputs.I_R_D_p_a < 0 && circuit.switches.S_D_p_a.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_a, circuit.outputs.I_R_D_p_a),
             .event_callback = [&]() {
-                circuit.switches.S_D_p_a = 0;
+                circuit.switches.S_D_p_a.forceOutput(std::nullopt);
             }
         });
     }
@@ -121,15 +121,15 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_di
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_p_b_prev, V_D_p_b),
             .event_callback = [&]() {
-                circuit.switches.S_D_p_b = 1;
+                circuit.switches.S_D_p_b.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_p_b < 0 && circuit.switches.S_D_p_b) {
+    if (circuit.outputs.I_R_D_p_b < 0 && circuit.switches.S_D_p_b.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_b, circuit.outputs.I_R_D_p_b),
             .event_callback = [&]() {
-                circuit.switches.S_D_p_b = 0;
+                circuit.switches.S_D_p_b.forceOutput(std::nullopt);
             }
         });
     }
@@ -141,15 +141,15 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_di
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_p_c_prev, V_D_p_c),
             .event_callback = [&]() {
-                circuit.switches.S_D_p_c = 1;
+                circuit.switches.S_D_p_c.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_p_c < 0 && circuit.switches.S_D_p_c) {
+    if (circuit.outputs.I_R_D_p_c < 0 && circuit.switches.S_D_p_c.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_c, circuit.outputs.I_R_D_p_c),
             .event_callback = [&]() {
-                circuit.switches.S_D_p_c = 0;
+                circuit.switches.S_D_p_c.forceOutput(std::nullopt);
             }
         });
     }
@@ -163,8 +163,6 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_di
 Model_diode_bridge_3l::Model_diode_bridge_3l(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
-    updateStateSpaceMatrices();
-    m_solver.updateJacobian(m_ss.A);
 }
 
 void Model_diode_bridge_3l::step(double dt, Inputs const& inputs_) {
@@ -351,85 +349,64 @@ void Model_diode_bridge_3l::updateStateSpaceMatrices() {
         m_ss = *it->state_space;
         return;
     }
-
-    if (m_circuit_json.empty()) {
-        m_circuit_json = nlohmann::json::parse(std::string(diode_bridge_3l_matrices_json_hexdump, diode_bridge_3l_matrices_json_hexdump + diode_bridge_3l_matrices_json_hexdump_len));
-    }
-    if (!m_circuit_json.contains(std::to_string(switches.all()))) {
-        m_circuit_json = nlohmann::json::parse(std::ifstream("C:\\Projects\\rlc2ss\\qucs\\diode_bridge_3l_matrices.json"));
-        if (!m_circuit_json.contains(std::to_string(switches.all()))) {
-            system(std::format("C:\\Projects\\rlc2ss\\.venv\\Scripts\\python.exe C:\\Projects\\rlc2ss\\scripts\\rlc2ss.py C:\\Projects\\rlc2ss\\qucs\\diode_bridge_3l.cir --combination={}", switches.all()).c_str());
-        }
-        m_circuit_json = nlohmann::json::parse(std::ifstream("C:\\Projects\\rlc2ss\\qucs\\diode_bridge_3l_matrices.json"));
-    }
-    assert(m_circuit_json.contains(std::to_string(switches.all())));
-
-    // Get the intermediate matrices as string for replacing symbolic components with their values
-    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
-	s = rlc2ss::replace(s, "C_dc_n1", std::to_string(components.C_dc_n1));
-	s = rlc2ss::replace(s, "C_dc_n2", std::to_string(components.C_dc_n2));
-	s = rlc2ss::replace(s, "C_dc_p1", std::to_string(components.C_dc_p1));
-	s = rlc2ss::replace(s, "C_dc_p2", std::to_string(components.C_dc_p2));
-	s = rlc2ss::replace(s, "C_f_a", std::to_string(components.C_f_a));
-	s = rlc2ss::replace(s, "C_f_b", std::to_string(components.C_f_b));
-	s = rlc2ss::replace(s, "C_f_c", std::to_string(components.C_f_c));
-	s = rlc2ss::replace(s, "L_conv_a", std::to_string(components.L_conv_a));
-	s = rlc2ss::replace(s, "L_conv_b", std::to_string(components.L_conv_b));
-	s = rlc2ss::replace(s, "L_conv_c", std::to_string(components.L_conv_c));
-	s = rlc2ss::replace(s, "L_dc_n", std::to_string(components.L_dc_n));
-	s = rlc2ss::replace(s, "L_dc_p", std::to_string(components.L_dc_p));
-	s = rlc2ss::replace(s, "L_dc_src", std::to_string(components.L_dc_src));
-	s = rlc2ss::replace(s, "L_grid_a", std::to_string(components.L_grid_a));
-	s = rlc2ss::replace(s, "L_grid_b", std::to_string(components.L_grid_b));
-	s = rlc2ss::replace(s, "L_grid_c", std::to_string(components.L_grid_c));
-	s = rlc2ss::replace(s, "L_src_a", std::to_string(components.L_src_a));
-	s = rlc2ss::replace(s, "L_src_b", std::to_string(components.L_src_b));
-	s = rlc2ss::replace(s, "L_src_c", std::to_string(components.L_src_c));
-	s = rlc2ss::replace(s, "R_D_n_a", std::to_string(components.R_D_n_a));
-	s = rlc2ss::replace(s, "R_D_n_b", std::to_string(components.R_D_n_b));
-	s = rlc2ss::replace(s, "R_D_n_c", std::to_string(components.R_D_n_c));
-	s = rlc2ss::replace(s, "R_D_p_a", std::to_string(components.R_D_p_a));
-	s = rlc2ss::replace(s, "R_D_p_b", std::to_string(components.R_D_p_b));
-	s = rlc2ss::replace(s, "R_D_p_c", std::to_string(components.R_D_p_c));
-	s = rlc2ss::replace(s, "R_conv_a", std::to_string(components.R_conv_a));
-	s = rlc2ss::replace(s, "R_conv_b", std::to_string(components.R_conv_b));
-	s = rlc2ss::replace(s, "R_conv_c", std::to_string(components.R_conv_c));
-	s = rlc2ss::replace(s, "R_dc_pn1", std::to_string(components.R_dc_pn1));
-	s = rlc2ss::replace(s, "R_dc_pn2", std::to_string(components.R_dc_pn2));
-	s = rlc2ss::replace(s, "R_dc_pp1", std::to_string(components.R_dc_pp1));
-	s = rlc2ss::replace(s, "R_dc_pp2", std::to_string(components.R_dc_pp2));
-	s = rlc2ss::replace(s, "R_dc_sn1", std::to_string(components.R_dc_sn1));
-	s = rlc2ss::replace(s, "R_dc_sn2", std::to_string(components.R_dc_sn2));
-	s = rlc2ss::replace(s, "R_dc_sp1", std::to_string(components.R_dc_sp1));
-	s = rlc2ss::replace(s, "R_dc_sp2", std::to_string(components.R_dc_sp2));
-	s = rlc2ss::replace(s, "R_dc_src_p", std::to_string(components.R_dc_src_p));
-	s = rlc2ss::replace(s, "R_dc_src_s", std::to_string(components.R_dc_src_s));
-	s = rlc2ss::replace(s, "R_f_a", std::to_string(components.R_f_a));
-	s = rlc2ss::replace(s, "R_f_b", std::to_string(components.R_f_b));
-	s = rlc2ss::replace(s, "R_f_c", std::to_string(components.R_f_c));
-	s = rlc2ss::replace(s, "R_grid_a", std::to_string(components.R_grid_a));
-	s = rlc2ss::replace(s, "R_grid_b", std::to_string(components.R_grid_b));
-	s = rlc2ss::replace(s, "R_grid_c", std::to_string(components.R_grid_c));
-	s = rlc2ss::replace(s, "R_src_a", std::to_string(components.R_src_a));
-	s = rlc2ss::replace(s, "R_src_b", std::to_string(components.R_src_b));
-	s = rlc2ss::replace(s, "R_src_c", std::to_string(components.R_src_c));
-
-    // Parse json for the intermediate matrices
-    nlohmann::json j = nlohmann::json::parse(s);
-    std::string K1_str = j["K1"];
-    std::string K2_str = j["K2"];
-    std::string A1_str = j["A1"];
-    std::string B1_str = j["B1"];
-    std::string C1_str = j["C1"];
-    std::string D1_str = j["D1"];
+    std::string netlist = "V_src_a _net0 0 DC 1 \nV_src_b _net1 0 DC 1 \nV_src_c _net2 0 DC 1 \nS_0_a N_conv_a N_dc_0 _net4 _net5 \nS_0_b N_conv_b N_dc_0 _net6 _net7 \nS_0_c N_conv_c N_dc_0 _net8 _net9 \nV_dc_src _net22 _net23 DC 1 \nR_dc_src_p _net25 _net24 1E3 \nL_dc_src _net22 _net24 10E-6 \nR_dc_pp2 _net25 _net27 1E3 \nR_dc_pn2 _net27 _net23 1E3 \nR_dc_sp2 _net25 _net26 1E-3 \nR_dc_sn2 _net27 _net28 1E-3 \nR_dc_pp1 N_dc_p N_dc_0 1E3 \nR_dc_pn1 N_dc_0 N_dc_n 1E3 \nR_dc_sp1 N_dc_p _net3 1E-3 \nR_dc_sn1 N_dc_0 _net29 1E-3 \nC_dc_p2 _net26 _net27 10E-3 \nC_dc_p1 _net3 N_dc_0 10E-3 \nC_dc_n1 _net29 N_dc_n 10E-3 \nC_dc_n2 _net28 _net23 10E-3 \nL_dc_n _net23 N_dc_n 1E-6 \nL_dc_p _net25 N_dc_p 1E-6 \nR_conv_a N_conv_a V2_a 1E-3 \nR_conv_b N_conv_b V2_b 1E-3 \nR_conv_c N_conv_c V2_c 1E-3 \nR_grid_a N_cap_a _net10 1E-3 \nR_grid_b N_cap_b _net12 1E-3 \nR_grid_c N_cap_c _net14 1E-3 \nR_src_a _net11 _net16 1E-3 \nR_src_b _net13 _net17 1E-3 \nR_src_c _net15 _net18 1E-3 \nL_conv_a V2_a N_cap_a 1E-6 \nL_conv_b V2_b N_cap_b 1E-6 \nL_conv_c V2_c N_cap_c 1E-6 \nL_grid_a _net10 _net11 1E-6 \nL_grid_b _net12 _net13 1E-6 \nL_grid_c _net14 _net15 1E-6 \nL_src_a _net16 _net0 1E-6 \nL_src_b _net17 _net1 1E-6 \nL_src_c _net18 _net2 1E-6 \nR_f_a _net19 N_cap_0 1E-3 \nR_f_b _net20 N_cap_0 1E-3 \nR_f_c _net21 N_cap_0 1E-3 \nC_f_a N_cap_a _net19 1E-3 \nC_f_b N_cap_b _net20 1E-3 \nC_f_c N_cap_c _net21 1E-3 \nD_p_a N_conv_a N_dc_p \nD_p_b N_conv_b N_dc_p \nD_p_c N_conv_c N_dc_p \nD_n_a N_dc_n N_conv_a \nD_n_b N_dc_n N_conv_b \nD_n_c N_dc_n N_conv_c \nR_dc_src_s _net25 _net24 1 ";
+    std::unordered_map<std::string, double> component_values;
+	component_values["C_dc_n1"] = components.C_dc_n1;
+	component_values["C_dc_n2"] = components.C_dc_n2;
+	component_values["C_dc_p1"] = components.C_dc_p1;
+	component_values["C_dc_p2"] = components.C_dc_p2;
+	component_values["C_f_a"] = components.C_f_a;
+	component_values["C_f_b"] = components.C_f_b;
+	component_values["C_f_c"] = components.C_f_c;
+	component_values["L_conv_a"] = components.L_conv_a;
+	component_values["L_conv_b"] = components.L_conv_b;
+	component_values["L_conv_c"] = components.L_conv_c;
+	component_values["L_dc_n"] = components.L_dc_n;
+	component_values["L_dc_p"] = components.L_dc_p;
+	component_values["L_dc_src"] = components.L_dc_src;
+	component_values["L_grid_a"] = components.L_grid_a;
+	component_values["L_grid_b"] = components.L_grid_b;
+	component_values["L_grid_c"] = components.L_grid_c;
+	component_values["L_src_a"] = components.L_src_a;
+	component_values["L_src_b"] = components.L_src_b;
+	component_values["L_src_c"] = components.L_src_c;
+	component_values["R_D_n_a"] = components.R_D_n_a;
+	component_values["R_D_n_b"] = components.R_D_n_b;
+	component_values["R_D_n_c"] = components.R_D_n_c;
+	component_values["R_D_p_a"] = components.R_D_p_a;
+	component_values["R_D_p_b"] = components.R_D_p_b;
+	component_values["R_D_p_c"] = components.R_D_p_c;
+	component_values["R_conv_a"] = components.R_conv_a;
+	component_values["R_conv_b"] = components.R_conv_b;
+	component_values["R_conv_c"] = components.R_conv_c;
+	component_values["R_dc_pn1"] = components.R_dc_pn1;
+	component_values["R_dc_pn2"] = components.R_dc_pn2;
+	component_values["R_dc_pp1"] = components.R_dc_pp1;
+	component_values["R_dc_pp2"] = components.R_dc_pp2;
+	component_values["R_dc_sn1"] = components.R_dc_sn1;
+	component_values["R_dc_sn2"] = components.R_dc_sn2;
+	component_values["R_dc_sp1"] = components.R_dc_sp1;
+	component_values["R_dc_sp2"] = components.R_dc_sp2;
+	component_values["R_dc_src_p"] = components.R_dc_src_p;
+	component_values["R_dc_src_s"] = components.R_dc_src_s;
+	component_values["R_f_a"] = components.R_f_a;
+	component_values["R_f_b"] = components.R_f_b;
+	component_values["R_f_c"] = components.R_f_c;
+	component_values["R_grid_a"] = components.R_grid_a;
+	component_values["R_grid_b"] = components.R_grid_b;
+	component_values["R_grid_c"] = components.R_grid_c;
+	component_values["R_src_a"] = components.R_src_a;
+	component_values["R_src_b"] = components.R_src_b;
+	component_values["R_src_c"] = components.R_src_c;
+    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, int(switches.all()), component_values);
 
     // Create eigen matrices
-    Eigen::Matrix<double, Model_diode_bridge_3l::NUM_STATES, Model_diode_bridge_3l::NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(K1_str).data());
-    Eigen::Matrix<double, Model_diode_bridge_3l::NUM_OUTPUTS, Model_diode_bridge_3l::NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(K2_str).data());
-    Eigen::Matrix<double, Model_diode_bridge_3l::NUM_STATES, Model_diode_bridge_3l::NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(A1_str).data());
-    Eigen::Matrix<double, Model_diode_bridge_3l::NUM_STATES, Model_diode_bridge_3l::NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(B1_str).data());
-    Eigen::Matrix<double, Model_diode_bridge_3l::NUM_OUTPUTS, Model_diode_bridge_3l::NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(C1_str).data());
-    Eigen::Matrix<double, Model_diode_bridge_3l::NUM_OUTPUTS, Model_diode_bridge_3l::NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(D1_str).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
     Model_diode_bridge_3l_Topology& topology = state_space_cache.emplace_back(Model_diode_bridge_3l_Topology{
         .components = components,
