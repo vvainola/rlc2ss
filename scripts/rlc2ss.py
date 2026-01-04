@@ -141,20 +141,6 @@ class Component:
         self._mutual_inductance_voltage += mutual_inductance_voltage
 
 
-def remove_empty_rows(matrix):
-    rows_to_remove = []
-    zero_row = sy.zeros(1, matrix.shape[1])
-    for i in range(matrix.shape[0]):
-        row = matrix[i, :]
-        if row == zero_row:
-            rows_to_remove.append(i)
-    rows_to_remove.sort()
-    rows_to_remove.reverse()
-    for row in rows_to_remove:
-        matrix.row_del(row)
-    return matrix, rows_to_remove
-
-
 def parse_netlist(filename):
     netlist = open(filename, 'r').readlines()
 
@@ -271,7 +257,7 @@ def get_xv_voltage(vv_src : Component, components : T.List[Component], full_tree
         voltages.append(node_voltage)
     return Symbol(vv_src.name) * (voltages[0] - voltages[1])
 
-#@profile
+# @profile
 def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     NAME = 0
     POS_NODE = 1
@@ -366,7 +352,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         else:
             assert False, f"Unknown component type {component.name}"
 
-         # Parse possible extra outputs from default value e.g. "50e-3;I;Vc;"
+        # Parse possible extra outputs from default value e.g. "50e-3;I;Vc;"
         comp_outputs = default_value_txt.upper()
         if pos_node.name.startswith('N'):
             outputs.append((pos_node.name))
@@ -432,6 +418,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
             proper_tree.add_edge(comp.pos_node.name, comp.neg_node.name, edge_idx=components.index(comp))
         else:
             links.append(comp)
+
     # State variables are capacitors that are in twigs and inductors that are in branches
     dependent_voltages: T.List[sy.Symbol] = []
     dependent_currents: T.List[sy.Symbol] = []
@@ -457,6 +444,10 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     branches = len(components)
     # Create cutset matrix
     cutset_matrix = sy.zeros(len(twigs), branches)
+    capacitor_cutset_rows = []
+    dep_inductor_cutset_rows = []
+    passive_cutset_rows = []
+    solved = {}
     for i, twig in enumerate(twigs):
         # Remove twig
         proper_tree.remove_edge(twig.pos_node.name, twig.neg_node.name)
@@ -469,7 +460,20 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         cutset_matrix[i, components.index(twig)] = 1
         # Add twig back
         proper_tree.add_edge(twig.pos_node.name, twig.neg_node.name, edge_idx=components.index(twig))
+
+        if twig.name[0] == 'C':
+            capacitor_cutset_rows.append(i)
+        elif twig.name[0] == 'L':
+            dep_inductor_cutset_rows.append(i)
+        elif twig.name[0] == 'I':
+            print(f"Bad cutset for current source {twig.name}. Setting to 0.")
+            solved[f'V_{twig.name}'] = Symbol('0')
+        else:
+            passive_cutset_rows.append(i)
     # Create loop matrix
+    inductor_loop_rows = []
+    dep_capacitor_loop_rows = []
+    passive_loop_rows = []
     loop_matrix = sy.zeros(len(links), branches)
     for i, link in enumerate(links):
         path = list(nx.shortest_path(proper_tree, link.pos_node.name, link.neg_node.name))
@@ -487,6 +491,13 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         else:
             loop_matrix[i, components.index(link)] = 1
 
+        if link.name[0] == 'C':
+            dep_capacitor_loop_rows.append(i)
+        elif link.name[0] == 'L':
+            inductor_loop_rows.append(i)
+        else:
+            passive_loop_rows.append(i)
+
     for src in vv_sources:
         src.update_voltage(get_xv_voltage(src, components, full_tree))
     for src in vi_sources:
@@ -500,78 +511,40 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         u_vec[i] = comp.v()
     cutset_eqs = cutset_matrix * i_vec
     loop_eqs = loop_matrix * u_vec
-    eqs = sy.Matrix(sy.BlockMatrix([[cutset_eqs], [loop_eqs]]))
 
     # Replace currents in inductors which are not state variables with state currents
-    i_deps_as_i_states = {}
-    for i_dep in dependent_currents:
-        comp_name = str(i_dep)[2:]
-        comp = get_component(components, comp_name)
-        # Replace iL with state currents
-        for eq in cutset_eqs:
-            if i_dep in eq.free_symbols:
-                i_dep_as_i_state = sy.solve(eq, i_dep)[0]
-        comp.update_current(i_dep_as_i_state)
-        i_deps_as_i_states[i_dep] = i_dep_as_i_state
-        i_vec = i_vec.xreplace({i_dep : i_dep_as_i_state})
-        u_vec = u_vec.xreplace({i_dep : i_dep_as_i_state})
-        output_currents[i_dep] = i_dep_as_i_state
     # Replace voltages in capacitors which are not state variables with state voltages
-    u_deps_as_u_states = {}
-    for u_dep in dependent_voltages:
-        comp_name = str(u_dep)[2:]
-        comp = get_component(components, comp_name)
-        # Replace uC with state voltages
-        for eq in loop_eqs:
-            if u_dep in eq.free_symbols:
-                u_dep_as_u_state = sy.solve(eq, u_dep)[0]
-        comp.update_voltage(u_dep_as_u_state)
-        u_deps_as_u_states[u_dep] = u_dep_as_u_state
-        i_vec = i_vec.xreplace({u_dep : u_dep_as_u_state})
-        u_vec = u_vec.xreplace({u_dep : u_dep_as_u_state})
-        output_voltages[u_dep] = u_dep_as_u_state
-    cutset_eqs = cutset_matrix * i_vec
-    loop_eqs = loop_matrix * u_vec
-    eqs = sy.Matrix(sy.BlockMatrix([[cutset_eqs], [loop_eqs]]))
+    dep_state_eqs =  [loop_eqs[i] for i in dep_capacitor_loop_rows] + [cutset_eqs[i] for i in dep_inductor_cutset_rows]
+    dep_unknowns = dependent_currents + dependent_voltages
+    if len(dep_unknowns) > 0:
+        assert len(dep_state_eqs) == len(dep_unknowns), "Number of dependent state equations and unknowns do not match"
+        for i, sol in enumerate(sy.linsolve(dep_state_eqs, dep_unknowns).args[0]):
+            comp_name = str(dep_unknowns[i])[2:]
+            comp = get_component(components, comp_name)
+            if str(dep_unknowns[i])[0] == 'I':
+                output_currents[dep_unknowns[i]] = sol
+                comp.update_current(sol)
+            else:
+                output_voltages[dep_unknowns[i]] = sol
+                comp.update_voltage(sol)
+            solved[dep_unknowns[i]] = sol
+            i_vec = i_vec.xreplace({dep_unknowns[i] : sol})
+            u_vec = u_vec.xreplace({dep_unknowns[i] : sol})
+        cutset_eqs = cutset_matrix * i_vec
+        loop_eqs = loop_matrix * u_vec
 
-    # Replace the passive components currents and voltages with state variables
-    # The order of solving should not matter because the equations are linearly
-    # independent
+    # Solve the passive components currents and voltages with state variables
     unknowns: T.List[Component] = []
     for comp in current_sources + ii_sources + vi_sources:
-        unknowns.append(comp.v())
+        if str(comp.v()) not in solved:
+            unknowns.append(comp.v())
     for comp in resistors + voltage_sources + vv_sources + iv_sources:
-        unknowns.append(comp.i())
-    solved = {}
-    # Solve for unknowns
-    for i, unknown in enumerate(unknowns):
-        unknown_as_others = ''
-        for eq in eqs:
-            if unknown in eq.free_symbols:
-                # Expand the eq in case it sums up to zero
-                eq = sy.together(eq).expand()
-                if unknown not in eq.free_symbols:
-                    continue
-                try:
-                    unknown_as_others = sy.linsolve([eq], [unknown]).args[0][0]
-                except ZeroDivisionError:
-                    print('Unable to solve')
-                    return None
-                solved[unknown] = unknown_as_others
-                break
-        if unknown_as_others == '':
-            print(f"[WARNING] Unable to solve {unknown}. Setting to zero.")
-            unknown_as_others = Symbol('0')
-            solved[unknown] = Symbol('0')
-        unknown_as_others = sy.together(unknown_as_others).expand()
-        for key, val in solved.items():
-            solved[key] = val.xreplace({unknown : unknown_as_others})
-        eqs = eqs.xreplace({unknown : unknown_as_others})
-    # Try simplify the solved so that there are no powers of two in the output matrices
-    solved_simplified = {}
-    for key, val in solved.items():
-        solved_simplified[key] = sy.simplify(val).expand()
-    solved = solved_simplified
+        if str(comp.i()) not in solved:
+            unknowns.append(comp.i())
+    passive_eqs = [loop_eqs[i] for i in passive_loop_rows] + [cutset_eqs[i] for i in passive_cutset_rows]
+    for i, sol in enumerate(sy.linsolve(passive_eqs, unknowns).args[0]):
+        solved[unknowns[i]] = sol
+
     # Update solved to output
     for unknown, unknown_as_state_vars in solved.items():
         comp = get_component(components, str(unknown)[2:])
@@ -581,8 +554,6 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         if str(unknown)[0] == 'V':
             output_voltages[unknown] = unknown_as_state_vars
             comp.update_voltage(unknown_as_state_vars)
-        i_vec = i_vec.xreplace({unknown : unknown_as_state_vars})
-        u_vec = u_vec.xreplace({unknown : unknown_as_state_vars})
         for src in vv_sources + iv_sources:
             src.update_voltage(src.v().xreplace({unknown : unknown_as_state_vars}))
         for src in ii_sources + vi_sources:
@@ -597,32 +568,6 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         i_res = output_currents[Symbol(f'I_{res.name}')]
         res.update_current(i_res)
         output_voltages[Symbol(f'V_{res.name}')] = res.v()
-
-    for v in mutual_inductors:
-        L1 : Component = v[1]
-        L2 : Component = v[2]
-        m = sy.Symbol(v[0]) * sy.sqrt(Symbol(L1.name) * Symbol(L2.name))
-        L1.add_mutual_inductance(m * L2.der())
-        L2.add_mutual_inductance(m * L1.der())
-
-    # Replace uL/iC with L*dI / C*dU
-    for var in states + dependent_currents + dependent_voltages:
-        comp_name = str(var)[2:]
-        comp = get_component(components, comp_name)
-        if comp.name[0] == 'L':
-            i_vec = i_vec.xreplace({comp.v() : comp.v_der()})
-            u_vec = u_vec.xreplace({comp.v() : comp.v_der()})
-        elif comp.name[0] == 'C':
-            i_vec = i_vec.xreplace({comp.i() : comp.i_der()})
-            u_vec = u_vec.xreplace({comp.i() : comp.i_der()})
-        else:
-            assert False, f'Invalid state component {comp_name}'
-    loop_eqs_for_derivs = loop_matrix * u_vec
-    cutset_eqs_for_derivs = cutset_matrix * i_vec
-    all_deriv_eqs = sy.Matrix(sy.BlockMatrix([[loop_eqs_for_derivs], [cutset_eqs_for_derivs]]))
-    all_deriv_eqs = sy.simplify(all_deriv_eqs) # (sy.together(all_deriv_eqs)).expand()
-    all_deriv_eqs, _ = remove_empty_rows(all_deriv_eqs)
-    all_deriv_eqs = list(all_deriv_eqs)
 
     node_voltages = {}
     for node in nodes:
@@ -641,27 +586,49 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         node_voltages[Symbol(node.name)] = node_voltage
     all_outputs = output_currents | output_voltages | node_voltages
 
-    for i_dep, i_states in i_deps_as_i_states.items():
-        all_deriv_eqs.append(sy.sympify(str(i_dep - i_states).replace('I_', 'dI_')))
+    for v in mutual_inductors:
+        L1 : Component = v[1]
+        L2 : Component = v[2]
+        m = sy.Symbol(v[0]) * sy.sqrt(Symbol(L1.name) * Symbol(L2.name))
+        L1.add_mutual_inductance(m * L2.der())
+        L2.add_mutual_inductance(m * L1.der())
+
+    # Collect derivative equations
+    deriv_eqs = [loop_eqs[i] for i in inductor_loop_rows] + [cutset_eqs[i] for i in capacitor_cutset_rows]
+
+    # Add dependent states also as states because they may not be dependent in different switch combination
+    for i_dep in dependent_currents:
+        i_states = output_currents[i_dep]
+        deriv_eqs.append(sy.sympify(str(i_dep - i_states).replace('I_', 'dI_')))
         states.append(i_dep)
-    for u_dep, u_states in u_deps_as_u_states.items():
-        all_deriv_eqs.append(sy.sympify(str(u_dep - u_states).replace('V_', 'dV_')))
+    for u_dep  in dependent_voltages:
+        u_states = output_voltages[u_dep]
+        deriv_eqs.append(sy.sympify(str(u_dep - u_states).replace('V_', 'dV_')))
         states.append(u_dep)
+
+    # Replace resistor currents with solved equations
+    deriv_eqs = sy.Matrix(sy.BlockMatrix([[sy.Matrix(deriv_eqs)]]))
+    for unknown, solution in solved.items():
+        deriv_eqs = deriv_eqs.xreplace({unknown : solution})
+
+    # Replace uL/iC with L*dI / C*dU
+    for var in states:
+        comp_name = str(var)[2:]
+        comp = get_component(components, comp_name)
+        if comp.name[0] == 'L':
+            deriv_eqs = deriv_eqs.xreplace({comp.v() : comp.v_der()})
+        elif comp.name[0] == 'C':
+            deriv_eqs = deriv_eqs.xreplace({comp.i() : comp.i_der()})
+        else:
+            assert False, f'Invalid state component {comp_name}'
+
     states = [str(s) for s in states]
     states.sort()
     states = [Symbol(s) for s in states]
 
     states_deriv = [Symbol(f'd{str(state)}') for state in states]
-    K1, Bu = sy.linear_eq_to_matrix(all_deriv_eqs, states_deriv)
-    # Reshape, Bu is moved to the right hand side so no sign inverse needed here
-    K1, rows_removed = remove_empty_rows(K1)
-    for row in rows_removed:
-        Bu.row_del(row)
-
-    if K1.shape[0] != K1.shape[1]:
-        print('K matrix is not symmetric')
-        return None
-    assert K1.shape[0] == K1.shape[1]
+    K1, Bu = sy.linear_eq_to_matrix(deriv_eqs, states_deriv)
+    # Bu is moved to the right hand side so no sign inverse needed here
     A1, Bu = sy.linear_eq_to_matrix(Bu, states)
     Bu = -Bu
     inputs = []
@@ -692,13 +659,6 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     for i, state in enumerate(states):
         H1[i, i] = Symbol(str(state)[2:])
     K2 = C2*H1
-
-    ## Try "wrong" calculation to assert matrix sizes
-    # K_inv = K.inv()
-    # A = K_inv * A1
-    # B = K_inv * B1
-    # C = C1 + C2 * H1 * K_inv * A1     ( C1 + K2 * K1_inv * A1 )
-    # D = D1 + C2 * H1 * K_inv * B1     ( D1 + K2 * K1_inv * B1 )
 
     component_names = [c.name for c in inductors + capacitors + resistors + vv_sources + iv_sources + vi_sources + ii_sources]
     default_values = {c.name: c.default_value for c in components}
