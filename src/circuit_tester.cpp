@@ -68,10 +68,18 @@ double L2_act = (L2 * L1_act) / (L1_act - L2);
 Model_saturating_inductor circuit(Model_saturating_inductor::Components{});
 #elif defined MUTUAL_INDUCTOR
 Model_mutual_inductor circuit(Model_mutual_inductor::Components{
+    .Cf = 100e-6,
     .FSRC1 = -100.0,
     .K12 = 0.5,
     .K21 = 0.5,
     .K31 = 0.5,
+    .L1 = 1,
+    .L2 = 1,
+    .L3 = 1,
+    .R1 = 10.0,
+    .R2 = 10.0,
+    .R3 = 10e-3,
+    .R4 = 10.0,
 });
 #elif defined CONTROLLED_SOURCES
 Model_controlled_sources circuit(Model_controlled_sources::Components{
@@ -120,7 +128,7 @@ extern "C" __declspec(dllexport) double* DLL_outputs = (double*)&circuit.outputs
 extern "C" __declspec(dllexport) double* DLL_debug = debug;
 
 extern "C" __declspec(dllexport) void DLL_init(double dt) {
-    DbgGui_create(dt);
+    //DbgGui_create(dt);
     DbgGui_startUpdateLoop();
 }
 
