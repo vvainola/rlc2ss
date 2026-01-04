@@ -7,10 +7,12 @@
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
+#include "on_off_delay.hpp"
 #include <Eigen/Dense>
 #include <Eigen/Core>
 #include <Eigen/LU>
 #include "integrator.hpp"
+#include "nlohmann/json.hpp"
 #include <assert.h>
 
 class Model_controlled_sources {
@@ -19,9 +21,8 @@ class Model_controlled_sources {
     union Inputs;
     union Outputs;
     union States;
-    union Switches;
+    struct Switches;
     struct StateSpaceMatrices;
-    static StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
     Model_controlled_sources() {}
     Model_controlled_sources(Components const& c);
@@ -56,9 +57,8 @@ class Model_controlled_sources {
     void step(double dt, Inputs const& inputs_);
 
     union Inputs {
-        Inputs() {
-            data.setZero();
-        }
+        Inputs() { data.setZero(); }
+        Inputs(const Inputs& other) { data = other.data; }
         struct {
             double V1;
             double VSRC4;
@@ -68,9 +68,8 @@ class Model_controlled_sources {
     };
 
     union Outputs {
-        Outputs() {
-            data.setZero();
-        }
+        Outputs() { data.setZero(); }
+        Outputs(const Outputs& other) { data = other.data; }
         struct {
             double I_C_2;
             double I_L1;
@@ -80,11 +79,12 @@ class Model_controlled_sources {
         Eigen::Vector<double, NUM_OUTPUTS> data;
     };
 
-    union Switches {
-        struct {
+    struct Switches {
 
-        };
-        uint64_t all;
+
+        uint64_t all() const;
+        double smallestDelay();
+        void step(double dt);
     };
 
     struct Components {
@@ -100,7 +100,7 @@ class Model_controlled_sources {
         double R3 = 1.0;
         double R4 = 1.0;
         double R5 = 1.0;
-        double R6 = 1.0;
+        double R6 = 1000.0;
         double R7 = 1000.0;
 
         bool operator==(Components const& other) const {
@@ -130,6 +130,9 @@ class Model_controlled_sources {
         States() {
             data.setZero();
         }
+        States(const States& other) {
+            data = other.data;
+        }
         struct {
             double I_L1;
             double V_C_1;
@@ -153,21 +156,25 @@ class Model_controlled_sources {
     Inputs inputs;
     States states;
     Outputs outputs;
-    Switches switches = {.all = 0};
+    Switches switches;
 
   private:
-    void stepInternal(double dt);
+    void stepWithZeroCrossingDetection(double dt);
+    void stepModel(double dt);
+    void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
         m_solver;
     StateSpaceMatrices m_ss;
     Components _M_components_DO_NOT_TOUCH;
-    Switches _M_switches_DO_NOT_TOUCH = {.all = 0};
+    Switches _M_switches_DO_NOT_TOUCH;
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    // The json file with symbolic intermediate matrices
+    nlohmann::json m_circuit_json;
 
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));
