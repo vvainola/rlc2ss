@@ -21,7 +21,7 @@
 // SOFTWARE.
 
 #include "rlc2ss.h"
-#include "netlist/str_helpers.h"
+#include "str_helpers.h"
 
 #include <iostream>
 #include <fstream>

@@ -19,12 +19,13 @@ lib_rlc2ss = static_library('rlc2ss',
         'src/netlist/graph.cpp',
         'src/netlist/netlist.cpp',
         'src/netlist/state_space.cpp',
-        'src/netlist/str_helpers.cpp',
         'src/rlc2ss.cpp',
+        'src/str_helpers.cpp',
     ],
     include_directories : [
         'include',
-        'src'
+        'src',
+        'src/netlist'
     ],
     dependencies : deps
 )

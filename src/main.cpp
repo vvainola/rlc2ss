@@ -1,7 +1,6 @@
 #include "cxxopts.hpp"
-#include "netlist/str_helpers.h"
+#include "str_helpers.h"
 #include "netlist/netlist.hpp"
-#include "netlist/str_helpers.h"
 #include "rlc2ss.h"
 
 #include <filesystem>
