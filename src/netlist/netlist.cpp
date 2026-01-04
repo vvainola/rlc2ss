@@ -4,7 +4,6 @@
 #pragma warning(push, 0)
 #include "symengine/expression.h"
 #include "symengine/solve.h"
-#include "cxxgraph/CXXGraph.hpp"
 #pragma warning(pop)
 
 #include <filesystem>

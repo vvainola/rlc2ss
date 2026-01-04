@@ -23,6 +23,7 @@
 #include "str_helpers.h"
 #include "netlist.hpp"
 #include "component.hpp"
+#include "graph.hpp"
 
 #pragma warning(push, 0)
 #include "symengine/expression.h"
@@ -30,16 +31,10 @@
 #include "symengine/symbol.h"
 #include "symengine/real_double.h"
 #include "symengine/solve.h"
-#include "cxxgraph/CXXGraph.hpp"
 #include "Eigen/Core"
 #pragma warning(pop)
 
 namespace rlc2ss {
-
-using Graph = CXXGraph::Graph<Node*>;
-using GraphNode = CXXGraph::Node<Node*>;
-using GraphEdge = CXXGraph::UndirectedWeightedEdge<Node*>;
-using GraphEdgeSet = CXXGraph::T_EdgeSet<Node*>;
 
 using namespace SymEngine;
 
@@ -170,32 +165,26 @@ std::vector<SymEngine::RCP<const SymEngine::Basic>> matrixVecMulSubset(DenseMatr
     return out_vec;
 }
 
-Expression nodeVoltage(Node const* node,
-                       Netlist const& netlist,
-                       std::unordered_map<std::string, GraphNode> const& graph_nodes,
-                       Graph const& graph) {
+Expression nodeVoltage(Node const* node, Graph const& graph) {
     // Traverse from ground to node
     Expression node_voltage("0");
     if (node->name() == "0") {
         return node_voltage;
     }
-    GraphNode const& ground = graph_nodes.at("0");
-    GraphNode const& target = graph_nodes.at(node->name());
-    auto result = graph.dijkstra(ground, target);
-    for (int j = 1; j < result.path.size(); ++j) {
-        std::string const& pos_node_name = result.path[j - 1];
-        std::string const& neg_node_name = result.path[j];
-        size_t id = 0;
-        graph.findEdge(&graph_nodes.at(pos_node_name), &graph_nodes.at(neg_node_name), id);
-        assert(id != 0);
-        if (id != 0) {
-            auto edge = *graph.getEdge(id);
-            Component* comp = netlist.getComponent(edge->getUserId());
-            if (comp->posNode()->name() == pos_node_name) {
-                node_voltage -= comp->voltage();
-            } else {
-                node_voltage += comp->voltage();
-            }
+    Node* ground = graph.getNode("0");
+    Node* target = graph.getNode(node->name());
+    assert(ground != nullptr);
+    assert(target != nullptr);
+    std::vector<Node*> path = graph.dijkstra(ground, target);
+    for (int j = 1; j < path.size(); ++j) {
+        Node* pos_node = path[j - 1];
+        Node* neg_node = path[j];
+        Component* comp = graph.getComponent(pos_node, neg_node);
+        assert(comp != nullptr);
+        if (comp->posNode() == pos_node) {
+            node_voltage -= comp->voltage();
+        } else {
+            node_voltage += comp->voltage();
         }
     }
     return node_voltage;
@@ -305,51 +294,22 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
                                           bool verbose) {
     Netlist netlist = parseNetlist(netlist_str, combination, component_values);
 
-    std::unordered_map<std::string, GraphNode> graph_nodes;
-    for (auto& node : netlist.nodes) {
-        graph_nodes.emplace(node->name(), GraphNode(node->name(), node.get()));
-    }
-
-    std::unordered_map<std::string, GraphEdge> graph_edges;
+    Graph full_graph;
     for (auto& comp : netlist.components) {
-        Node* pos_node = comp->posNode();
-        Node* neg_node = comp->negNode();
-        // Find graph nodes corresponding to pos_node and neg_node
-        GraphNode* graph_pos_node = nullptr;
-        GraphNode* graph_neg_node = nullptr;
-        for (auto& [node_name, gnode] : graph_nodes) {
-            if (gnode.getData() == pos_node) {
-                graph_pos_node = &gnode;
-            }
-            if (gnode.getData() == neg_node) {
-                graph_neg_node = &gnode;
-            }
-        }
-        if (graph_pos_node && graph_neg_node) {
-            graph_edges.emplace(comp->name(), GraphEdge(comp->name(), *graph_pos_node, *graph_neg_node, 1));
-        }
-    }
-
-    GraphEdgeSet full_tree_edge_set;
-    for (auto& [name, edge] : graph_edges) {
-        full_tree_edge_set.insert(std::make_shared<GraphEdge>(edge));
+        full_graph.addComponent(comp.get());
     }
 
     // Add voltage source with zero voltage between ground and each node that is not reachable
-    Graph full_tree(full_tree_edge_set);
-    GraphNode& ground = graph_nodes.at("0");
+    Node* ground = full_graph.getNode("0");
     for (std::unique_ptr<Node>& node : netlist.nodes) {
-        GraphNode& graph_node = graph_nodes.at(node->name());
-        auto result = full_tree.dijkstra(ground, graph_node);
-        if (!result.success) {
+        bool has_path = full_graph.hasPath(ground, node.get());
+        if (!has_path) {
             std::string new_name = V_DUMMY + node->name();
-            std::unique_ptr<Component>& component = netlist.components.emplace_back(std::make_unique<Component>(new_name, *node, *ground.getData(), 0));
+            std::unique_ptr<Component>& component = netlist.components.emplace_back(std::make_unique<Component>(new_name, *node, *ground, 0));
             netlist.voltage_sources.push_back(component.get());
-            graph_edges.emplace(new_name, GraphEdge(new_name, graph_node, ground, 1));
-            full_tree_edge_set.insert(std::make_shared<GraphEdge>(graph_edges.at(new_name)));
             node->addConnection(component.get());
-            ground.getData()->addConnection(component.get());
-            full_tree = Graph(full_tree_edge_set);
+            ground->addConnection(component.get());
+            full_graph.addComponent(component.get());
         }
     }
 
@@ -362,16 +322,15 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     std::vector<Component*> twigs;
     std::vector<Component*> links;
 
-    GraphEdgeSet proper_tree_edge_set;
     std::vector<Component*> voltage_source_like;
     voltage_source_like.insert(voltage_source_like.end(), netlist.voltage_sources.begin(), netlist.voltage_sources.end());
     voltage_source_like.insert(voltage_source_like.end(), netlist.vv_sources.begin(), netlist.vv_sources.end());
     voltage_source_like.insert(voltage_source_like.end(), netlist.iv_sources.begin(), netlist.iv_sources.end());
     // Add all voltage sources
+    Graph proper_tree;
     for (Component* src : voltage_source_like) {
         twigs.push_back(src);
-        GraphEdge& edge = graph_edges.at(src->name());
-        proper_tree_edge_set.insert(std::make_shared<GraphEdge>(edge));
+        proper_tree.addComponent(src);
     }
     std::vector<Component*> remaining_components;
     appendVector(remaining_components, netlist.capacitors);
@@ -380,16 +339,11 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     appendVector(remaining_components, netlist.current_sources);
     appendVector(remaining_components, netlist.ii_sources);
     appendVector(remaining_components, netlist.vi_sources);
-    Graph proper_tree(proper_tree_edge_set);
     for (auto& comp : remaining_components) {
-        GraphNode& pos_node = graph_nodes.at(comp->posNode()->name());
-        GraphNode& neg_node = graph_nodes.at(comp->negNode()->name());
-        auto result = proper_tree.dijkstra(pos_node, neg_node);
-        if (!result.success) {
+        bool has_path = proper_tree.hasPath(comp->posNode(), comp->negNode());
+        if (!has_path) {
             twigs.push_back(comp);
-            GraphEdge& edge = graph_edges.at(comp->name());
-            proper_tree_edge_set.insert(std::make_shared<GraphEdge>(edge));
-            proper_tree.addEdge(std::make_shared<GraphEdge>(edge));
+            proper_tree.addComponent(comp);
         } else {
             links.push_back(comp);
         }
@@ -428,16 +382,12 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     for (int i = 0; i < (int)twigs.size(); ++i) {
         // Remove twig
         Component* twig = twigs[i];
-        proper_tree.removeEdge(twig->name());
+        proper_tree.removeComponent(twig);
         for (Component* link : links) {
-            GraphNode& link_pos_node = graph_nodes.at(link->posNode()->name());
-            GraphNode& link_neg_node = graph_nodes.at(link->negNode()->name());
-            std::vector<GraphNode> bfs_nodes = proper_tree.breadth_first_search(link_pos_node);
-            if (!contains(bfs_nodes, link_neg_node)) {
-                GraphNode& twig_pos_node = graph_nodes.at(twig->posNode()->name());
-                /*GraphNode& twig_neg_node = graph_nodes.at(twig->negNode()->name());*/
-                bfs_nodes = proper_tree.breadth_first_search(twig_pos_node);
-                if (contains(bfs_nodes, link_pos_node) || twig_pos_node == link_pos_node) {
+            bool has_path = proper_tree.hasPath(link->posNode(), link->negNode());
+            if (!has_path) {
+                has_path = proper_tree.hasPath(twig->posNode(), link->posNode());
+                if (has_path) {
                     cutset_matrix.set(i, netlist.getComponentIndex(link->name()), SymEngine::Expression("1"));
                 } else {
                     cutset_matrix.set(i, netlist.getComponentIndex(link->name()), SymEngine::Expression("-1"));
@@ -447,7 +397,7 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
         cutset_matrix.set(i, netlist.getComponentIndex(twig->name()), SymEngine::Expression("1"));
 
         // Add twig back
-        proper_tree.addEdge(std::make_shared<GraphEdge>(graph_edges.at(twig->name())));
+        proper_tree.addComponent(twig);
 
         if (twig->name()[0] == 'C') {
             capacitor_cutset_rows.push_back(i);
@@ -467,26 +417,19 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     SymEngine::DenseMatrix loop_matrix = zeroMatrix((int)links.size(), (int)netlist.components.size());
     for (int i = 0; i < links.size(); ++i) {
         Component* link = links[i];
-        GraphNode& link_pos_node = graph_nodes.at(link->posNode()->name());
-        GraphNode& link_neg_node = graph_nodes.at(link->negNode()->name());
-        auto result = proper_tree.dijkstra(link_pos_node, link_neg_node);
-        for (int j = 1; j < result.path.size(); ++j) {
-            std::string const& pos_node_name = result.path[j - 1];
-            std::string const& neg_node_name = result.path[j];
-            size_t id = 0;
-            proper_tree.findEdge(&graph_nodes.at(pos_node_name), &graph_nodes.at(neg_node_name), id);
-            if (id != 0) {
-                auto edge = *proper_tree.getEdge(id);
-                Component* component = netlist.getComponent(edge->getUserId());
-                if (component->posNode()->name() == pos_node_name) {
-                    loop_matrix.set(i, netlist.getComponentIndex(component->name()), SymEngine::Expression("-1"));
-                } else {
-                    loop_matrix.set(i, netlist.getComponentIndex(component->name()), SymEngine::Expression("1"));
-                }
+        std::vector<Node*> path = proper_tree.dijkstra(link->posNode(), link->negNode());
+        for (int j = 1; j < path.size(); ++j) {
+            Node* pos_node = path[j - 1];
+            Node* neg_node = path[j];
+            Component* comp = proper_tree.getComponent(pos_node, neg_node);
+            if (comp->posNode()->name() == pos_node->name()) {
+                loop_matrix.set(i, netlist.getComponentIndex(comp->name()), SymEngine::Expression("-1"));
+            } else {
+                loop_matrix.set(i, netlist.getComponentIndex(comp->name()), SymEngine::Expression("1"));
             }
         }
-        std::string pos_node_name = result.path[result.path.size() - 1];
-        if (link->posNode()->name() == pos_node_name) {
+        Node* pos_node = path[path.size() - 1];
+        if (link->posNode()->name() == pos_node->name()) {
             loop_matrix.set(i, netlist.getComponentIndex(link->name()), SymEngine::Expression("-1"));
         } else {
             loop_matrix.set(i, netlist.getComponentIndex(link->name()), SymEngine::Expression("1"));
@@ -506,18 +449,16 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     appendVector(voltage_controlled_sources, netlist.vv_sources);
     appendVector(voltage_controlled_sources, netlist.vi_sources);
     for (auto& src : voltage_controlled_sources) {
-        GraphEdgeSet tree_without_source = full_tree_edge_set;
-        GraphEdge& edge = graph_edges.at(src->name());
-        size_t erased = tree_without_source.erase(std::make_shared<GraphEdge>(edge));
-        assert(erased == 1);
-        Expression pos_node_voltage = nodeVoltage(src->posSource(), netlist, graph_nodes, tree_without_source);
-        Expression neg_node_voltage = nodeVoltage(src->negSource(), netlist, graph_nodes, tree_without_source);
+        full_graph.removeComponent(src);
+        Expression pos_node_voltage = nodeVoltage(src->posSource(), full_graph);
+        Expression neg_node_voltage = nodeVoltage(src->negSource(), full_graph);
         std::string gain = SYMBOLIC ? src->name() : src->value();
         if (src->name()[0] == 'E') {
             src->setVoltage(Expression(gain) * (pos_node_voltage - neg_node_voltage));
         } else if (src->name()[0] == 'G') {
             src->setCurrent(Expression(gain) * (pos_node_voltage - neg_node_voltage));
         }
+        full_graph.addComponent(src);
     }
 
     // Form voltage and current vectors
@@ -655,7 +596,7 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
         if (node->name() == "0" || !contains(netlist.outputs, node->name())) {
             continue;
         }
-        Expression node_voltage = nodeVoltage(node.get(), netlist, graph_nodes, full_tree);
+        Expression node_voltage = nodeVoltage(node.get(), full_graph);
         output_voltages[node->name()] = node_voltage;
     }
     std::unordered_map<std::string, SymEngine::Expression> all_outputs;

@@ -16,10 +16,11 @@ deps = [
 add_project_arguments('-DNOMINMAX', language : 'cpp')
 lib_rlc2ss = static_library('rlc2ss',
     sources : [
-        'src/rlc2ss.cpp',
+        'src/netlist/graph.cpp',
         'src/netlist/netlist.cpp',
         'src/netlist/state_space.cpp',
         'src/netlist/str_helpers.cpp',
+        'src/rlc2ss.cpp',
     ],
     include_directories : [
         'include',
