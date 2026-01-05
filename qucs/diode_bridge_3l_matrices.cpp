@@ -5,7 +5,7 @@
 #include <fstream>
 #include <format>
 #include <memory>
-#include "diode_bridge_3l_matrices_json.h"
+
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -349,7 +349,7 @@ void Model_diode_bridge_3l::updateStateSpaceMatrices() {
         m_ss = *it->state_space;
         return;
     }
-    std::string netlist = "V_src_a _net0 0 DC 1 \nV_src_b _net1 0 DC 1 \nV_src_c _net2 0 DC 1 \nS_0_a N_conv_a N_dc_0 _net4 _net5 \nS_0_b N_conv_b N_dc_0 _net6 _net7 \nS_0_c N_conv_c N_dc_0 _net8 _net9 \nV_dc_src _net22 _net23 DC 1 \nR_dc_src_p _net25 _net24 1E3 \nL_dc_src _net22 _net24 10E-6 \nR_dc_pp2 _net25 _net27 1E3 \nR_dc_pn2 _net27 _net23 1E3 \nR_dc_sp2 _net25 _net26 1E-3 \nR_dc_sn2 _net27 _net28 1E-3 \nR_dc_pp1 N_dc_p N_dc_0 1E3 \nR_dc_pn1 N_dc_0 N_dc_n 1E3 \nR_dc_sp1 N_dc_p _net3 1E-3 \nR_dc_sn1 N_dc_0 _net29 1E-3 \nC_dc_p2 _net26 _net27 10E-3 \nC_dc_p1 _net3 N_dc_0 10E-3 \nC_dc_n1 _net29 N_dc_n 10E-3 \nC_dc_n2 _net28 _net23 10E-3 \nL_dc_n _net23 N_dc_n 1E-6 \nL_dc_p _net25 N_dc_p 1E-6 \nR_conv_a N_conv_a V2_a 1E-3 \nR_conv_b N_conv_b V2_b 1E-3 \nR_conv_c N_conv_c V2_c 1E-3 \nR_grid_a N_cap_a _net10 1E-3 \nR_grid_b N_cap_b _net12 1E-3 \nR_grid_c N_cap_c _net14 1E-3 \nR_src_a _net11 _net16 1E-3 \nR_src_b _net13 _net17 1E-3 \nR_src_c _net15 _net18 1E-3 \nL_conv_a V2_a N_cap_a 1E-6 \nL_conv_b V2_b N_cap_b 1E-6 \nL_conv_c V2_c N_cap_c 1E-6 \nL_grid_a _net10 _net11 1E-6 \nL_grid_b _net12 _net13 1E-6 \nL_grid_c _net14 _net15 1E-6 \nL_src_a _net16 _net0 1E-6 \nL_src_b _net17 _net1 1E-6 \nL_src_c _net18 _net2 1E-6 \nR_f_a _net19 N_cap_0 1E-3 \nR_f_b _net20 N_cap_0 1E-3 \nR_f_c _net21 N_cap_0 1E-3 \nC_f_a N_cap_a _net19 1E-3 \nC_f_b N_cap_b _net20 1E-3 \nC_f_c N_cap_c _net21 1E-3 \nD_p_a N_conv_a N_dc_p \nD_p_b N_conv_b N_dc_p \nD_p_c N_conv_c N_dc_p \nD_n_a N_dc_n N_conv_a \nD_n_b N_dc_n N_conv_b \nD_n_c N_dc_n N_conv_c \nR_dc_src_s _net25 _net24 1 ";
+    std::string netlist = "V_src_a _net0 0 DC 1 \nV_src_b _net1 0 DC 1 \nV_src_c _net2 0 DC 1 \nR_conv_a N_conv_a V2_a 1E-3 \nR_conv_b N_conv_b V2_b 1E-3 \nR_conv_c N_conv_c V2_c 1E-3 \nR_grid_a N_cap_a _net3 1E-3 \nR_grid_b N_cap_b _net4 1E-3 \nR_grid_c N_cap_c _net5 1E-3 \nR_src_a _net6 _net7 1E-3 \nR_src_b _net8 _net9 1E-3 \nR_src_c _net10 _net11 1E-3 \nL_conv_a V2_a N_cap_a 1E-6 \nL_conv_b V2_b N_cap_b 1E-6 \nL_conv_c V2_c N_cap_c 1E-6 \nL_grid_a _net3 _net6 1E-6 \nL_grid_b _net4 _net8 1E-6 \nL_grid_c _net5 _net10 1E-6 \nL_src_a _net7 _net0 1E-6 \nL_src_b _net9 _net1 1E-6 \nL_src_c _net11 _net2 1E-6 \nR_f_a _net12 N_cap_0 1E-3 \nR_f_b _net13 N_cap_0 1E-3 \nR_f_c _net14 N_cap_0 1E-3 \nC_f_a N_cap_a _net12 1E-3 \nC_f_b N_cap_b _net13 1E-3 \nC_f_c N_cap_c _net14 1E-3 \nD_p_c N_conv_c N_dc_p \nD_n_c N_dc_n N_conv_c \nV_dc_src _net15 _net16 DC 1 \nR_dc_src_p _net17 _net18 1E3 \nL_dc_src _net15 _net18 10E-6 \nR_dc_pp2 _net17 _net19 1E3 \nR_dc_pn2 _net19 _net16 1E3 \nR_dc_sp2 _net17 _net20 1E-3 \nR_dc_sn2 _net19 _net21 1E-3 \nR_dc_pp1 N_dc_p N_dc_0 1E3 \nR_dc_pn1 N_dc_0 N_dc_n 1E3 \nR_dc_sp1 N_dc_p _net22 1E-3 \nR_dc_sn1 N_dc_0 _net23 1E-3 \nC_dc_p2 _net20 _net19 10E-3 \nC_dc_p1 _net22 N_dc_0 10E-3 \nC_dc_n1 _net23 N_dc_n 10E-3 \nC_dc_n2 _net21 _net16 10E-3 \nL_dc_n _net16 N_dc_n 1E-6 \nL_dc_p _net17 N_dc_p 1E-6 \nR_dc_src_s _net17 _net18 1 \nS_0_a N_conv_a N_dc_0 _net24 _net25 \nS_0_b N_conv_b N_dc_0 _net26 _net27 \nS_0_c N_conv_c N_dc_0 _net28 _net29 \nD_p_a N_conv_a N_dc_p \nD_n_a N_dc_n N_conv_a \nD_p_b N_conv_b N_dc_p \nD_n_b N_dc_n N_conv_b \nS_p_a N_conv_a N_dc_p _net30 _net31 \nS_p_b N_conv_b N_dc_p _net32 _net33 \nS_p_c N_conv_c N_dc_p _net34 _net35 \nS_n_a N_dc_n N_conv_a _net36 _net37 \nS_n_b N_dc_n N_conv_b _net38 _net39 \nS_n_c N_dc_n N_conv_c _net40 _net41 ";
     std::unordered_map<std::string, double> component_values;
 	component_values["C_dc_n1"] = components.C_dc_n1;
 	component_values["C_dc_n2"] = components.C_dc_n2;
@@ -426,7 +426,13 @@ uint64_t Model_diode_bridge_3l::Switches::all() const {
         (S_D_n_c << 5) |
         (S_D_p_a << 6) |
         (S_D_p_b << 7) |
-        (S_D_p_c << 8);
+        (S_D_p_c << 8) |
+        (S_n_a << 9) |
+        (S_n_b << 10) |
+        (S_n_c << 11) |
+        (S_p_a << 12) |
+        (S_p_b << 13) |
+        (S_p_c << 14);
 }
 
 double Model_diode_bridge_3l::Switches::smallestDelay() {
@@ -439,7 +445,13 @@ double Model_diode_bridge_3l::Switches::smallestDelay() {
                     S_D_n_c.pendingTime(),
                     S_D_p_a.pendingTime(),
                     S_D_p_b.pendingTime(),
-                    S_D_p_c.pendingTime()});
+                    S_D_p_c.pendingTime(),
+                    S_n_a.pendingTime(),
+                    S_n_b.pendingTime(),
+                    S_n_c.pendingTime(),
+                    S_p_a.pendingTime(),
+                    S_p_b.pendingTime(),
+                    S_p_c.pendingTime()});
 }
 
 void Model_diode_bridge_3l::Switches::step(double dt) {
@@ -452,4 +464,10 @@ void Model_diode_bridge_3l::Switches::step(double dt) {
     S_D_p_a.step(dt);
     S_D_p_b.step(dt);
     S_D_p_c.step(dt);
+    S_n_a.step(dt);
+    S_n_b.step(dt);
+    S_n_c.step(dt);
+    S_p_a.step(dt);
+    S_p_b.step(dt);
+    S_p_c.step(dt);
 }

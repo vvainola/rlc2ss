@@ -53,21 +53,19 @@ endif
 circuit_json_headers  = custom_target('circuit_json_headers',
     input : [
         'qucs/diode_bridge_matrices.json',
-        'qucs/diode_bridge_3l_matrices.json',
         'qucs/diode_matrices.json',
         'qucs/controlled_sources_matrices.json',
         'qucs/mutual_inductor_matrices.json',
     ],
     output : [
         'diode_bridge_matrices_json.h',
-        'diode_bridge_3l_matrices_json.h',
         'diode_matrices_json.h',
         'controlled_sources_matrices_json.h',
         'mutual_inductor_matrices_json.h',
     ],
     command : [generate_hexdump_headers,
-        '--input_files', '@INPUT0@', '@INPUT1@', '@INPUT2@', '@INPUT3@', '@INPUT4@',
-        '--output_files', '@OUTPUT0@', '@OUTPUT1@', '@OUTPUT2@', '@OUTPUT3@', '@OUTPUT4@'
+        '--input_files', '@INPUT0@', '@INPUT1@', '@INPUT2@', '@INPUT3@',
+        '--output_files', '@OUTPUT0@', '@OUTPUT1@', '@OUTPUT2@', '@OUTPUT3@'
     ]
 )
 
