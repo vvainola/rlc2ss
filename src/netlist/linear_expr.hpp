@@ -140,21 +140,19 @@ class LinearExpr {
         return result;
     }
 
-    LinearExpr replace(const std::string& symbol_name, const LinearExpr& new_expr) const {
-        LinearExpr result = *this;
-        if (result.terms.contains(symbol_name)) {
-            double coeff = result.terms[symbol_name];
-            result.terms.erase(symbol_name);
+    void replace(const std::string& symbol_name, const LinearExpr& new_expr) {
+        if (terms.contains(symbol_name)) {
+            double coeff = terms[symbol_name];
+            terms.erase(symbol_name);
             // Add new_expr scaled by coeff
             for (auto const& [name, new_coeff] : new_expr.terms) {
-                result.terms[name] += coeff * new_coeff;
-                if (result.terms[name] == 0.0) {
-                    result.terms.erase(name);
+                terms[name] += coeff * new_coeff;
+                if (terms[name] == 0.0) {
+                    terms.erase(name);
                 }
             }
-            result.constant += coeff * new_expr.constant;
+            constant += coeff * new_expr.constant;
         }
-        return result;
     }
 
   public:

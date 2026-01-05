@@ -51,7 +51,7 @@ inline void appendVector(std::vector<T>& v, std::vector<T> const& append) {
 
 void replace(std::vector<LinearExpr>& vec, std::string const& old_symbol, LinearExpr const& new_expr) {
     for (auto& expr : vec) {
-        expr = expr.replace(old_symbol, new_expr);
+        expr.replace(old_symbol, new_expr);
     }
 }
 
@@ -134,17 +134,17 @@ std::vector<LinearExpr> solveLinearSystem(Eigen::MatrixXd A, std::vector<LinearE
 
         // Swap rows in A and b
         for (int k = 0; k < n; ++k) {
-            auto temp = A(i, k);
+            double temp = A(i, k);
             A(i, k) = A(pivot, k);
             A(pivot, k) = temp;
         }
-        auto temp_b = b[i];
+        LinearExpr temp_b = b[i];
         b[i] = b[pivot];
         b[pivot] = temp_b;
 
         // Eliminate
         for (int j = i + 1; j < n; ++j) {
-            auto factor = A(j, i) / A(i, i);
+            double factor = A(j, i) / A(i, i);
             for (int k = i; k < n; ++k) {
                 A(j, k) = A(j, k) - factor * A(i, k);
             }
@@ -155,7 +155,7 @@ std::vector<LinearExpr> solveLinearSystem(Eigen::MatrixXd A, std::vector<LinearE
     // Back Substitution
     std::vector<LinearExpr> x(n);
     for (int i = n - 1; i >= 0; --i) {
-        auto sum = b[i];
+        LinearExpr sum = b[i];
         for (int j = i + 1; j < n; ++j) {
             sum = sum - A(i, j) * x[j];
         }
@@ -446,16 +446,24 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
             comp->setVoltage(result);
         }
         for (auto& src : netlist.vv_sources) {
-            src->setVoltage(src->voltage().replace(unknown, result));
+            LinearExpr voltage = src->voltage();
+            voltage.replace(unknown, result);
+            src->setVoltage(voltage);
         }
         for (auto& src : netlist.iv_sources) {
-            src->setVoltage(src->voltage().replace(unknown, result));
+            LinearExpr voltage = src->voltage();
+            voltage.replace(unknown, result);
+            src->setVoltage(voltage);
         }
         for (auto& src : netlist.ii_sources) {
-            src->setCurrent(src->current().replace(unknown, result));
+            LinearExpr current = src->current();
+            current.replace(unknown, result);
+            src->setCurrent(current);
         }
         for (auto& src : netlist.vi_sources) {
-            src->setCurrent(src->current().replace(unknown, result));
+            LinearExpr current = src->current();
+            current.replace(unknown, result);
+            src->setCurrent(current);
         }
     }
     // Update output
@@ -511,24 +519,24 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
      * different inductors/capacitors can be the dependent components */
     for (Component* ind : dependent_inductors) {
         LinearExpr current = LinearExpr(std::format("I_{}", ind->name())) - ind->current();
-        current = current.replace("I_" + ind->name(), "dI_" + ind->name());
+        current.replace("I_" + ind->name(), "dI_" + ind->name());
         for (auto& state : states) {
             if (state[0] != 'I') {
                 continue;
             }
-            current = current.replace(state, "d" + state);
+            current.replace(state, "d" + state);
         }
         deriv_eqs.push_back(current);
         states.push_back("I_" + ind->name());
     }
     for (Component* cap : dependent_capacitors) {
         LinearExpr voltage = LinearExpr(std::format("V_{}", cap->name())) - cap->voltage();
-        voltage = voltage.replace("V_" + cap->name(), "dV_" + cap->name());
+        voltage.replace("V_" + cap->name(), "dV_" + cap->name());
         for (auto& state : states) {
             if (state[0] != 'V') {
                 continue;
             }
-            voltage = voltage.replace(state, "d" + state);
+            voltage.replace(state, "d" + state);
         }
 
         deriv_eqs.push_back(voltage);
@@ -537,7 +545,7 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
 
     for (auto& eq : deriv_eqs) {
         for (auto& [name, sol] : solved) {
-            eq = eq.replace(name, sol);
+            eq.replace(name, sol);
         }
     }
 
