@@ -66,7 +66,7 @@ std::string matrixToStr(Eigen::MatrixXd const& matrix) {
     for (unsigned int i = 0; i < matrix.rows(); ++i) {
         for (unsigned int j = 0; j < matrix.cols(); ++j) {
             if (i != matrix.rows() - 1 || j != matrix.cols() - 1) {
-                result += std::format("{},", matrix(i,j));
+                result += std::format("{},", matrix(i, j));
             } else {
                 result += std::format("{}", matrix(i, j));
             }
@@ -251,6 +251,7 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     }
 
     // Create cutset matrix
+    std::unordered_map<std::string, LinearExpr> solved;
     Eigen::MatrixXd cutset_matrix = Eigen::MatrixXd::Zero((int)twigs.size(), (int)netlist.components.size());
     std::vector<int> capacitor_cutset_rows;
     std::vector<int> dep_inductor_cutset_rows;
@@ -280,7 +281,8 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
         } else if (twig->name()[0] == 'L') {
             dep_inductor_cutset_rows.push_back(i);
         } else if (twig->name()[0] == 'I') {
-            std::cout << std::format("Bad cutset: current source {} in twig!", twig->name()) << std::endl;
+            std::cout << std::format("Bad cutset: current source {} in twig! Setting to zero.", twig->name()) << std::endl;
+            solved[twig->voltage().str()] = 0;
         } else {
             passive_cutset_rows.push_back(i);
         }
@@ -386,7 +388,9 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     /* Replace the passive components currents and voltages with state variables. */
     std::vector<std::string> passive_unknowns;
     for (auto& current : netlist.current_sources) {
-        passive_unknowns.push_back(current->voltage().str());
+        if (!solved.contains(current->voltage().str())) {
+            passive_unknowns.push_back(current->voltage().str());
+        }
     }
     for (auto& current : netlist.ii_sources) {
         passive_unknowns.push_back(current->voltage().str());
@@ -420,14 +424,12 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     auto [A, b] = linearEqsToMatrix(passive_eqs, passive_unknowns);
     std::vector<LinearExpr> passive_solved = solveLinearSystem(A, b, passive_unknowns);
 
-    std::unordered_map<std::string, LinearExpr> solved;
     for (int i = 0; i < passive_unknowns.size(); ++i) {
         solved[passive_unknowns[i]] = passive_solved[i];
         replace(i_vec, passive_unknowns[i], passive_solved[i]);
         replace(u_vec, passive_unknowns[i], passive_solved[i]);
     }
 
-    assert(solved.size() == passive_unknowns.size());
     // Update passive_unknowns to output
     for (auto& [unknown, result] : solved) {
         if (verbose) {
