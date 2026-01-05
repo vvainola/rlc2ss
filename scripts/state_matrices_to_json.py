@@ -104,11 +104,15 @@ def write_cpp_files(
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
 #include "on_off_delay.hpp"
-#include <Eigen/Dense>
-#include <Eigen/Core>
-#include <Eigen/LU>
 #include "integrator.hpp"
+#include "rlc2ss.h"
+
+#include "Eigen/Dense"
+#include "Eigen/Core"
+#include "Eigen/LU"
+
 #include "nlohmann/json.hpp"
+
 #include <assert.h>
 
 class {class_name} {{
@@ -151,6 +155,16 @@ class {class_name} {{
     }}
 
     void step(double dt, Inputs const& inputs_);
+
+    /// @brief Add stepwise saturation curve to inductor. The inductance is reduced when the current
+    /// exceeds the breakpoints and increased when current goes below the breakpoints.
+    /// @param inductor Pointer to inductor in component struct e.g. &circuit.components.L0
+    /// @param current Current breakpoints in ascending order. First breakpoint must be 0.
+    /// @param inductance Inductance values at the breakpoints.
+    /// Example:
+    /// currents   = {{0,       100,   200,   300}}
+    /// inductances = {{100e-6, 75e-6, 50e-6, 25e-6}}
+    void addInductorSaturation(double* inductor, std::vector<double> current, std::vector<double> inductance);
 
     union Inputs {{
         Inputs() {{ data.setZero(); }}
@@ -222,6 +236,7 @@ class {class_name} {{
     Switches switches;
 
   private:
+    std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
     void stepWithZeroCrossingDetection(double dt);
     void stepModel(double dt);
     void updateStateSpaceMatrices();
@@ -236,6 +251,8 @@ class {class_name} {{
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
+    std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
     // The json file with symbolic intermediate matrices
     nlohmann::json m_circuit_json;
 
@@ -298,7 +315,7 @@ static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
     return ss;
 }}
 
-static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_name}& circuit, {class_name}::Outputs const& prev_outputs) {{
+std::optional<rlc2ss::ZeroCrossingEvent> {class_name}::checkZeroCrossingEvents({class_name}::Outputs const& prev_outputs) {{
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
                         std::vector<rlc2ss::ZeroCrossingEvent>,
                         std::greater<rlc2ss::ZeroCrossingEvent>>
@@ -309,12 +326,12 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
     diodes.sort(key=lambda d: d.name)
     for diode in diodes:
         # Handle either node being ground
-        pos_node = f'circuit.outputs.{diode.pos_node}'
+        pos_node = f'outputs.{diode.pos_node}'
         prev_pos_node = f'prev_outputs.{diode.pos_node}'
         if diode.pos_node == '0':
             pos_node = '0'
             prev_pos_node = '0'
-        neg_node = f'circuit.outputs.{diode.neg_node}'
+        neg_node = f'outputs.{diode.neg_node}'
         prev_neg_node = f'prev_outputs.{diode.neg_node}'
         if diode.neg_node == '0':
             neg_node = '0'
@@ -323,26 +340,33 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
         cpp.write(f'''
     // Diode {diode.name}
     double V_{diode.name} = {pos_node} - {neg_node};
-    if (V_{diode.name} > circuit.inputs.{diode.forward_voltage} && !circuit.switches.{diode.switch}) {{
+    if (V_{diode.name} > inputs.{diode.forward_voltage} && !switches.{diode.switch}) {{
         double V_{diode.name}_prev = {prev_pos_node} - {prev_neg_node};
         events.push(rlc2ss::ZeroCrossingEvent{{
             .time = rlc2ss::calcZeroCrossingTime(V_{diode.name}_prev, V_{diode.name}),
             .event_callback = [&]() {{
-                circuit.switches.{diode.switch}.forceOutput(true);
+                switches.{diode.switch}.forceOutput(true);
             }}
         }});
     }}
-    if (circuit.outputs.{diode.current} < 0 && circuit.switches.{diode.switch}.outputForced()) {{
+    if (outputs.{diode.current} < 0 && switches.{diode.switch}.outputForced()) {{
         events.push(rlc2ss::ZeroCrossingEvent{{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.{diode.current}, circuit.outputs.{diode.current}),
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.{diode.current}, outputs.{diode.current}),
             .event_callback = [&]() {{
-                circuit.switches.{diode.switch}.forceOutput(std::nullopt);
+                switches.{diode.switch}.forceOutput(std::nullopt);
             }}
         }});
     }}
 ''')
 
     cpp.write(f'''
+    for (auto const& callback : m_zero_crossing_callbacks) {{
+        std::optional<rlc2ss::ZeroCrossingEvent> event = callback(prev_outputs, outputs);
+        if (event) {{
+            events.push(*event);
+        }}
+    }}
+
     if (events.size() > 0) {{
         return events.top();
     }}
@@ -352,6 +376,61 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents({class_n
 {class_name}::{class_name}(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {{
+}}
+''')
+
+    cpp.write(f'''
+void {class_name}::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {{
+    // Check that the currents are ascending and inductances are descending
+    assert(currents.size() == inductances.size());
+    for (int i = 1; i < currents.size(); ++i) {{
+        assert(currents[i] >= currents[i - 1]);
+        assert(inductances[i] <= inductances[i - 1]);
+    }}
+    int i_L_output_idx = -1;''')
+
+    for component in ss.component_names:
+         if component.startswith('L'):
+            cpp.write(f'''
+    if (inductor == &components.{component}) {{
+        i_L_output_idx = {ss.outputs.index(sympy.Symbol(f'I_{component}'))};
+    }}''')
+    cpp.write(f'''
+    if (i_L_output_idx == -1) {{
+        assert(("Invalid pointer to inductor", false));
+    }}
+
+    for (int i = 1; i < currents.size(); ++i) {{
+        double threshold = currents[i];
+        double inductance_prev = inductances[i - 1];
+        double inductance = inductances[i];
+        // Increase inductance when current goes below level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {{
+            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
+            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            if (i_prev > threshold && i_new < threshold) {{
+                return rlc2ss::ZeroCrossingEvent{{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [&]() {{
+                        *inductor = inductance_prev;
+                    }}}};
+            }}
+            return std::nullopt;
+        }});
+        // Decrease inductance when current goes above level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {{
+            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
+            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            if (i_prev < threshold && i_new > threshold) {{
+                return rlc2ss::ZeroCrossingEvent{{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [&]() {{
+                        *inductor = inductance;
+                    }}}};
+            }}
+            return std::nullopt;
+        }});
+    }}
 }}
 ''')
 
@@ -386,7 +465,7 @@ void {class_name}::stepWithZeroCrossingDetection(double dt) {{
     prev_outputs.data = outputs.data;
 
     stepModel(dt);
-    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(prev_outputs);
     while (zc_event) {{
         // Redo step
         states.data = prev_state.data;
@@ -399,7 +478,7 @@ void {class_name}::stepWithZeroCrossingDetection(double dt) {{
         dt = dt * (1 - zc_event->time);
         stepModel(dt);
         // Check for new events
-        zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+        zc_event = checkZeroCrossingEvents(prev_outputs);
     }}
 }}
 
@@ -511,14 +590,17 @@ void {class_name}::updateStateSpaceMatrices() {{
         .D1 = j["D1"],
     }};'''))
 
+    # The row major template parameter can only be specified if there is more than 1 column
+    states_row_major = f", Eigen::RowMajor" if len(ss.states) > 1 else ""
+    inputs_row_major = f", Eigen::RowMajor" if len(ss.inputs) > 1 else ""
     cpp.write(f'''
     // Create eigen matrices
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES{states_row_major}> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES{states_row_major}> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS{inputs_row_major}> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS{inputs_row_major}> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
     {class_name}_Topology& topology = state_space_cache.emplace_back({class_name}_Topology{{
         .components = components,

@@ -28,130 +28,137 @@ static std::unique_ptr<Model_converter::StateSpaceMatrices> calcStateSpace(
     return ss;
 }
 
-static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_converter& circuit, Model_converter::Outputs const& prev_outputs) {
+std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvents(Model_converter::Outputs const& prev_outputs) {
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
                         std::vector<rlc2ss::ZeroCrossingEvent>,
                         std::greater<rlc2ss::ZeroCrossingEvent>>
         events;
 
     // Diode D_a_n
-    double V_D_a_n = circuit.outputs.N_dc_n - circuit.outputs.N_c_a;
-    if (V_D_a_n > circuit.inputs.V_D_a_n && !circuit.switches.S_D_a_n) {
+    double V_D_a_n = outputs.N_dc_n - outputs.N_c_a;
+    if (V_D_a_n > inputs.V_D_a_n && !switches.S_D_a_n) {
         double V_D_a_n_prev = prev_outputs.N_dc_n - prev_outputs.N_c_a;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_a_n_prev, V_D_a_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_a_n.forceOutput(true);
+                switches.S_D_a_n.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_a_n < 0 && circuit.switches.S_D_a_n.outputForced()) {
+    if (outputs.I_R_D_a_n < 0 && switches.S_D_a_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_n, circuit.outputs.I_R_D_a_n),
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_n, outputs.I_R_D_a_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_a_n.forceOutput(std::nullopt);
+                switches.S_D_a_n.forceOutput(std::nullopt);
             }
         });
     }
 
     // Diode D_a_p
-    double V_D_a_p = circuit.outputs.N_c_a - circuit.outputs.N_dc_p;
-    if (V_D_a_p > circuit.inputs.V_D_a_p && !circuit.switches.S_D_a_p) {
+    double V_D_a_p = outputs.N_c_a - outputs.N_dc_p;
+    if (V_D_a_p > inputs.V_D_a_p && !switches.S_D_a_p) {
         double V_D_a_p_prev = prev_outputs.N_c_a - prev_outputs.N_dc_p;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_a_p_prev, V_D_a_p),
             .event_callback = [&]() {
-                circuit.switches.S_D_a_p.forceOutput(true);
+                switches.S_D_a_p.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_a_p < 0 && circuit.switches.S_D_a_p.outputForced()) {
+    if (outputs.I_R_D_a_p < 0 && switches.S_D_a_p.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_p, circuit.outputs.I_R_D_a_p),
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_p, outputs.I_R_D_a_p),
             .event_callback = [&]() {
-                circuit.switches.S_D_a_p.forceOutput(std::nullopt);
+                switches.S_D_a_p.forceOutput(std::nullopt);
             }
         });
     }
 
     // Diode D_b_n
-    double V_D_b_n = circuit.outputs.N_dc_n - circuit.outputs.N_c_b;
-    if (V_D_b_n > circuit.inputs.V_D_b_n && !circuit.switches.S_D_b_n) {
+    double V_D_b_n = outputs.N_dc_n - outputs.N_c_b;
+    if (V_D_b_n > inputs.V_D_b_n && !switches.S_D_b_n) {
         double V_D_b_n_prev = prev_outputs.N_dc_n - prev_outputs.N_c_b;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_b_n_prev, V_D_b_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_b_n.forceOutput(true);
+                switches.S_D_b_n.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_b_n < 0 && circuit.switches.S_D_b_n.outputForced()) {
+    if (outputs.I_R_D_b_n < 0 && switches.S_D_b_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_n, circuit.outputs.I_R_D_b_n),
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_n, outputs.I_R_D_b_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_b_n.forceOutput(std::nullopt);
+                switches.S_D_b_n.forceOutput(std::nullopt);
             }
         });
     }
 
     // Diode D_b_p
-    double V_D_b_p = circuit.outputs.N_c_b - circuit.outputs.N_dc_p;
-    if (V_D_b_p > circuit.inputs.V_D_b_p && !circuit.switches.S_D_b_p) {
+    double V_D_b_p = outputs.N_c_b - outputs.N_dc_p;
+    if (V_D_b_p > inputs.V_D_b_p && !switches.S_D_b_p) {
         double V_D_b_p_prev = prev_outputs.N_c_b - prev_outputs.N_dc_p;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_b_p_prev, V_D_b_p),
             .event_callback = [&]() {
-                circuit.switches.S_D_b_p.forceOutput(true);
+                switches.S_D_b_p.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_b_p < 0 && circuit.switches.S_D_b_p.outputForced()) {
+    if (outputs.I_R_D_b_p < 0 && switches.S_D_b_p.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_p, circuit.outputs.I_R_D_b_p),
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_p, outputs.I_R_D_b_p),
             .event_callback = [&]() {
-                circuit.switches.S_D_b_p.forceOutput(std::nullopt);
+                switches.S_D_b_p.forceOutput(std::nullopt);
             }
         });
     }
 
     // Diode D_c_n
-    double V_D_c_n = circuit.outputs.N_dc_n - circuit.outputs.N_c_c;
-    if (V_D_c_n > circuit.inputs.V_D_c_n && !circuit.switches.S_D_c_n) {
+    double V_D_c_n = outputs.N_dc_n - outputs.N_c_c;
+    if (V_D_c_n > inputs.V_D_c_n && !switches.S_D_c_n) {
         double V_D_c_n_prev = prev_outputs.N_dc_n - prev_outputs.N_c_c;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_c_n_prev, V_D_c_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_c_n.forceOutput(true);
+                switches.S_D_c_n.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_c_n < 0 && circuit.switches.S_D_c_n.outputForced()) {
+    if (outputs.I_R_D_c_n < 0 && switches.S_D_c_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_n, circuit.outputs.I_R_D_c_n),
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_n, outputs.I_R_D_c_n),
             .event_callback = [&]() {
-                circuit.switches.S_D_c_n.forceOutput(std::nullopt);
+                switches.S_D_c_n.forceOutput(std::nullopt);
             }
         });
     }
 
     // Diode D_c_p
-    double V_D_c_p = circuit.outputs.N_c_c - circuit.outputs.N_dc_p;
-    if (V_D_c_p > circuit.inputs.V_D_c_p && !circuit.switches.S_D_c_p) {
+    double V_D_c_p = outputs.N_c_c - outputs.N_dc_p;
+    if (V_D_c_p > inputs.V_D_c_p && !switches.S_D_c_p) {
         double V_D_c_p_prev = prev_outputs.N_c_c - prev_outputs.N_dc_p;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_c_p_prev, V_D_c_p),
             .event_callback = [&]() {
-                circuit.switches.S_D_c_p.forceOutput(true);
+                switches.S_D_c_p.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_c_p < 0 && circuit.switches.S_D_c_p.outputForced()) {
+    if (outputs.I_R_D_c_p < 0 && switches.S_D_c_p.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_p, circuit.outputs.I_R_D_c_p),
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_p, outputs.I_R_D_c_p),
             .event_callback = [&]() {
-                circuit.switches.S_D_c_p.forceOutput(std::nullopt);
+                switches.S_D_c_p.forceOutput(std::nullopt);
             }
         });
+    }
+
+    for (auto const& callback : m_zero_crossing_callbacks) {
+        std::optional<rlc2ss::ZeroCrossingEvent> event = callback(prev_outputs, outputs);
+        if (event) {
+            events.push(*event);
+        }
     }
 
     if (events.size() > 0) {
@@ -163,6 +170,60 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_co
 Model_converter::Model_converter(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
+}
+
+void Model_converter::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
+    // Check that the currents are ascending and inductances are descending
+    assert(currents.size() == inductances.size());
+    for (int i = 1; i < currents.size(); ++i) {
+        assert(currents[i] >= currents[i - 1]);
+        assert(inductances[i] <= inductances[i - 1]);
+    }
+    int i_L_output_idx = -1;
+    if (inductor == &components.L_a) {
+        i_L_output_idx = 2;
+    }
+    if (inductor == &components.L_b) {
+        i_L_output_idx = 3;
+    }
+    if (inductor == &components.L_c) {
+        i_L_output_idx = 4;
+    }
+    if (i_L_output_idx == -1) {
+        assert(("Invalid pointer to inductor", false));
+    }
+
+    for (int i = 1; i < currents.size(); ++i) {
+        double threshold = currents[i];
+        double inductance_prev = inductances[i - 1];
+        double inductance = inductances[i];
+        // Increase inductance when current goes below level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
+            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            if (i_prev > threshold && i_new < threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [&]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            return std::nullopt;
+        });
+        // Decrease inductance when current goes above level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
+            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            if (i_prev < threshold && i_new > threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [&]() {
+                        *inductor = inductance;
+                    }};
+            }
+            return std::nullopt;
+        });
+    }
 }
 
 void Model_converter::step(double dt, Inputs const& inputs_) {
@@ -202,7 +263,7 @@ void Model_converter::stepWithZeroCrossingDetection(double dt) {
     prev_outputs.data = outputs.data;
 
     stepModel(dt);
-    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(prev_outputs);
     while (zc_event) {
         // Redo step
         states.data = prev_state.data;
@@ -215,7 +276,7 @@ void Model_converter::stepWithZeroCrossingDetection(double dt) {
         dt = dt * (1 - zc_event->time);
         stepModel(dt);
         // Check for new events
-        zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+        zc_event = checkZeroCrossingEvents(prev_outputs);
     }
 }
 

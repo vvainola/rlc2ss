@@ -7,10 +7,16 @@
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
-#include <Eigen/Dense>
-#include <Eigen/Core>
-#include <Eigen/LU>
+#include "on_off_delay.hpp"
 #include "integrator.hpp"
+#include "rlc2ss.h"
+
+#include "Eigen/Dense"
+#include "Eigen/Core"
+#include "Eigen/LU"
+
+#include "nlohmann/json.hpp"
+
 #include <assert.h>
 
 class Model_saturating_inductor {
@@ -19,9 +25,8 @@ class Model_saturating_inductor {
     union Inputs;
     union Outputs;
     union States;
-    union Switches;
+    struct Switches;
     struct StateSpaceMatrices;
-    static StateSpaceMatrices calculateStateSpace(Components const& components, Switches switches);
 
     Model_saturating_inductor() {}
     Model_saturating_inductor(Components const& c);
@@ -55,10 +60,19 @@ class Model_saturating_inductor {
 
     void step(double dt, Inputs const& inputs_);
 
+    /// @brief Add stepwise saturation curve to inductor. The inductance is reduced when the current
+    /// exceeds the breakpoints and increased when current goes below the breakpoints.
+    /// @param inductor Pointer to inductor in component struct e.g. &circuit.components.L0
+    /// @param current Current breakpoints in ascending order. First breakpoint must be 0.
+    /// @param inductance Inductance values at the breakpoints.
+    /// Example:
+    /// currents   = {0,       100,   200,   300}
+    /// inductances = {100e-6, 75e-6, 50e-6, 25e-6}
+    void addInductorSaturation(double* inductor, std::vector<double> current, std::vector<double> inductance);
+
     union Inputs {
-        Inputs() {
-            data.setZero();
-        }
+        Inputs() { data.setZero(); }
+        Inputs(const Inputs& other) { data = other.data; }
         struct {
             double V;
         };
@@ -66,9 +80,8 @@ class Model_saturating_inductor {
     };
 
     union Outputs {
-        Outputs() {
-            data.setZero();
-        }
+        Outputs() { data.setZero(); }
+        Outputs(const Outputs& other) { data = other.data; }
         struct {
             double I_L0;
             double I_L1;
@@ -77,12 +90,13 @@ class Model_saturating_inductor {
         Eigen::Vector<double, NUM_OUTPUTS> data;
     };
 
-    union Switches {
-        struct {
-            uint64_t S1 : 1;
-            uint64_t S2 : 1;
-        };
-        uint64_t all;
+    struct Switches {
+        rlc2ss::OnOffDelay S1;
+        rlc2ss::OnOffDelay S2;
+
+        uint64_t all() const;
+        double smallestDelay();
+        void step(double dt);
     };
 
     struct Components {
@@ -108,6 +122,9 @@ class Model_saturating_inductor {
         States() {
             data.setZero();
         }
+        States(const States& other) {
+            data = other.data;
+        }
         struct {
             double I_L0;
             double I_L1;
@@ -131,21 +148,28 @@ class Model_saturating_inductor {
     Inputs inputs;
     States states;
     Outputs outputs;
-    Switches switches = {.all = 0};
+    Switches switches;
 
   private:
-    void stepInternal(double dt);
+    std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
+    void stepWithZeroCrossingDetection(double dt);
+    void stepModel(double dt);
+    void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
         m_solver;
     StateSpaceMatrices m_ss;
     Components _M_components_DO_NOT_TOUCH;
-    Switches _M_switches_DO_NOT_TOUCH = {.all = 0};
+    Switches _M_switches_DO_NOT_TOUCH;
     Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
+    std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
+    // The json file with symbolic intermediate matrices
+    nlohmann::json m_circuit_json;
 
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));

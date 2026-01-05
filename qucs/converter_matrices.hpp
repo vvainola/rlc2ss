@@ -8,11 +8,15 @@
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
 #include "on_off_delay.hpp"
-#include <Eigen/Dense>
-#include <Eigen/Core>
-#include <Eigen/LU>
 #include "integrator.hpp"
+#include "rlc2ss.h"
+
+#include "Eigen/Dense"
+#include "Eigen/Core"
+#include "Eigen/LU"
+
 #include "nlohmann/json.hpp"
+
 #include <assert.h>
 
 class Model_converter {
@@ -55,6 +59,16 @@ class Model_converter {
     }
 
     void step(double dt, Inputs const& inputs_);
+
+    /// @brief Add step line saturation curve to inductor. The inductance is reduced when the current
+    /// exceeds the breakpoints and increased when current goes below the breakpoints.
+    /// @param inductor Pointer to inductor in component struct e.g. &circuit.components.L0
+    /// @param current Current breakpoints in ascending order. First breakpoint must be 0.
+    /// @param inductance Inductance values at the breakpoints.
+    /// Example:
+    /// currents   = {0,       100,   200,   300}
+    /// inductances = {100e-6, 75e-6, 50e-6, 25e-6}
+    void addInductorSaturation(double* inductor, std::vector<double> current, std::vector<double> inductance);
 
     union Inputs {
         Inputs() { data.setZero(); }
@@ -204,6 +218,7 @@ class Model_converter {
     Switches switches;
 
   private:
+    std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
     void stepWithZeroCrossingDetection(double dt);
     void stepModel(double dt);
     void updateStateSpaceMatrices();
@@ -218,6 +233,8 @@ class Model_converter {
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
+    std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
     // The json file with symbolic intermediate matrices
     nlohmann::json m_circuit_json;
 
