@@ -10,8 +10,7 @@ WINDOWS = (host_machine.system() == 'windows')
 LINUX = (host_machine.system() == 'linux')
 deps = [
     dependency('eigen3'),
-    dependency('nlohmann_json'),
-    dependency('symengine')
+    dependency('nlohmann_json')
 ]
 add_project_arguments('-DNOMINMAX', language : 'cpp')
 lib_rlc2ss = static_library('rlc2ss',
@@ -19,6 +18,7 @@ lib_rlc2ss = static_library('rlc2ss',
         'src/netlist/graph.cpp',
         'src/netlist/netlist.cpp',
         'src/netlist/state_space.cpp',
+        'src/netlist/linear_expr.cpp',
         'src/rlc2ss.cpp',
         'src/str_helpers.cpp',
     ],

@@ -25,6 +25,8 @@
 #include "component.hpp"
 
 #include <vector>
+#include <set>
+#include <unordered_map>
 
 namespace rlc2ss {
 

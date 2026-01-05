@@ -5,7 +5,7 @@
 #include <fstream>
 #include <format>
 #include <memory>
-#include "converter_matrices_json.h"
+
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced

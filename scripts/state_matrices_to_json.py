@@ -267,6 +267,7 @@ class {class_name} {{
     ).replace('\t', TAB))
     hpp.close()
 
+    include_json_header = f'#include "{model_basename}_matrices_json.h"' if not dynamic else ''
     cpp.write(f'''
 #include "{model_basename}_matrices.hpp"
 #include "rlc2ss.h"
@@ -274,7 +275,7 @@ class {class_name} {{
 #include <fstream>
 #include <format>
 #include <memory>
-#include "{model_basename}_matrices_json.h"
+{include_json_header}
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
