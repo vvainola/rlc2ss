@@ -60,7 +60,7 @@ class Model_converter {
 
     void step(double dt, Inputs const& inputs_);
 
-    /// @brief Add step line saturation curve to inductor. The inductance is reduced when the current
+    /// @brief Add stepwise saturation curve to inductor. The inductance is reduced when the current
     /// exceeds the breakpoints and increased when current goes below the breakpoints.
     /// @param inductor Pointer to inductor in component struct e.g. &circuit.components.L0
     /// @param current Current breakpoints in ascending order. First breakpoint must be 0.

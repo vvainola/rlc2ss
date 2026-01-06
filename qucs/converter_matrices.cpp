@@ -13,6 +13,8 @@
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
+inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
+
 static std::unique_ptr<Model_converter::StateSpaceMatrices> calcStateSpace(
     Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_STATES> const& K1,
     Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_STATES> const& A1,
@@ -264,7 +266,9 @@ void Model_converter::stepWithZeroCrossingDetection(double dt) {
 
     stepModel(dt);
     std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(prev_outputs);
-    while (zc_event) {
+    int zc_event_count = 0;
+    while (zc_event && zc_event_count < MAX_ZERO_CROSS_EVENTS) {
+        zc_event_count++;
         // Redo step
         states.data = prev_state.data;
         stepModel(zc_event->time * dt);
