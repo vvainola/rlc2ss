@@ -468,6 +468,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         elif twig.name[0] == 'I':
             print(f"Bad cutset for current source {twig.name}. Setting to 0.")
             solved[f'V_{twig.name}'] = Symbol('0')
+            output_voltages[Symbol(f'V_{twig.name}')] = Symbol('0')
         else:
             passive_cutset_rows.append(i)
     # Create loop matrix

@@ -283,6 +283,7 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
         } else if (twig->name()[0] == 'I') {
             //std::cout << std::format("Bad cutset: current source {} in twig! Setting to zero.", twig->name()) << std::endl;
             solved[twig->voltage().str()] = 0;
+            output_voltages[twig->voltage().str()] = 0;
         } else {
             passive_cutset_rows.push_back(i);
         }
