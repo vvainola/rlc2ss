@@ -31,15 +31,19 @@
 #include "Eigen/Core"
 #pragma warning(pop)
 
+#define ALWAYS_UPDATE_STR 0 // For debugging to see the string representation at all times
+
 namespace rlc2ss {
 
 class LinearExpr {
   public:
     LinearExpr(std::string const& symbol_name) {
         terms[symbol_name] = 1.0;
+        updateStr();
     }
     LinearExpr(double c) {
         constant = c;
+        updateStr();
     }
     LinearExpr() = default;
 
@@ -67,7 +71,11 @@ class LinearExpr {
         }
         return result.empty() ? "0" : result;
     }
+
     void updateStr() {
+#if ALWAYS_UPDATE_STR
+        m_str = str();
+#endif
     }
 
     LinearExpr operator+(const LinearExpr& other) const {
@@ -79,6 +87,7 @@ class LinearExpr {
             }
         }
         result.constant += other.constant;
+        result.updateStr();
         return result;
     }
 
@@ -90,6 +99,7 @@ class LinearExpr {
             }
         }
         constant += other.constant;
+        updateStr();
         return *this;
     }
 
@@ -102,6 +112,7 @@ class LinearExpr {
             }
         }
         result.constant -= other.constant;
+        result.updateStr();
         return result;
     }
 
@@ -113,6 +124,7 @@ class LinearExpr {
             }
         }
         constant -= other.constant;
+        updateStr();
         return *this;
     }
 
@@ -125,6 +137,7 @@ class LinearExpr {
             }
         }
         result.constant *= scalar;
+        result.updateStr();
         return result;
     }
 
@@ -137,6 +150,7 @@ class LinearExpr {
             }
         }
         result.constant /= scalar;
+        result.updateStr();
         return result;
     }
 
@@ -153,9 +167,13 @@ class LinearExpr {
             }
             constant += coeff * new_expr.constant;
         }
+        updateStr();
     }
 
   public:
+#if ALWAYS_UPDATE_STR
+    std::string m_str;
+#endif
     std::unordered_map<std::string, double> terms; // symbol_name -> coefficient
     double constant = 0.0;
 };

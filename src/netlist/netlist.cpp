@@ -107,9 +107,10 @@ std::vector<std::string> replaceSwitches(std::vector<std::string> const& netlist
         for (size_t i = 0; i < switches.size(); ++i) {
             bool switch_on = (combination & (1 << i)) != 0;
             std::string switch_name = switches[i];
-            if (line.starts_with(switch_name) && switch_on) {
+            // The space after switch name ensures we don't match similar names
+            if (line.starts_with(switch_name + " ")&& switch_on) {
                 modified_netlist_lines.push_back(rlc2ss::str::replaceAll(line, switch_name, std::format("{}_{}", rlc2ss::V_DUMMY, switch_name)));
-            } else if (line.starts_with(switch_name) && !switch_on) {
+            } else if (line.starts_with(switch_name + " ") && !switch_on) {
                 // Skip the switch line (open switch)
             }
         }
