@@ -27,35 +27,120 @@
 
 namespace rlc2ss {
 
+std::unordered_set<Node*> reachableNodes(Node* start, std::unordered_set<Component*> components) {
+    // Breadth-First Search (BFS)
+    std::unordered_set<Node*> visited;
+    std::queue<Node*> to_visit;
+    to_visit.push(start);
+    visited.insert(start);
+    while (!to_visit.empty()) {
+        Node* current = to_visit.front();
+        to_visit.pop();
+        for (Component* comp : current->connections()) {
+            if (!components.contains(comp)) {
+                continue; // Skip if component is not in the graph
+            }
+
+            Node* neighbor = nullptr;
+            if (comp->posNode() == current) {
+                neighbor = comp->negNode();
+            } else if (comp->negNode() == current) {
+                neighbor = comp->posNode();
+            }
+            if (neighbor && !visited.contains(neighbor)) {
+                visited.insert(neighbor);
+                to_visit.push(neighbor);
+            }
+        }
+    }
+    return visited;
+}
+
 void Graph::addComponent(Component* comp) {
     m_components.insert(comp);
-    m_node_count[comp->posNode()]++;
-    m_node_count[comp->negNode()]++;
+
+    // Find islands containing the component's nodes
+    int pos_idx = -1;
+    int neg_idx = -1;
+    for (size_t i = 0; i < m_islands.size(); ++i) {
+        if (m_islands[i].contains(comp->posNode())) {
+            pos_idx = static_cast<int>(i);
+        }
+        if (m_islands[i].contains(comp->negNode())) {
+            neg_idx = static_cast<int>(i);
+        }
+        // Early exit if both found
+        if (pos_idx != -1 && neg_idx != -1) {
+            break;
+        }
+    }
+
+    if (pos_idx != -1 && neg_idx != -1 && pos_idx != neg_idx) {
+        // Merge islands; erase the higher index to keep indices valid
+        if (pos_idx < neg_idx) {
+            m_islands[pos_idx].insert(m_islands[neg_idx].begin(), m_islands[neg_idx].end());
+            m_islands.erase(m_islands.begin() + neg_idx);
+        } else {
+            m_islands[neg_idx].insert(m_islands[pos_idx].begin(), m_islands[pos_idx].end());
+            m_islands.erase(m_islands.begin() + pos_idx);
+        }
+        return;
+    }
+
+    // One node found - add the other node to that island
+    if (pos_idx != -1) {
+        m_islands[pos_idx].insert(comp->negNode());
+        return;
+    }
+
+    // One node found - add the other node to that island
+    if (neg_idx != -1) {
+        m_islands[neg_idx].insert(comp->posNode());
+        return;
+    }
+
+    // Neither node found - create a new island
+    m_islands.push_back({comp->posNode(), comp->negNode()});
 }
 
 void Graph::removeComponent(Component* comp) {
     auto it = std::find(m_components.begin(), m_components.end(), comp);
     if (it != m_components.end()) {
         m_components.erase(it);
-        m_node_count[comp->posNode()]--;
-        m_node_count[comp->negNode()]--;
+    }
+    for (auto& island : m_islands) {
+        // If the island contains either node, we need to recompute reachable nodes
+        if (island.contains(comp->posNode())) {
+            island.clear();
+            // Recompute nodes reachable from posNode
+            std::unordered_set<Node*> reachable_pos = reachableNodes(comp->posNode(), m_components);
+            island.insert(reachable_pos.begin(), reachable_pos.end());
+            // Create new island for nodes reachable from negNode if not already in the same island
+            if (!island.contains(comp->negNode())) {
+                std::unordered_set<Node*> reachable_neg = reachableNodes(comp->negNode(), m_components);
+                m_islands.push_back(reachable_neg);
+            }
+            return;
+        }
     }
 }
 
 std::vector<Node*> Graph::nodes() const {
     std::vector<Node*> result;
-    for (const auto& [node, count] : m_node_count) {
-        if (count > 0) {
-            result.push_back(node);
-        }
+    for (const auto& component : m_components) {
+        result.push_back(component->posNode());
+        result.push_back(component->negNode());
     }
     return result;
 }
 
 Node* Graph::getNode(std::string const& node_name) const {
-    for (const auto& [node, count] : m_node_count) {
-        if (node->name() == node_name && count > 0) {
-            return node;
+    for (const auto& component : m_components) {
+        if (component->posNode()->name() == node_name) {
+            return component->posNode();
+        }
+        if (component->negNode()->name() == node_name) {
+            return component->negNode();
         }
     }
     return nullptr;
@@ -72,40 +157,10 @@ Component* Graph::getComponent(Node* node1, Node* node2) const {
 }
 
 bool Graph::hasPath(Node* from, Node* to) const {
-    if (from == to) {
-        return true;
-    }
-    if ((m_node_count.contains(from) && m_node_count.at(from) == 0)
-        || (m_node_count.contains(to) && m_node_count.at(to) == 0)) {
-        return false;
-    }
-
-    // Breadth-First Search (BFS)
-    std::unordered_set<Node*> visited;
-    std::queue<Node*> to_visit;
-    to_visit.push(from);
-    visited.insert(from);
-    while (!to_visit.empty()) {
-        Node* current = to_visit.front();
-        to_visit.pop();
-        for (Component* comp : current->connections()) {
-            if (!m_components.contains(comp)) {
-                continue; // Skip if component is not in the graph
-            }
-
-            Node* neighbor = nullptr;
-            if (comp->posNode() == current) {
-                neighbor = comp->negNode();
-            } else if (comp->negNode() == current) {
-                neighbor = comp->posNode();
-            }
-            if (neighbor && !visited.contains(neighbor)) {
-                if (neighbor == to) {
-                    return true;
-                }
-                visited.insert(neighbor);
-                to_visit.push(neighbor);
-            }
+    // Check if both nodes are in the same island
+    for (const auto& island : m_islands) {
+        if (island.contains(from) && island.contains(to)) {
+            return true;
         }
     }
     return false;
@@ -123,8 +178,9 @@ std::vector<Node*> Graph::dijkstra(Node* from, Node* to) const {
         return distances[left] > distances[right];
     };
     std::priority_queue<Node*, std::vector<Node*>, decltype(cmp)> pq(cmp);
-    for (const auto& pair : m_node_count) {
-        distances[pair.first] = INT_MAX;
+    for (const auto& component : m_components) {
+        distances[component->posNode()] = INT_MAX;
+        distances[component->negNode()] = INT_MAX;
     }
     distances[from] = 0;
     pq.push(from);

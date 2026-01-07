@@ -25,8 +25,7 @@
 #include "component.hpp"
 
 #include <vector>
-#include <set>
-#include <unordered_map>
+#include <unordered_set>
 
 namespace rlc2ss {
 
@@ -44,8 +43,8 @@ class Graph {
     std::vector<Node*> dijkstra(Node* from, Node* to) const;
 
   private:
-    std::unordered_map<Node*, int> m_node_count;
-    std::set<Component*> m_components;
+    std::unordered_set<Component*> m_components;
+    std::vector<std::unordered_set<Node*>> m_islands;
 };
 
 } // namespace rlc2ss
