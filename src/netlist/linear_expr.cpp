@@ -73,4 +73,50 @@ SymbolicSystem linearEqsToMatrix(const std::vector<LinearExpr>& eqns, const std:
     return sys;
 }
 
+// Solves Ax = b using Gaussian elimination (fast numeric version)
+std::vector<LinearExpr> solveLinearSystem(Eigen::MatrixXd A, std::vector<LinearExpr> b, const std::vector<std::string>& unknowns) {
+    int n = unknowns.size();
+
+    // Forward Elimination
+    for (int i = 0; i < n; ++i) {
+        // Find pivot
+        int pivot = i;
+        while (pivot < n && A(pivot, i) == 0)
+            pivot++;
+
+        if (pivot == n)
+            continue;
+
+        // Swap rows in A and b
+        for (int k = 0; k < n; ++k) {
+            double temp = A(i, k);
+            A(i, k) = A(pivot, k);
+            A(pivot, k) = temp;
+        }
+        LinearExpr temp_b = b[i];
+        b[i] = b[pivot];
+        b[pivot] = temp_b;
+
+        // Eliminate
+        for (int j = i + 1; j < n; ++j) {
+            double factor = A(j, i) / A(i, i);
+            for (int k = i; k < n; ++k) {
+                A(j, k) = A(j, k) - factor * A(i, k);
+            }
+            b[j] = b[j] - factor * b[i];
+        }
+    }
+
+    // Back Substitution
+    std::vector<LinearExpr> x(n);
+    for (int i = n - 1; i >= 0; --i) {
+        LinearExpr sum = b[i];
+        for (int j = i + 1; j < n; ++j) {
+            sum = sum - A(i, j) * x[j];
+        }
+        x[i] = sum / A(i, i);
+    }
+    return x;
+}
+
 } // namespace rlc2ss

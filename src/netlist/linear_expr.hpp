@@ -194,5 +194,6 @@ struct SymbolicSystem {
 };
 
 SymbolicSystem linearEqsToMatrix(const std::vector<LinearExpr>& eqns, const std::vector<std::string>& unknowns);
+std::vector<LinearExpr> solveLinearSystem(Eigen::MatrixXd A, std::vector<LinearExpr> b, const std::vector<std::string>& unknowns);
 
 } // namespace rlc2ss
