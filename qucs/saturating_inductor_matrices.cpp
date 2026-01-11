@@ -2,6 +2,10 @@
 #include "saturating_inductor_matrices.hpp"
 #include "rlc2ss.h"
 #include <optional>
+#include <fstream>
+#include <format>
+#include <memory>
+#include "saturating_inductor_matrices_json.h"
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -10,12 +14,12 @@
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
 static std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calcStateSpace(
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> const  &K1,
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> const  &A1,
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_INPUTS> const  &B1,
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> const &K2,
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> const &C1,
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_INPUTS> const &D1) {
+    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> const& K1,
+    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> const& A1,
+    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_INPUTS> const& B1,
+    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> const& K2,
+    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> const& C1,
+    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_INPUTS> const& D1) {
     auto ss = std::make_unique<Model_saturating_inductor::StateSpaceMatrices>();
     ss->A = K1.partialPivLu().solve(A1);
     ss->B = K1.partialPivLu().solve(B1);
@@ -24,11 +28,18 @@ static std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calcStateS
     return ss;
 }
 
-static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_saturating_inductor& circuit, Model_saturating_inductor::Outputs const& prev_outputs) {
+std::optional<rlc2ss::ZeroCrossingEvent> Model_saturating_inductor::checkZeroCrossingEvents(Model_saturating_inductor::Outputs const& prev_outputs) {
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
                         std::vector<rlc2ss::ZeroCrossingEvent>,
                         std::greater<rlc2ss::ZeroCrossingEvent>>
         events;
+
+    for (auto const& callback : m_zero_crossing_callbacks) {
+        std::optional<rlc2ss::ZeroCrossingEvent> event = callback(prev_outputs, outputs);
+        if (event) {
+            events.push(*event);
+        }
+    }
 
     if (events.size() > 0) {
         return events.top();
@@ -39,13 +50,84 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_sa
 Model_saturating_inductor::Model_saturating_inductor(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
-    m_ss = calculateStateSpace(components, switches);
-    m_solver.updateJacobian(m_ss.A);
 }
 
+void Model_saturating_inductor::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
+    // Check that the currents are ascending and inductances are descending
+    assert(currents.size() == inductances.size());
+    for (int i = 1; i < currents.size(); ++i) {
+        assert(currents[i] >= currents[i - 1]);
+        assert(inductances[i] <= inductances[i - 1]);
+    }
+    int i_L_output_idx = -1;
+    if (inductor == &components.L0) {
+        i_L_output_idx = 0;
+    }
+    if (inductor == &components.L1) {
+        i_L_output_idx = 1;
+    }
+    if (inductor == &components.L2) {
+        i_L_output_idx = 2;
+    }
+    if (i_L_output_idx == -1) {
+        assert(("Invalid pointer to inductor", false));
+    }
+
+    for (int i = 1; i < currents.size(); ++i) {
+        double threshold = currents[i];
+        double inductance_prev = inductances[i - 1];
+        double inductance = inductances[i];
+        // Increase inductance when current goes below level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
+            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            if (i_prev > threshold && i_new < threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [&]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            return std::nullopt;
+        });
+        // Decrease inductance when current goes above level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
+            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            if (i_prev < threshold && i_new > threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [&]() {
+                        *inductor = inductance;
+                    }};
+            }
+            return std::nullopt;
+        });
+    }
+}
 
 void Model_saturating_inductor::step(double dt, Inputs const& inputs_) {
     inputs.data = inputs_.data;
+
+    // Step to the next switching event
+    double smallest_dt = switches.smallestDelay();
+    while (smallest_dt < dt) {
+        switches.step(smallest_dt);
+        stepWithZeroCrossingDetection(smallest_dt);
+        dt -= smallest_dt;
+        smallest_dt = switches.smallestDelay();
+    }
+
+    // Step remaining time
+    switches.step(dt);
+    stepWithZeroCrossingDetection(dt);
+}
+
+void Model_saturating_inductor::stepWithZeroCrossingDetection(double dt) {
+    // No need to do anything
+    if (dt < rlc2ss::MINIMUM_TIMESTEP) {
+        return;
+    }
 
     // Copy previous state and outputs if step needs to be redone
     Model_saturating_inductor::States prev_state;
@@ -53,35 +135,35 @@ void Model_saturating_inductor::step(double dt, Inputs const& inputs_) {
     prev_state.data = states.data;
     prev_outputs.data = outputs.data;
 
-    stepInternal(dt);
-    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+    stepModel(dt);
+    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(prev_outputs);
     while (zc_event) {
         // Redo step
         states.data = prev_state.data;
-        stepInternal(zc_event->time * dt);
+        stepModel(zc_event->time * dt);
         // Process event
         zc_event->event_callback();
         // Run remaining time
         prev_state.data = states.data;
         prev_outputs.data = outputs.data;
         dt = dt * (1 - zc_event->time);
-        stepInternal(dt);
+        stepModel(dt);
         // Check for new events
-        zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+        zc_event = checkZeroCrossingEvents(prev_outputs);
     }
 }
 
-void Model_saturating_inductor::stepInternal(double dt) {
+void Model_saturating_inductor::stepModel(double dt) {
     dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
-    if (components != _M_components_DO_NOT_TOUCH || switches.all != _M_switches_DO_NOT_TOUCH.all) {
-		assert(components.L0 != -1);
-		assert(components.L1 != -1);
-		assert(components.L2 != -1);
-		assert(components.R != -1);
+    if (components != _M_components_DO_NOT_TOUCH || switches.all() != _M_switches_DO_NOT_TOUCH.all() || !m_solver.initialized()) {
+        assert(components.L0 != -1);
+        assert(components.L1 != -1);
+        assert(components.L2 != -1);
+        assert(components.R != -1);
         _M_components_DO_NOT_TOUCH = components;
-        _M_switches_DO_NOT_TOUCH.all = switches.all;
-        m_ss = calculateStateSpace(components, switches);
+        _M_switches_DO_NOT_TOUCH = switches;
+        updateStateSpaceMatrices();
         m_solver.updateJacobian(m_ss.A);
         // Solve one step with backward euler to reduce numerical oscillations
         m_Bu = m_ss.B * inputs.data;
@@ -128,14 +210,10 @@ void Model_saturating_inductor::stepInternal(double dt) {
     outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
 
     // Update states from outputs to have correct values for dependent states
-	states.I_L0 = outputs.I_L0;
-	states.I_L1 = outputs.I_L1;
-	states.I_L2 = outputs.I_L2;
+    states.I_L0 = outputs.I_L0;
+    states.I_L1 = outputs.I_L1;
+    states.I_L2 = outputs.I_L2;
 }
-std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calculateStateSpace_0(Model_saturating_inductor::Components const& c);
-std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calculateStateSpace_1(Model_saturating_inductor::Components const& c);
-std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calculateStateSpace_2(Model_saturating_inductor::Components const& c);
-std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calculateStateSpace_3(Model_saturating_inductor::Components const& c);
 
 struct Model_saturating_inductor_Topology {
     Model_saturating_inductor::Components components;
@@ -143,198 +221,68 @@ struct Model_saturating_inductor_Topology {
     std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> state_space;
 };
 
-Model_saturating_inductor::StateSpaceMatrices Model_saturating_inductor::calculateStateSpace(Model_saturating_inductor::Components const& components, Model_saturating_inductor::Switches switches)
-{
+void Model_saturating_inductor::updateStateSpaceMatrices() {
     static std::vector<Model_saturating_inductor_Topology> state_space_cache;
     auto it = std::find_if(
         state_space_cache.begin(), state_space_cache.end(), [&](Model_saturating_inductor_Topology const& t) {
-        return t.components == components && t.switches.all == switches.all;
-    });
+            return t.components == components && t.switches.all() == switches.all();
+        });
     if (it != state_space_cache.end()) {
-        return *it->state_space;
+        m_ss = *it->state_space;
+        return;
     }
-    auto state_space = std::make_unique<Model_saturating_inductor::StateSpaceMatrices>();
 
-    switch (switches.all) {
-		case 0: state_space = calculateStateSpace_0(components); break;
-		case 1: state_space = calculateStateSpace_1(components); break;
-		case 2: state_space = calculateStateSpace_2(components); break;
-		case 3: state_space = calculateStateSpace_3(components); break;
-    default:
-        assert(("Invalid switch combination", 0));
+    if (m_circuit_json.empty()) {
+        m_circuit_json = nlohmann::json::parse(std::string(saturating_inductor_matrices_json_hexdump, saturating_inductor_matrices_json_hexdump + saturating_inductor_matrices_json_hexdump_len));
     }
+    assert(m_circuit_json.contains(std::to_string(switches.all())));
+
+    // Get the intermediate matrices as string for replacing symbolic components with their values
+    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
+    s = rlc2ss::replace(s, "L0", std::format("({})", components.L0));
+    s = rlc2ss::replace(s, "L1", std::format("({})", components.L1));
+    s = rlc2ss::replace(s, "L2", std::format("({})", components.L2));
+    s = rlc2ss::replace(s, "R", std::format("({})", components.R));
+
+    // Parse json for the intermediate matrices
+    nlohmann::json j = nlohmann::json::parse(s);
+    rlc2ss::StateSpaceMatrices ss = {
+        .K1 = j["K1"],
+        .K2 = j["K2"],
+        .A1 = j["A1"],
+        .B1 = j["B1"],
+        .C1 = j["C1"],
+        .D1 = j["D1"],
+    };
+    // Create eigen matrices
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
+
     Model_saturating_inductor_Topology& topology = state_space_cache.emplace_back(Model_saturating_inductor_Topology{
         .components = components,
         .switches = switches,
-        .state_space = std::move(state_space)});
+        .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)});
 
-    return *topology.state_space;
+    m_ss = *topology.state_space;
 }
 
-std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calculateStateSpace_0(Model_saturating_inductor::Components const& c) // 
-{
-	double L0 = c.L0;
-	double L1 = c.L1;
-	double L2 = c.L2;
-	double R = c.R;
-
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> K1 {
-		{ L0, 0, 0 },
-		{ 0, 1, 0 },
-		{ 0, 0, 1 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> K2 {
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0} };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> A1 {
-		{ -R, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_INPUTS> B1 {
-		{ -1 },
-		{ 0 },
-		{ 0 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> C1 {
-		{ 1, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_INPUTS> D1 {
-		{ 0 },
-		{ 0 },
-		{ 0 } };
-
-    return calcStateSpace(K1, A1, B1, K2, C1, D1);
+uint64_t Model_saturating_inductor::Switches::all() const {
+    return 0 |
+        (S1 << 0) |
+        (S2 << 1);
 }
 
-
-std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calculateStateSpace_1(Model_saturating_inductor::Components const& c) //  S1
-{
-	double L0 = c.L0;
-	double L1 = c.L1;
-	double L2 = c.L2;
-	double R = c.R;
-
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> K1 {
-		{ L0, 0, 0 },
-		{ 0, L1, 0 },
-		{ 0, 0, 1 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> K2 {
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0} };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> A1 {
-		{ -R, -R, 0 },
-		{ -R, -R, 0 },
-		{ 0, 0, 0 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_INPUTS> B1 {
-		{ -1 },
-		{ -1 },
-		{ 0 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> C1 {
-		{ 1, 0, 0 },
-		{ 0, 1, 0 },
-		{ 0, 0, 0 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_INPUTS> D1 {
-		{ 0 },
-		{ 0 },
-		{ 0 } };
-
-    return calcStateSpace(K1, A1, B1, K2, C1, D1);
+double Model_saturating_inductor::Switches::smallestDelay() {
+    return std::min({double(rlc2ss::OnOffDelay::MAX_DELAY),
+                    S1.pendingTime(),
+                    S2.pendingTime()});
 }
 
-
-std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calculateStateSpace_2(Model_saturating_inductor::Components const& c) //  S2
-{
-	double L0 = c.L0;
-	double L1 = c.L1;
-	double L2 = c.L2;
-	double R = c.R;
-
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> K1 {
-		{ L0, 0, 0 },
-		{ 0, 0, L1 + L2 },
-		{ 0, 1, 1 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> K2 {
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0} };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> A1 {
-		{ -R, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_INPUTS> B1 {
-		{ -1 },
-		{ 0 },
-		{ 0 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> C1 {
-		{ 1, 0, 0 },
-		{ 0, 0, -1 },
-		{ 0, 0, 1 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_INPUTS> D1 {
-		{ 0 },
-		{ 0 },
-		{ 0 } };
-
-    return calcStateSpace(K1, A1, B1, K2, C1, D1);
+void Model_saturating_inductor::Switches::step(double dt) {
+    S1.step(dt);
+    S2.step(dt);
 }
-
-
-std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calculateStateSpace_3(Model_saturating_inductor::Components const& c) //  S1 S2
-{
-	double L0 = c.L0;
-	double L1 = c.L1;
-	double L2 = c.L2;
-	double R = c.R;
-
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> K1 {
-		{ L0, 0, 0 },
-		{ 0, L1, 0 },
-		{ 0, 0, L2 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> K2 {
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0} };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_STATES> A1 {
-		{ -R, -R, -R },
-		{ -R, -R, -R },
-		{ -R, -R, -R } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_STATES, Model_saturating_inductor::NUM_INPUTS> B1 {
-		{ -1 },
-		{ -1 },
-		{ -1 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_STATES> C1 {
-		{ 1, 0, 0 },
-		{ 0, 1, 0 },
-		{ 0, 0, 1 } };
-
-    Eigen::Matrix<double, Model_saturating_inductor::NUM_OUTPUTS, Model_saturating_inductor::NUM_INPUTS> D1 {
-		{ 0 },
-		{ 0 },
-		{ 0 } };
-
-    return calcStateSpace(K1, A1, B1, K2, C1, D1);
-}
-

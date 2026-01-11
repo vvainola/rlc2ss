@@ -18,7 +18,7 @@ setup build *opts:
     uv run conan install conanfile.txt --build missing --output-folder {{build}}\conan --conf tools.env.virtualenv:powershell=powershell.exe
     # Call conanbuild.ps1 to set the environment variables
     .\\{{build}}\\conan\\conanbuild.ps1
-    uv run meson setup {{build}} {{opts}}
+    uv run meson setup -Dcpp_std=c++latest {{build}} {{opts}}
 
 [no-cd]
 [linux]

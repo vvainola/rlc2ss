@@ -1,3 +1,4 @@
+
 // MIT License
 //
 // Copyright (c) 2024 vvainola
@@ -21,42 +22,30 @@
 // SOFTWARE.
 
 #pragma once
+
 #include <string>
+#include <expected>
 #include <vector>
-#include <functional>
 
 namespace rlc2ss {
+namespace str {
 
-inline constexpr double MINIMUM_TIMESTEP = 1e-12;
+std::expected<std::string, std::string> readFile(const std::string& filename);
 
-std::string replace(const std::string& original, const std::string& search, const std::string& replacement);
-std::vector<double> getCommaDelimitedValues(std::string const s);
-double evaluateExpression(std::string expression);
+std::vector<std::string_view> splitSv(const std::string& s, char delim, int expected_column_count = 1);
+std::vector<std::string> split(const std::string& s, char delim);
+std::string replaceAll(const std::string& str,
+                       const std::string& find,
+                       const std::string& replace);
+std::string removeWhitespace(std::string_view str);
+std::string upper(std::string_view str);
+std::string lower(std::string_view str);
 
-struct ZeroCrossingEvent {
-    double time;
-    std::function<void(void)> event_callback;
-    bool operator<(ZeroCrossingEvent const& other) const {
-        return time < other.time;
-    }
-    bool operator>(ZeroCrossingEvent const& other) const {
-        return time > other.time;
-    }
-};
+std::string& ltrim(std::string& str);
+std::string& rtrim(std::string& str);
+std::string& trim(std::string& str);
 
-double calcZeroCrossingTime(double y1, double y2);
+std::expected<double, std::string> evaluateExpression(std::string expression);
 
-struct StateSpaceMatrices {
-    std::string K1;
-    std::string K2;
-    std::string A1;
-    std::string B1;
-    std::string C1;
-    std::string D1;
-};
-StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist,
-                                          int combination,
-                                          std::unordered_map<std::string, double> const& component_values,
-                                          bool verbose = false);
-
+} // namespace str
 } // namespace rlc2ss

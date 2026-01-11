@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2024 vvainola
+// Copyright (c) 2026 vvainola
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,42 +21,30 @@
 // SOFTWARE.
 
 #pragma once
-#include <string>
+
+#include "component.hpp"
+
 #include <vector>
-#include <functional>
+#include <unordered_set>
 
 namespace rlc2ss {
 
-inline constexpr double MINIMUM_TIMESTEP = 1e-12;
+class Graph {
+  public:
+    Graph() {}
 
-std::string replace(const std::string& original, const std::string& search, const std::string& replacement);
-std::vector<double> getCommaDelimitedValues(std::string const s);
-double evaluateExpression(std::string expression);
+    void addComponent(Component* comp);
+    void removeComponent(Component* comp);
+    std::vector<Node*> nodes() const;
+    Node* getNode(std::string const& node_name) const;
+    Component* getComponent(Node* node1, Node* node2) const;
 
-struct ZeroCrossingEvent {
-    double time;
-    std::function<void(void)> event_callback;
-    bool operator<(ZeroCrossingEvent const& other) const {
-        return time < other.time;
-    }
-    bool operator>(ZeroCrossingEvent const& other) const {
-        return time > other.time;
-    }
+    bool hasPath(Node* from, Node* to) const;
+    std::vector<Node*> dijkstra(Node* from, Node* to) const;
+
+  private:
+    std::unordered_set<Component*> m_components;
+    std::vector<std::unordered_set<Node*>> m_islands;
 };
-
-double calcZeroCrossingTime(double y1, double y2);
-
-struct StateSpaceMatrices {
-    std::string K1;
-    std::string K2;
-    std::string A1;
-    std::string B1;
-    std::string C1;
-    std::string D1;
-};
-StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist,
-                                          int combination,
-                                          std::unordered_map<std::string, double> const& component_values,
-                                          bool verbose = false);
 
 } // namespace rlc2ss

@@ -60,18 +60,21 @@ Model_diode circuit(Model_diode::Components{
     .R_D4 = 1e-3,
 });
 #elif defined SATURATING_INDUCTOR
-double L0 = 0.01;
-double L1 = (0.015 - 0.01) / (2 - 1);
-double L2 = (0.0151 - 0.015) / (5 - 2);
-double L1_act = (L1 * L0) / (L0 - L1);
-double L2_act = (L2 * L1_act) / (L1_act - L2);
 Model_saturating_inductor circuit(Model_saturating_inductor::Components{});
 #elif defined MUTUAL_INDUCTOR
 Model_mutual_inductor circuit(Model_mutual_inductor::Components{
+    .Cf = 100e-6,
     .FSRC1 = -100.0,
     .K12 = 0.5,
     .K21 = 0.5,
     .K31 = 0.5,
+    .L1 = 1,
+    .L2 = 1,
+    .L3 = 1,
+    .R1 = 10.0,
+    .R2 = 10.0,
+    .R3 = 10e-3,
+    .R4 = 10.0,
 });
 #elif defined CONTROLLED_SOURCES
 Model_controlled_sources circuit(Model_controlled_sources::Components{
@@ -120,16 +123,45 @@ extern "C" __declspec(dllexport) double* DLL_outputs = (double*)&circuit.outputs
 extern "C" __declspec(dllexport) double* DLL_debug = debug;
 
 extern "C" __declspec(dllexport) void DLL_init(double dt) {
-    DbgGui_create(dt);
+    // DbgGui_create(dt);
     DbgGui_startUpdateLoop();
+#if defined SATURATING_INDUCTOR
+    std::vector<double> currents = {0, 1, 2, 5};
+    std::vector<double> flux = {0, 0.01, 0.015, 0.0151};
+    double L0 = (flux[1] - flux[0]) / (currents[1] - currents[0]);
+    double L1 = (flux[2] - flux[1]) / (currents[2] - currents[1]);
+    double L2 = (flux[3] - flux[2]) / (currents[3] - currents[2]);
+    double L1_act = (L1 * L0) / (L0 - L1);
+    double L2_act = (L2 * L1_act) / (L1_act - L2);
+    double L1_eff = 1 / (1 / L0 + 1 / L1_act);
+    double L2_eff = 1 / (1 / L0 + 1 / L1_act + 1 / L2_act);
+    circuit.addInductorSaturation(&circuit.components.L0,
+                                  {currents[0], currents[1], currents[2]},
+                                  {L0, L1_eff, L2_eff});
+#elif defined(CONVERTER)
+    std::vector<double> currents = {0, 100,          200,          500};
+    std::vector<double> flux =     {0, 100 * 100e-6, 100 * 120e-6, 100 * 125e-6};
+    double L0 = (flux[1] - flux[0]) / (currents[1] - currents[0]);
+    double L1 = (flux[2] - flux[1]) / (currents[2] - currents[1]);
+    double L2 = (flux[3] - flux[2]) / (currents[3] - currents[2]);
+    double L1_act = (L1 * L0) / (L0 - L1);
+    double L2_act = (L2 * L1_act) / (L1_act - L2);
+    double L1_eff = 1 / (1 / L0 + 1 / L1_act);
+    double L2_eff = 1 / (1 / L0 + 1 / L1_act + 1 / L2_act);
+    circuit.addInductorSaturation(&circuit.components.L_a,
+                                  {currents[0], currents[1], currents[2]},
+                                  {L0, L1_eff, L2_eff});
+    circuit.addInductorSaturation(&circuit.components.L_b,
+                                  {currents[0], currents[1], currents[2]},
+                                  {L0, L1_eff, L2_eff});
+    circuit.addInductorSaturation(&circuit.components.L_c,
+                                  {currents[0], currents[1], currents[2]},
+                                  {L0, L1_eff, L2_eff});
+#endif
 }
 
 extern "C" __declspec(dllexport) void DLL_update(double current_time, double dt) {
-#if defined SATURATING_INDUCTOR
-    double sum = abs(circuit.outputs.I_L0 + circuit.outputs.I_L1 + circuit.outputs.I_L2);
-    circuit.switches.S1 = abs(sum) > 1;
-    circuit.switches.S2 = abs(sum) > 2;
-#elif defined DIODE_TEST
+#if defined DIODE_TEST
     circuit.inputs.V_D2 = 0.1;
     circuit.inputs.V_D3 = 0.1;
     circuit.inputs.V_D4 = 0.1;

@@ -1,54 +1,71 @@
-C_dc_n1 _net34 N_dc_n
-C_dc_n2 _net41 _net36
-C_dc_p1 _net15 N_dc_0 Vn;
-C_dc_p2 _net39 _net40
-C_f_a N_cap_a _net31
-C_f_b N_cap_b _net32
-C_f_c N_cap_c _net33
-L_conv_a V2_a N_cap_a
-L_conv_b V2_b N_cap_b
-L_conv_c V2_c N_cap_c
-L_dc_n _net36 N_dc_n
-L_dc_p _net38 N_dc_p
-L_dc_src _net35 _net37
-L_grid_a _net22 _net23
-L_grid_b _net24 _net25
-L_grid_c _net26 _net27
-L_src_a _net28 _net0
-L_src_b _net29 _net1
-L_src_c _net30 _net2
-R_conv_a N_conv_a V2_a Vp;
-R_conv_b N_conv_b V2_b Vp;
-R_conv_c N_conv_c V2_c Vp;
-R_dc_pn1 N_dc_0 N_dc_n Vn;
-R_dc_pn2 _net40 _net36
-R_dc_pp1 N_dc_p N_dc_0 Vp;
-R_dc_pp2 _net38 _net40
-R_dc_sn1 N_dc_0 _net34
-R_dc_sn2 _net40 _net41
-R_dc_sp1 N_dc_p _net15
-R_dc_sp2 _net38 _net39
-R_dc_src_s _net38 _net37
-R_dc_src_p _net38 _net37
-R_f_a _net31 N_cap_0
-R_f_b _net32 N_cap_0
-R_f_c _net33 N_cap_0
-R_grid_a N_cap_a _net22
-R_grid_b N_cap_b _net24
-R_grid_c N_cap_c _net26
-R_src_a _net23 _net28
-R_src_b _net25 _net29
-R_src_c _net27 _net30
-S_0_a N_conv_a  N_dc_0
-S_0_b N_conv_b  N_dc_0
-S_0_c N_conv_c  N_dc_0
-D_n_a N_dc_n  N_conv_a
-D_n_b N_dc_n  N_conv_b
-D_n_c N_dc_n  N_conv_c
-D_p_a N_conv_a  N_dc_p
-D_p_b N_conv_b  N_dc_p
-D_p_c N_conv_c  N_dc_p
-V_dc_src _net35 _net36
-V_src_a _net0 0
-V_src_b _net1 0
-V_src_c _net2 0
+* Qucs 1.1.0 C:/Projects/rlc2ss/qucs/diode_bridge_3l.sch
+.INCLUDE "C:/Programs/qucs_s_win64/share/qucs-s/xspice_cmlib/include/ngspice_mathfunc.inc"
+* Qucs 1.1.0  C:/Projects/rlc2ss/qucs/diode_bridge_3l.sch
+V_src_a _net0 0 DC 1
+V_src_b _net1 0 DC 1
+V_src_c _net2 0 DC 1
+R_conv_a N_conv_a V2_a  1E-3
+R_conv_b N_conv_b V2_b  1E-3
+R_conv_c N_conv_c V2_c  1E-3
+R_grid_a N_cap_a _net3  1E-3
+R_grid_b N_cap_b _net4  1E-3
+R_grid_c N_cap_c _net5  1E-3
+R_src_a _net6 _net7  1E-3
+R_src_b _net8 _net9  1E-3
+R_src_c _net10 _net11  1E-3
+L_conv_a V2_a N_cap_a  1E-6 
+L_conv_b V2_b N_cap_b  1E-6 
+L_conv_c V2_c N_cap_c  1E-6 
+L_grid_a _net3 _net6  1E-6 
+L_grid_b _net4 _net8  1E-6 
+L_grid_c _net5 _net10  1E-6 
+L_src_a _net7 _net0  1E-6 
+L_src_b _net9 _net1  1E-6 
+L_src_c _net11 _net2  1E-6 
+R_f_a _net12 N_cap_0  1E-3
+R_f_b _net13 N_cap_0  1E-3
+R_f_c _net14 N_cap_0  1E-3
+C_f_a N_cap_a _net12  1E-3 
+C_f_b N_cap_b _net13  1E-3 
+C_f_c N_cap_c _net14  1E-3 
+D_p_c N_conv_c  N_dc_p 
+D_n_c N_dc_n  N_conv_c 
+V_dc_src _net15 _net16 DC 1
+R_dc_src_p _net17 _net18  1E3
+L_dc_src _net15 _net18  10E-6 
+R_dc_pp2 _net17 _net19  1E3
+R_dc_pn2 _net19 _net16  1E3
+R_dc_sp2 _net17 _net20  1E-3
+R_dc_sn2 _net19 _net21  1E-3
+R_dc_pp1 N_dc_p N_dc_0  1E3
+R_dc_pn1 N_dc_0 N_dc_n  1E3
+R_dc_sp1 N_dc_p _net22  1E-3
+R_dc_sn1 N_dc_0 _net23  1E-3
+C_dc_p2 _net20 _net19  10E-3 
+C_dc_p1 _net22 N_dc_0  10E-3 
+C_dc_n1 _net23 N_dc_n  10E-3 
+C_dc_n2 _net21 _net16  10E-3 
+L_dc_n _net16 N_dc_n  1E-6 
+L_dc_p _net17 N_dc_p  1E-6 
+R_dc_src_s _net17 _net18  1
+S_0_a N_conv_a  N_dc_0  _net24  _net25 
+S_0_b N_conv_b  N_dc_0  _net26  _net27 
+S_0_c N_conv_c  N_dc_0  _net28  _net29 
+D_p_a N_conv_a  N_dc_p 
+D_n_a N_dc_n  N_conv_a 
+D_p_b N_conv_b  N_dc_p 
+D_n_b N_dc_n  N_conv_b 
+S_p_a N_conv_a  N_dc_p  _net30  _net31 
+S_p_b N_conv_b  N_dc_p  _net32  _net33 
+S_p_c N_conv_c  N_dc_p  _net34  _net35 
+S_n_a N_dc_n  N_conv_a  _net36  _net37 
+S_n_b N_dc_n  N_conv_b  _net38  _net39 
+S_n_c N_dc_n  N_conv_c  _net40  _net41 
+.control
+set filetype=ascii
+op
+print all > spice4qucs.cir.dc_op
+destroy all
+quit
+.endc
+.end

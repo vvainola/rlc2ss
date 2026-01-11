@@ -30,7 +30,7 @@ class Model_diode_bridge_3l {
     static inline constexpr size_t NUM_INPUTS = 10;
     static inline constexpr size_t NUM_OUTPUTS = 35;
     static inline constexpr size_t NUM_STATES = 19;
-    static inline constexpr size_t NUM_SWITCHES = 9;
+    static inline constexpr size_t NUM_SWITCHES = 15;
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
@@ -127,6 +127,12 @@ class Model_diode_bridge_3l {
         rlc2ss::OnOffDelay S_D_p_a;
         rlc2ss::OnOffDelay S_D_p_b;
         rlc2ss::OnOffDelay S_D_p_c;
+        rlc2ss::OnOffDelay S_n_a;
+        rlc2ss::OnOffDelay S_n_b;
+        rlc2ss::OnOffDelay S_n_c;
+        rlc2ss::OnOffDelay S_p_a;
+        rlc2ss::OnOffDelay S_p_b;
+        rlc2ss::OnOffDelay S_p_c;
 
         uint64_t all() const;
         double smallestDelay();
@@ -134,53 +140,53 @@ class Model_diode_bridge_3l {
     };
 
     struct Components {
-        double C_dc_n1 = -1.0;
-        double C_dc_n2 = -1.0;
-        double C_dc_p1 = -1.0;
-        double C_dc_p2 = -1.0;
-        double C_f_a = -1.0;
-        double C_f_b = -1.0;
-        double C_f_c = -1.0;
-        double L_conv_a = -1.0;
-        double L_conv_b = -1.0;
-        double L_conv_c = -1.0;
-        double L_dc_n = -1.0;
-        double L_dc_p = -1.0;
-        double L_dc_src = -1.0;
-        double L_grid_a = -1.0;
-        double L_grid_b = -1.0;
-        double L_grid_c = -1.0;
-        double L_src_a = -1.0;
-        double L_src_b = -1.0;
-        double L_src_c = -1.0;
+        double C_dc_n1 = 0.01;
+        double C_dc_n2 = 0.01;
+        double C_dc_p1 = 0.01;
+        double C_dc_p2 = 0.01;
+        double C_f_a = 0.001;
+        double C_f_b = 0.001;
+        double C_f_c = 0.001;
+        double L_conv_a = 1e-06;
+        double L_conv_b = 1e-06;
+        double L_conv_c = 1e-06;
+        double L_dc_n = 1e-06;
+        double L_dc_p = 1e-06;
+        double L_dc_src = 1e-05;
+        double L_grid_a = 1e-06;
+        double L_grid_b = 1e-06;
+        double L_grid_c = 1e-06;
+        double L_src_a = 1e-06;
+        double L_src_b = 1e-06;
+        double L_src_c = 1e-06;
         double R_D_n_a = -1.0;
         double R_D_n_b = -1.0;
         double R_D_n_c = -1.0;
         double R_D_p_a = -1.0;
         double R_D_p_b = -1.0;
         double R_D_p_c = -1.0;
-        double R_conv_a = -1.0;
-        double R_conv_b = -1.0;
-        double R_conv_c = -1.0;
-        double R_dc_pn1 = -1.0;
-        double R_dc_pn2 = -1.0;
-        double R_dc_pp1 = -1.0;
-        double R_dc_pp2 = -1.0;
-        double R_dc_sn1 = -1.0;
-        double R_dc_sn2 = -1.0;
-        double R_dc_sp1 = -1.0;
-        double R_dc_sp2 = -1.0;
-        double R_dc_src_p = -1.0;
-        double R_dc_src_s = -1.0;
-        double R_f_a = -1.0;
-        double R_f_b = -1.0;
-        double R_f_c = -1.0;
-        double R_grid_a = -1.0;
-        double R_grid_b = -1.0;
-        double R_grid_c = -1.0;
-        double R_src_a = -1.0;
-        double R_src_b = -1.0;
-        double R_src_c = -1.0;
+        double R_conv_a = 0.001;
+        double R_conv_b = 0.001;
+        double R_conv_c = 0.001;
+        double R_dc_pn1 = 1000.0;
+        double R_dc_pn2 = 1000.0;
+        double R_dc_pp1 = 1000.0;
+        double R_dc_pp2 = 1000.0;
+        double R_dc_sn1 = 0.001;
+        double R_dc_sn2 = 0.001;
+        double R_dc_sp1 = 0.001;
+        double R_dc_sp2 = 0.001;
+        double R_dc_src_p = 1000.0;
+        double R_dc_src_s = 1.0;
+        double R_f_a = 0.001;
+        double R_f_b = 0.001;
+        double R_f_c = 0.001;
+        double R_grid_a = 0.001;
+        double R_grid_b = 0.001;
+        double R_grid_c = 0.001;
+        double R_src_a = 0.001;
+        double R_src_b = 0.001;
+        double R_src_c = 0.001;
 
         bool operator==(Components const& other) const {
             return

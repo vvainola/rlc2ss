@@ -1,4 +1,5 @@
 build*
+data/**/*
 **/slprj
 **/*.slxc
 **/*.pyc

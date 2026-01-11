@@ -70,7 +70,7 @@ class Integrator {
     vector_t stepTustin(System const& system, vector_t const& x0, double t, double dt);
 
     void updateJacobian(matrix_t const& jacobian) {
-        m_dt_prev = 0;
+        m_dt_prev = -1;
         m_jacobian = jacobian;
         uint64_t hash = matrixHash(jacobian);
         m_used_euler_cache = &m_euler_caches[hash];
@@ -91,7 +91,7 @@ class Integrator {
 
     matrix_t m_jacobian;
     matrix_t* m_jacobian_coeff_inv; // 1 / (1 - 0.5 * dt * J)
-    double m_dt_prev = 0;
+    double m_dt_prev = -1;
     double m_epsilon = 1e-8;
     double m_abstol = 1e-6;
     double m_reltol = 1e-3;

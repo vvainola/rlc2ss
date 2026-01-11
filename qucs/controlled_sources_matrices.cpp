@@ -2,6 +2,10 @@
 #include "controlled_sources_matrices.hpp"
 #include "rlc2ss.h"
 #include <optional>
+#include <fstream>
+#include <format>
+#include <memory>
+#include "controlled_sources_matrices_json.h"
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -10,12 +14,12 @@
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
 static std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> calcStateSpace(
-    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> const  &K1,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> const  &A1,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_INPUTS> const  &B1,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> const &K2,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> const &C1,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_INPUTS> const &D1) {
+    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> const& K1,
+    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> const& A1,
+    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_INPUTS> const& B1,
+    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> const& K2,
+    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> const& C1,
+    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_INPUTS> const& D1) {
     auto ss = std::make_unique<Model_controlled_sources::StateSpaceMatrices>();
     ss->A = K1.partialPivLu().solve(A1);
     ss->B = K1.partialPivLu().solve(B1);
@@ -39,13 +43,30 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_co
 Model_controlled_sources::Model_controlled_sources(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
-    m_ss = calculateStateSpace(components, switches);
-    m_solver.updateJacobian(m_ss.A);
 }
-
 
 void Model_controlled_sources::step(double dt, Inputs const& inputs_) {
     inputs.data = inputs_.data;
+
+    // Step to the next switching event
+    double smallest_dt = switches.smallestDelay();
+    while (smallest_dt < dt) {
+        switches.step(smallest_dt);
+        stepWithZeroCrossingDetection(smallest_dt);
+        dt -= smallest_dt;
+        smallest_dt = switches.smallestDelay();
+    }
+
+    // Step remaining time
+    switches.step(dt);
+    stepWithZeroCrossingDetection(dt);
+}
+
+void Model_controlled_sources::stepWithZeroCrossingDetection(double dt) {
+    // No need to do anything
+    if (dt < rlc2ss::MINIMUM_TIMESTEP) {
+        return;
+    }
 
     // Copy previous state and outputs if step needs to be redone
     Model_controlled_sources::States prev_state;
@@ -53,45 +74,45 @@ void Model_controlled_sources::step(double dt, Inputs const& inputs_) {
     prev_state.data = states.data;
     prev_outputs.data = outputs.data;
 
-    stepInternal(dt);
+    stepModel(dt);
     std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
     while (zc_event) {
         // Redo step
         states.data = prev_state.data;
-        stepInternal(zc_event->time * dt);
+        stepModel(zc_event->time * dt);
         // Process event
         zc_event->event_callback();
         // Run remaining time
         prev_state.data = states.data;
         prev_outputs.data = outputs.data;
         dt = dt * (1 - zc_event->time);
-        stepInternal(dt);
+        stepModel(dt);
         // Check for new events
         zc_event = checkZeroCrossingEvents(*this, prev_outputs);
     }
 }
 
-void Model_controlled_sources::stepInternal(double dt) {
+void Model_controlled_sources::stepModel(double dt) {
     dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
-    if (components != _M_components_DO_NOT_TOUCH || switches.all != _M_switches_DO_NOT_TOUCH.all) {
-		assert(components.C_1 != -1);
-		assert(components.C_2 != -1);
-		assert(components.ESRC3 != -1);
-		assert(components.FSRC5 != -1);
-		assert(components.GSRC1 != -1);
-		assert(components.HSRC4 != -1);
-		assert(components.L1 != -1);
-		assert(components.R1 != -1);
-		assert(components.R2 != -1);
-		assert(components.R3 != -1);
-		assert(components.R4 != -1);
-		assert(components.R5 != -1);
-		assert(components.R6 != -1);
-		assert(components.R7 != -1);
+    if (components != _M_components_DO_NOT_TOUCH || switches.all() != _M_switches_DO_NOT_TOUCH.all() || !m_solver.initialized()) {
+        assert(components.C_1 != -1);
+        assert(components.C_2 != -1);
+        assert(components.ESRC3 != -1);
+        assert(components.FSRC5 != -1);
+        assert(components.GSRC1 != -1);
+        assert(components.HSRC4 != -1);
+        assert(components.L1 != -1);
+        assert(components.R1 != -1);
+        assert(components.R2 != -1);
+        assert(components.R3 != -1);
+        assert(components.R4 != -1);
+        assert(components.R5 != -1);
+        assert(components.R6 != -1);
+        assert(components.R7 != -1);
         _M_components_DO_NOT_TOUCH = components;
-        _M_switches_DO_NOT_TOUCH.all = switches.all;
-        m_ss = calculateStateSpace(components, switches);
+        _M_switches_DO_NOT_TOUCH = switches;
+        updateStateSpaceMatrices();
         m_solver.updateJacobian(m_ss.A);
         // Solve one step with backward euler to reduce numerical oscillations
         m_Bu = m_ss.B * inputs.data;
@@ -138,11 +159,10 @@ void Model_controlled_sources::stepInternal(double dt) {
     outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
 
     // Update states from outputs to have correct values for dependent states
-	states.I_L1 = outputs.I_L1;
-	states.V_C_1 = outputs.V_C_1;
-	states.V_C_2 = outputs.V_C_2;
+    states.I_L1 = outputs.I_L1;
+    states.V_C_1 = outputs.V_C_1;
+    states.V_C_2 = outputs.V_C_2;
 }
-std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> calculateStateSpace_0(Model_controlled_sources::Components const& c);
 
 struct Model_controlled_sources_Topology {
     Model_controlled_sources::Components components;
@@ -150,82 +170,74 @@ struct Model_controlled_sources_Topology {
     std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> state_space;
 };
 
-Model_controlled_sources::StateSpaceMatrices Model_controlled_sources::calculateStateSpace(Model_controlled_sources::Components const& components, Model_controlled_sources::Switches switches)
-{
+void Model_controlled_sources::updateStateSpaceMatrices() {
     static std::vector<Model_controlled_sources_Topology> state_space_cache;
     auto it = std::find_if(
         state_space_cache.begin(), state_space_cache.end(), [&](Model_controlled_sources_Topology const& t) {
-        return t.components == components && t.switches.all == switches.all;
-    });
+            return t.components == components && t.switches.all() == switches.all();
+        });
     if (it != state_space_cache.end()) {
-        return *it->state_space;
+        m_ss = *it->state_space;
+        return;
     }
-    auto state_space = std::make_unique<Model_controlled_sources::StateSpaceMatrices>();
 
-    switch (switches.all) {
-		case 0: state_space = calculateStateSpace_0(components); break;
-    default:
-        assert(("Invalid switch combination", 0));
+    if (m_circuit_json.empty()) {
+        m_circuit_json = nlohmann::json::parse(std::string(controlled_sources_matrices_json_hexdump, controlled_sources_matrices_json_hexdump + controlled_sources_matrices_json_hexdump_len));
     }
+    assert(m_circuit_json.contains(std::to_string(switches.all())));
+
+    // Get the intermediate matrices as string for replacing symbolic components with their values
+    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
+    s = rlc2ss::replace(s, "C_1", std::format("({})", components.C_1));
+    s = rlc2ss::replace(s, "C_2", std::format("({})", components.C_2));
+    s = rlc2ss::replace(s, "ESRC3", std::format("({})", components.ESRC3));
+    s = rlc2ss::replace(s, "FSRC5", std::format("({})", components.FSRC5));
+    s = rlc2ss::replace(s, "GSRC1", std::format("({})", components.GSRC1));
+    s = rlc2ss::replace(s, "HSRC4", std::format("({})", components.HSRC4));
+    s = rlc2ss::replace(s, "L1", std::format("({})", components.L1));
+    s = rlc2ss::replace(s, "R1", std::format("({})", components.R1));
+    s = rlc2ss::replace(s, "R2", std::format("({})", components.R2));
+    s = rlc2ss::replace(s, "R3", std::format("({})", components.R3));
+    s = rlc2ss::replace(s, "R4", std::format("({})", components.R4));
+    s = rlc2ss::replace(s, "R5", std::format("({})", components.R5));
+    s = rlc2ss::replace(s, "R6", std::format("({})", components.R6));
+    s = rlc2ss::replace(s, "R7", std::format("({})", components.R7));
+
+    // Parse json for the intermediate matrices
+    nlohmann::json j = nlohmann::json::parse(s);
+    rlc2ss::StateSpaceMatrices ss = {
+        .K1 = j["K1"],
+        .K2 = j["K2"],
+        .A1 = j["A1"],
+        .B1 = j["B1"],
+        .C1 = j["C1"],
+        .D1 = j["D1"],
+    };
+    // Create eigen matrices
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
+
     Model_controlled_sources_Topology& topology = state_space_cache.emplace_back(Model_controlled_sources_Topology{
         .components = components,
         .switches = switches,
-        .state_space = std::move(state_space)});
+        .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)});
 
-    return *topology.state_space;
+    m_ss = *topology.state_space;
 }
 
-std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> calculateStateSpace_0(Model_controlled_sources::Components const& c) // 
-{
-	double C_1 = c.C_1;
-	double C_2 = c.C_2;
-	double ESRC3 = c.ESRC3;
-	double FSRC5 = c.FSRC5;
-	double GSRC1 = c.GSRC1;
-	double HSRC4 = c.HSRC4;
-	double L1 = c.L1;
-	double R1 = c.R1;
-	double R2 = c.R2;
-	double R3 = c.R3;
-	double R4 = c.R4;
-	double R5 = c.R5;
-	double R6 = c.R6;
-	double R7 = c.R7;
-
-
-    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> K1 {
-		{ FSRC5*GSRC1*L1*R6, 0, -C_2*R6 },
-		{ -FSRC5*GSRC1*L1*R3 + L1, 0, 0 },
-		{ GSRC1*L1, C_1, 0 } };
-
-    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> K2 {
-		{ 0, 0, C_2 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0} };
-
-    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> A1 {
-		{ 0, 0, R6/R7 + 1 },
-		{ HSRC4 - R1 - R3 - R5, ESRC3, 0 },
-		{ 0, 0, 0 } };
-
-    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_INPUTS> B1 {
-		{ 0, 0, 0 },
-		{ 1, -1, 0 },
-		{ 0, 0, 0 } };
-
-    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> C1 {
-		{ 0, 0, 0 },
-		{ 1, 0, 0 },
-		{ 0, 1, 0 },
-		{ 0, 0, 1 } };
-
-    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_INPUTS> D1 {
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 },
-		{ 0, 0, 0 } };
-
-    return calcStateSpace(K1, A1, B1, K2, C1, D1);
+uint64_t Model_controlled_sources::Switches::all() const {
+    return 0;
 }
 
+double Model_controlled_sources::Switches::smallestDelay() {
+    return std::min({double(rlc2ss::OnOffDelay::MAX_DELAY),
+                    });
+}
+
+void Model_controlled_sources::Switches::step(double dt) {
+    
+}
