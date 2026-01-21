@@ -38,6 +38,22 @@ if meson.is_subproject()
         include_directories : 'include',
         dependencies : deps
     )
+    src_rlc2ss_dep = declare_dependency(
+        sources : [
+            'src/netlist/graph.cpp',
+            'src/netlist/netlist.cpp',
+            'src/netlist/state_space.cpp',
+            'src/netlist/linear_expr.cpp',
+            'src/rlc2ss.cpp',
+            'src/str_helpers.cpp',
+        ],
+        include_directories : [
+            'include',
+            'src',
+            'src/netlist'
+        ],
+        dependencies : deps
+    )
     subdir_done()
 endif
 
