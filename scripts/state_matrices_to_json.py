@@ -162,8 +162,8 @@ class {class_name} {{
     /// @param current Current breakpoints in ascending order. First breakpoint must be 0.
     /// @param inductance Inductance values at the breakpoints.
     /// Example:
-    /// currents   = {{0,       100,   200,   300}}
-    /// inductances = {{100e-6, 75e-6, 50e-6, 25e-6}}
+    /// currents    = {{0,       100,        200,       300}}
+    /// inductances = {{   100e-6,    75e-6,      50e-6,     25e-6}}
     void addInductorSaturation(double* inductor, std::vector<double> current, std::vector<double> inductance);
 
     union Inputs {{
@@ -289,7 +289,7 @@ class {class_name} {{
 #include "{model_basename}_matrices.hpp"
 #include "rlc2ss.h"
 #include <optional>
-#include <fstream>
+#include <mutex>
 #include <format>
 #include <memory>
 {include_json_header}
@@ -552,6 +552,9 @@ struct {class_name}_Topology {{
 }};
 
 void {class_name}::updateStateSpaceMatrices() {{
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
     static std::vector<{class_name}_Topology> state_space_cache;
     auto it = std::find_if(
         state_space_cache.begin(), state_space_cache.end(), [&]({class_name}_Topology const& t) {{
