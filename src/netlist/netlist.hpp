@@ -26,6 +26,7 @@
 #include <string>
 #include "component.hpp"
 #include <unordered_map>
+#include <memory>
 
 namespace rlc2ss {
 

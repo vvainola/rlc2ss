@@ -26,6 +26,8 @@
 #include <iomanip>
 #include <fstream>
 #include <stack>
+#include <algorithm>
+#include <cmath>
 #if defined(_WIN32)
 #include <windows.h>
 #endif
