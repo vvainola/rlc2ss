@@ -2,7 +2,7 @@
 #include "converter_matrices.hpp"
 #include "rlc2ss.h"
 #include <optional>
-#include <fstream>
+#include <mutex>
 #include <format>
 #include <memory>
 
@@ -363,21 +363,21 @@ void Model_converter::stepModel(double dt) {
     states.V_C_p = outputs.V_C_p;
 }
 
-struct Model_converter_Topology {
-    Model_converter::Components components;
-    Model_converter::Switches switches;
-    std::unique_ptr<Model_converter::StateSpaceMatrices> state_space;
-};
-
 void Model_converter::updateStateSpaceMatrices() {
-    static std::vector<Model_converter_Topology> state_space_cache;
-    auto it = std::find_if(
-        state_space_cache.begin(), state_space_cache.end(), [&](Model_converter_Topology const& t) {
-            return t.components == components && t.switches.all() == switches.all();
-        });
-    if (it != state_space_cache.end()) {
-        m_ss = *it->state_space;
-        return;
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_converter::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t switch_combination = switches.all();
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {
+        std::unordered_map<uint64_t, std::unique_ptr<Model_converter::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {
+            m_ss = *it->second;
+            return;
+        }
     }
     std::string netlist = "R_p_p 0 N_dc_p 1E3 \nR_n_p N_dc_n 0 1E3 \nV_dc _net0 N_dc_n DC 1 \nD_a_p N_c_a N_dc_p \nD_b_p N_c_b N_dc_p \nS_a_p N_c_a N_dc_p _net1 _net2 \nS_c_p N_c_c N_dc_p _net3 _net4 \nD_c_p N_c_c N_dc_p \nS_b_p N_c_b N_dc_p _net5 _net6 \nS_a_n N_dc_n N_c_a _net7 _net8 \nD_a_n N_dc_n N_c_a \nS_b_n N_dc_n N_c_b _net9 _net10 \nD_b_n N_dc_n N_c_b \nS_c_n N_dc_n N_c_c _net11 _net12 \nD_c_n N_dc_n N_c_c \nV_a _net13 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_c _net15 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_b _net16 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nL_b _net17 _net16 1M \nL_a _net18 _net13 1M \nL_c _net19 _net15 1M \nC_p 0 _net20 10E-3;I; \nC_n _net21 0 10E-3;I; \nR_n_s N_dc_n _net21 10E-3 \nR_p_s _net20 N_dc_p 10E-3 \nR_a N_c_a _net18 10E-3 \nR_b N_c_b _net17 10E-3 \nR_c N_c_c _net19 10E-3 \nR_dc _net0 N_dc_p 1;I; ";
     std::unordered_map<std::string, double> component_values;
@@ -400,7 +400,7 @@ void Model_converter::updateStateSpaceMatrices() {
 	component_values["R_n_s"] = components.R_n_s;
 	component_values["R_p_p"] = components.R_p_p;
 	component_values["R_p_s"] = components.R_p_s;
-    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, int(switches.all()), component_values);
+    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, switch_combination, component_values);
 
     // Create eigen matrices
     Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
@@ -410,12 +410,55 @@ void Model_converter::updateStateSpaceMatrices() {
     Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
     Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
-    Model_converter_Topology& topology = state_space_cache.emplace_back(Model_converter_Topology{
-        .components = components,
-        .switches = switches,
-        .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)});
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    m_ss = *state_space_cache[switch_combination][component_hash];
+}
 
-    m_ss = *topology.state_space;
+bool Model_converter::Components::operator==(Components const& other) const {
+    return
+        C_n == other.C_n &&
+        C_p == other.C_p &&
+        L_a == other.L_a &&
+        L_b == other.L_b &&
+        L_c == other.L_c &&
+        R_D_a_n == other.R_D_a_n &&
+        R_D_a_p == other.R_D_a_p &&
+        R_D_b_n == other.R_D_b_n &&
+        R_D_b_p == other.R_D_b_p &&
+        R_D_c_n == other.R_D_c_n &&
+        R_D_c_p == other.R_D_c_p &&
+        R_a == other.R_a &&
+        R_b == other.R_b &&
+        R_c == other.R_c &&
+        R_dc == other.R_dc &&
+        R_n_p == other.R_n_p &&
+        R_n_s == other.R_n_s &&
+        R_p_p == other.R_p_p &&
+        R_p_s == other.R_p_s;
+}
+
+uint64_t Model_converter::Components::hash() const {
+    uint64_t seed = 0;
+    rlc2ss::hash_combine(seed, C_n);
+    rlc2ss::hash_combine(seed, C_p);
+    rlc2ss::hash_combine(seed, L_a);
+    rlc2ss::hash_combine(seed, L_b);
+    rlc2ss::hash_combine(seed, L_c);
+    rlc2ss::hash_combine(seed, R_D_a_n);
+    rlc2ss::hash_combine(seed, R_D_a_p);
+    rlc2ss::hash_combine(seed, R_D_b_n);
+    rlc2ss::hash_combine(seed, R_D_b_p);
+    rlc2ss::hash_combine(seed, R_D_c_n);
+    rlc2ss::hash_combine(seed, R_D_c_p);
+    rlc2ss::hash_combine(seed, R_a);
+    rlc2ss::hash_combine(seed, R_b);
+    rlc2ss::hash_combine(seed, R_c);
+    rlc2ss::hash_combine(seed, R_dc);
+    rlc2ss::hash_combine(seed, R_n_p);
+    rlc2ss::hash_combine(seed, R_n_s);
+    rlc2ss::hash_combine(seed, R_p_p);
+    rlc2ss::hash_combine(seed, R_p_s);
+    return seed;
 }
 
 uint64_t Model_converter::Switches::all() const {
