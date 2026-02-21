@@ -74,7 +74,8 @@ def write_cpp_files(
     model_basename = os.path.basename(model_name)
     class_name = 'Model_' + model_basename
     components_list = "\n".join([f'{TAB*2}double {str(component)} = {ss.default_values.get(str(component), -1)};' for component in ss.component_names])
-    components_compare = " &&\n".join([f'{TAB*4}{str(component)} == other.{str(component)}' for component in ss.component_names])
+    components_compare = " &&\n".join([f'{TAB*2}{str(component)} == other.{str(component)}' for component in ss.component_names])
+    components_hash = "\n".join(f'{TAB}rlc2ss::hash_combine(seed, {str(component)});' for component in ss.component_names)
     verify_components = "\n".join([f'{TAB*2}assert(components.{str(component)} != -1);' for component in ss.component_names])
     states_list = "\n".join([f'{TAB*3}double {str(state)};' for state in ss.states])
     inputs_list = "\n".join([f'{TAB*3}double {str(input)};' for input in ss.inputs])
@@ -195,11 +196,8 @@ class {class_name} {{
     struct Components {{
 {components_list}
 
-        bool operator==(Components const& other) const {{
-            return
-{components_compare};
-        }}
-
+        uint64_t hash() const;
+        bool operator==(Components const& other) const;
         bool operator!=(Components const& other) const {{
             return !(*this == other);
         }}
@@ -274,7 +272,6 @@ class {class_name} {{
         num_states = len(ss.states),
         num_switches = len(switches),
         components_list = components_list,
-        components_compare = components_compare,
         verify_components = verify_components,
         states_list = states_list,
         inputs_list = inputs_list,
@@ -545,24 +542,21 @@ void {class_name}::stepModel(double dt) {{
 ''')
 
     cpp.write(f'''
-struct {class_name}_Topology {{
-    {class_name}::Components components;
-    {class_name}::Switches switches;
-    std::unique_ptr<{class_name}::StateSpaceMatrices> state_space;
-}};
-
 void {class_name}::updateStateSpaceMatrices() {{
     static std::mutex            cache_mutex;
     std::scoped_lock<std::mutex> lock(cache_mutex);
 
-    static std::vector<{class_name}_Topology> state_space_cache;
-    auto it = std::find_if(
-        state_space_cache.begin(), state_space_cache.end(), [&]({class_name}_Topology const& t) {{
-            return t.components == components && t.switches.all() == switches.all();
-        }});
-    if (it != state_space_cache.end()) {{
-        m_ss = *it->state_space;
-        return;
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<{class_name}::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t switch_combination = switches.all();
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {{
+        std::unordered_map<uint64_t, std::unique_ptr<{class_name}::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {{
+            m_ss = *it->second;
+            return;
+        }}
     }}
 ''')
 
@@ -572,7 +566,7 @@ void {class_name}::updateStateSpaceMatrices() {{
         for component in ss.component_names:
             cpp.write(f'\tcomponent_values["{component}"] = components.{component};\n')
 
-        cpp.write(f'    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, int(switches.all()), component_values);\n')
+        cpp.write(f'    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, switch_combination, component_values);\n')
     else:
         cpp.write((f'''
     if (m_circuit_json.empty()) {{
@@ -609,12 +603,19 @@ void {class_name}::updateStateSpaceMatrices() {{
     Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
     Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS{inputs_row_major}> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
-    {class_name}_Topology& topology = state_space_cache.emplace_back({class_name}_Topology{{
-        .components = components,
-        .switches = switches,
-        .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)}});
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    m_ss = *state_space_cache[switch_combination][component_hash];
+}}
 
-    m_ss = *topology.state_space;
+bool {class_name}::Components::operator==(Components const& other) const {{
+    return
+{components_compare};
+}}
+
+uint64_t {class_name}::Components::hash() const {{
+    uint64_t seed = 0;
+{components_hash}
+    return seed;
 }}
 
 uint64_t {class_name}::Switches::all() const {{

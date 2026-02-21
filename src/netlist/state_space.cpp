@@ -119,7 +119,7 @@ LinearExpr nodeVoltage(Node const* node, Graph const& graph) {
 }
 
 StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
-                                          int combination,
+                                          uint64_t combination,
                                           std::unordered_map<std::string, double> const& component_values,
                                           bool verbose) {
     Netlist netlist = parseNetlist(netlist_str, combination, component_values);

@@ -66,8 +66,8 @@ class Model_converter {
     /// @param current Current breakpoints in ascending order. First breakpoint must be 0.
     /// @param inductance Inductance values at the breakpoints.
     /// Example:
-    /// currents   = {0,       100,   200,   300}
-    /// inductances = {100e-6, 75e-6, 50e-6, 25e-6}
+    /// currents    = {0,       100,        200,       300}
+    /// inductances = {   100e-6,    75e-6,      50e-6,     25e-6}
     void addInductorSaturation(double* inductor, std::vector<double> current, std::vector<double> inductance);
 
     union Inputs {
@@ -155,29 +155,8 @@ class Model_converter {
         double R_p_p = 1000.0;
         double R_p_s = 0.01;
 
-        bool operator==(Components const& other) const {
-            return
-                C_n == other.C_n &&
-                C_p == other.C_p &&
-                L_a == other.L_a &&
-                L_b == other.L_b &&
-                L_c == other.L_c &&
-                R_D_a_n == other.R_D_a_n &&
-                R_D_a_p == other.R_D_a_p &&
-                R_D_b_n == other.R_D_b_n &&
-                R_D_b_p == other.R_D_b_p &&
-                R_D_c_n == other.R_D_c_n &&
-                R_D_c_p == other.R_D_c_p &&
-                R_a == other.R_a &&
-                R_b == other.R_b &&
-                R_c == other.R_c &&
-                R_dc == other.R_dc &&
-                R_n_p == other.R_n_p &&
-                R_n_s == other.R_n_s &&
-                R_p_p == other.R_p_p &&
-                R_p_s == other.R_p_s;
-        }
-
+        uint64_t hash() const;
+        bool operator==(Components const& other) const;
         bool operator!=(Components const& other) const {
             return !(*this == other);
         }

@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <bit>
 
 namespace rlc2ss {
 
@@ -55,8 +56,20 @@ struct StateSpaceMatrices {
     std::string D1;
 };
 StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist,
-                                          int combination,
+                                          uint64_t combination,
                                           std::unordered_map<std::string, double> const& component_values,
                                           bool verbose = false);
+
+inline void hash_combine(uint64_t& seed, double v) {
+    // Treat the double as its raw 64-bit representation
+    // This avoids issues where the compiler might try to "help" with floating point logic
+    uint64_t bits = std::bit_cast<uint64_t>(v);
+
+    // Handle Negative Zero: if -0.0, treat it as 0.0 so they hash identically
+    if (v == 0.0)
+        bits = std::bit_cast<uint64_t>(0.0);
+
+    seed ^= bits + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
 
 } // namespace rlc2ss

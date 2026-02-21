@@ -12,7 +12,11 @@ deps = [
     dependency('eigen3'),
     dependency('nlohmann_json')
 ]
-add_project_arguments('-DNOMINMAX', language : 'cpp')
+add_project_arguments([
+        '-DNOMINMAX',
+        '-D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR',
+    ]
+    , language : 'cpp')
 lib_rlc2ss = static_library('rlc2ss',
     sources : [
         'src/netlist/graph.cpp',
