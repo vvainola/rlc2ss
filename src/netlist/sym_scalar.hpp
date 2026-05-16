@@ -77,6 +77,10 @@ class SymScalar {
     // sqrt is out of scope).
     static SymScalar sqrt(SymScalar const& x);
 
+    // Returns the underlying expression-tree node, or null when this scalar
+    // is purely numeric (use `numeric()` in that case).
+    ExprNodePtr tree() const { return m_tree; }
+
   private:
     static SymScalar fromTree(ExprNodePtr tree);
     ExprNodePtr asTreeNode() const;                // null if isZero

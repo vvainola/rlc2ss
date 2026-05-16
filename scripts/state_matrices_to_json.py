@@ -300,17 +300,19 @@ class {class_name} {{
 inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
 
 static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> const& K1,
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES> const& A1,
-    Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS> const& B1,
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> const& K2,
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES> const& C1,
-    Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS> const& D1) {{
+    Eigen::MatrixXd const& K1,
+    Eigen::MatrixXd const& A1,
+    Eigen::MatrixXd const& B1,
+    Eigen::MatrixXd const& K2,
+    Eigen::MatrixXd const& C1,
+    Eigen::MatrixXd const& D1) {{
     auto ss = std::make_unique<{class_name}::StateSpaceMatrices>();
-    ss->A = K1.partialPivLu().solve(A1);
-    ss->B = K1.partialPivLu().solve(B1);
-    ss->C = (C1 + K2 * ss->A);
-    ss->D = (D1 + K2 * ss->B);
+    Eigen::MatrixXd A = K1.partialPivLu().solve(A1);
+    Eigen::MatrixXd B = K1.partialPivLu().solve(B1);
+    ss->A = A;
+    ss->B = B;
+    ss->C = (C1 + K2 * A);
+    ss->D = (D1 + K2 * B);
     return ss;
 }}
 
@@ -564,28 +566,29 @@ void {class_name}::updateStateSpaceMatrices() {{
         cpp.write(f'    std::string netlist = \"{netlist}\";\n')
         cpp.write(f'''
     // Cache symbolic intermediate matrices per switch combination
-    static std::unordered_map<uint64_t, rlc2ss::StateSpaceMatrices> symbolic_cache;
+    static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
     if (!symbolic_cache.contains(switch_combination)) {{
         symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
     }}
-    rlc2ss::StateSpaceMatrices const& symbolic_ss = symbolic_cache[switch_combination];
+    rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
 
-    // Substitute component values into cached symbolic matrices
-    auto substitute = [&](std::string s) -> std::string {{
+    // Substitute component values into cached symbolic matrices via the typed
+    // evaluator (memoised DAG walk over the AST nodes, no string parsing).
+    std::unordered_map<std::string, double> values{{
 ''')
         for component in ss.component_names:
-            cpp.write(f'{TAB*2}s = rlc2ss::replace(s, "{component}", std::format("({{}})", components.{component}));\n')
-        cpp.write(f'''{TAB*2}return s;
-    }};
-    rlc2ss::StateSpaceMatrices ss{{
-        .K1 = substitute(symbolic_ss.K1),
-        .K2 = substitute(symbolic_ss.K2),
-        .A1 = substitute(symbolic_ss.A1),
-        .B1 = substitute(symbolic_ss.B1),
-        .C1 = substitute(symbolic_ss.C1),
-        .D1 = substitute(symbolic_ss.D1),
-    }};
-''')
+            cpp.write(f'{TAB*2}{{"{component}", components.{component}}},\n')
+        cpp.write(f'''    }};
+    Eigen::MatrixXd K1 = rlc2ss::evaluate(symbolic_ss.K1, values);
+    Eigen::MatrixXd K2 = rlc2ss::evaluate(symbolic_ss.K2, values);
+    Eigen::MatrixXd A1 = rlc2ss::evaluate(symbolic_ss.A1, values);
+    Eigen::MatrixXd B1 = rlc2ss::evaluate(symbolic_ss.B1, values);
+    Eigen::MatrixXd C1 = rlc2ss::evaluate(symbolic_ss.C1, values);
+    Eigen::MatrixXd D1 = rlc2ss::evaluate(symbolic_ss.D1, values);
+
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    m_ss = *state_space_cache[switch_combination][component_hash];
+}}''')
     else:
         cpp.write((f'''
     if (m_circuit_json.empty()) {{
@@ -610,10 +613,10 @@ void {class_name}::updateStateSpaceMatrices() {{
         .D1 = j["D1"],
     }};'''))
 
-    # The row major template parameter can only be specified if there is more than 1 column
-    states_row_major = f", Eigen::RowMajor" if len(ss.states) > 1 else ""
-    inputs_row_major = f", Eigen::RowMajor" if len(ss.inputs) > 1 else ""
-    cpp.write(f'''
+        # The row major template parameter can only be specified if there is more than 1 column
+        states_row_major = f", Eigen::RowMajor" if len(ss.states) > 1 else ""
+        inputs_row_major = f", Eigen::RowMajor" if len(ss.inputs) > 1 else ""
+        cpp.write(f'''
     // Create eigen matrices
     Eigen::Matrix<double, NUM_STATES, NUM_STATES{states_row_major}> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
     Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
@@ -624,8 +627,9 @@ void {class_name}::updateStateSpaceMatrices() {{
 
     state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
     m_ss = *state_space_cache[switch_combination][component_hash];
-}}
+}}''')
 
+    cpp.write(f'''
 bool {class_name}::Components::operator==(Components const& other) const {{
     return
 {components_compare};

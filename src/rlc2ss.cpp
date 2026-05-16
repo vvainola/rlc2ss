@@ -199,4 +199,71 @@ double calcZeroCrossingTime(double y1, double y2) {
     return fabs(y1) / (fabs(y1) + fabs(y2));
 }
 
+namespace {
+
+// Memoised evaluation of an AST node. Each unique node-by-pointer is visited
+// at most once per call; shared subtrees in the DAG (e.g. the `factor` reused
+// across a Gaussian-elim row) are evaluated exactly once.
+double evaluateNode(ExprNode const& n,
+                    std::unordered_map<std::string, double> const& vars,
+                    std::unordered_map<ExprNode const*, double>& cache) {
+    auto it = cache.find(&n);
+    if (it != cache.end()) return it->second;
+    double v = 0.0;
+    switch (n.op) {
+        case ExprNode::Op::Var: {
+            auto vit = vars.find(n.name);
+            if (vit == vars.end()) {
+                // Allow "sqrt(...)" pseudo-variables to be evaluated when the
+                // inner expression is itself substitutable by the caller. For
+                // now, treat unknown names as 0 to match the previous
+                // behaviour with default-zero netlist parameters.
+                v = 0.0;
+            } else {
+                v = vit->second;
+            }
+            break;
+        }
+        case ExprNode::Op::Const: v = n.value; break;
+        case ExprNode::Op::Add:   v = evaluateNode(*n.lhs, vars, cache) + evaluateNode(*n.rhs, vars, cache); break;
+        case ExprNode::Op::Sub:   v = evaluateNode(*n.lhs, vars, cache) - evaluateNode(*n.rhs, vars, cache); break;
+        case ExprNode::Op::Neg:   v = -evaluateNode(*n.lhs, vars, cache); break;
+        case ExprNode::Op::Mul:   v = evaluateNode(*n.lhs, vars, cache) * evaluateNode(*n.rhs, vars, cache); break;
+        case ExprNode::Op::Div:   v = evaluateNode(*n.lhs, vars, cache) / evaluateNode(*n.rhs, vars, cache); break;
+        case ExprNode::Op::Sqrt:  v = std::sqrt(evaluateNode(*n.lhs, vars, cache)); break;
+    }
+    cache[&n] = v;
+    return v;
+}
+
+} // namespace
+
+double evaluate(SymScalar const& s,
+                std::unordered_map<std::string, double> const& values) {
+    if (s.isNumeric()) return s.numeric();
+    auto tree = s.tree();
+    assert(tree);
+    std::unordered_map<ExprNode const*, double> cache;
+    return evaluateNode(*tree, values, cache);
+}
+
+Eigen::MatrixXd evaluate(SymbolicMatrix const& m,
+                         std::unordered_map<std::string, double> const& values) {
+    Eigen::MatrixXd out(m.rows(), m.cols());
+    std::unordered_map<ExprNode const*, double> cache;
+    for (int i = 0; i < m.rows(); ++i) {
+        for (int j = 0; j < m.cols(); ++j) {
+            SymScalar const& s = m(i, j);
+            if (s.isNumeric()) {
+                out(i, j) = s.numeric();
+            } else {
+                auto tree = s.tree();
+                assert(tree);
+                out(i, j) = evaluateNode(*tree, values, cache);
+            }
+        }
+    }
+    return out;
+}
+
 } // namespace rlc2ss

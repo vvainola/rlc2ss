@@ -62,7 +62,8 @@ int main(int argc, char** argv) {
         for (int combination = begin; combination < end; ++combination) {
             std::cout << combination << " ";
             auto t_start = std::chrono::steady_clock::now();
-            rlc2ss::StateSpaceMatrices output = rlc2ss::formStateSpaceMatrices(*file_content, combination, verbose);
+            rlc2ss::SymbolicStateSpace output = rlc2ss::formStateSpaceMatrices(*file_content, combination, verbose);
+            (void)output;
             auto t_end = std::chrono::steady_clock::now();
             auto elapsed_us = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
             std::cout << "formStateSpaceMatrices took " << elapsed_us << " ms" << std::endl;

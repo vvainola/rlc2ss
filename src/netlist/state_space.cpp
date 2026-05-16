@@ -118,7 +118,7 @@ LinearExpr nodeVoltage(Node const* node, Graph const& graph) {
     return node_voltage;
 }
 
-StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
+SymbolicStateSpace formStateSpaceMatrices(std::string const& netlist_str,
                                           uint64_t combination,
                                           bool verbose) {
     Netlist netlist = parseNetlist(netlist_str, combination);
@@ -609,13 +609,13 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     }
 
     // Collect results
-    StateSpaceMatrices matrices{
-        .K1 = symbolicMatrixToStr(K1),
-        .K2 = symbolicMatrixToStr(K2),
-        .A1 = symbolicMatrixToStr(A1),
-        .B1 = symbolicMatrixToStr(B1),
-        .C1 = symbolicMatrixToStr(C1),
-        .D1 = symbolicMatrixToStr(D1),
+    SymbolicStateSpace matrices{
+        .K1 = std::move(K1),
+        .K2 = std::move(K2),
+        .A1 = std::move(A1),
+        .B1 = std::move(B1),
+        .C1 = std::move(C1),
+        .D1 = std::move(D1),
     };
     return matrices;
 }
