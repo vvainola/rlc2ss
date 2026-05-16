@@ -19,7 +19,7 @@
 
 #include <assert.h>
 
-class Model_saturating_inductor {
+class [[ class_name ]] {
   public:
     struct Components;
     union Inputs;
@@ -28,13 +28,13 @@ class Model_saturating_inductor {
     struct Switches;
     struct StateSpaceMatrices;
 
-    Model_saturating_inductor() {}
-    Model_saturating_inductor(Components const& c);
+    [[ class_name ]]() {}
+    [[ class_name ]](Components const& c);
 
-    static inline constexpr size_t NUM_INPUTS = 1;
-    static inline constexpr size_t NUM_OUTPUTS = 3;
-    static inline constexpr size_t NUM_STATES = 3;
-    static inline constexpr size_t NUM_SWITCHES = 2;
+    static inline constexpr size_t NUM_INPUTS = [[ num_inputs ]];
+    static inline constexpr size_t NUM_OUTPUTS = [[ num_outputs ]];
+    static inline constexpr size_t NUM_STATES = [[ num_states ]];
+    static inline constexpr size_t NUM_SWITCHES = [[ num_switches ]];
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
@@ -74,7 +74,7 @@ class Model_saturating_inductor {
         Inputs() { data.setZero(); }
         Inputs(const Inputs& other) { data = other.data; }
         struct {
-            double V;
+[[ inputs_list ]]
         };
         Eigen::Vector<double, NUM_INPUTS> data;
     };
@@ -83,16 +83,13 @@ class Model_saturating_inductor {
         Outputs() { data.setZero(); }
         Outputs(const Outputs& other) { data = other.data; }
         struct {
-            double I_L0;
-            double I_L1;
-            double I_L2;
+[[ outputs_list ]]
         };
         Eigen::Vector<double, NUM_OUTPUTS> data;
     };
 
     struct Switches {
-        rlc2ss::OnOffDelay S1;
-        rlc2ss::OnOffDelay S2;
+[[ switches_list ]]
 
         uint64_t all() const;
         double smallestDelay();
@@ -100,10 +97,7 @@ class Model_saturating_inductor {
     };
 
     struct Components {
-        double L0 = 0.01;
-        double L1 = 0.009999999999999997;
-        double L2 = 3.344481605351208e-05;
-        double R = 0.1;
+[[ components_list ]]
 
         uint64_t hash() const;
         bool operator==(Components const& other) const;
@@ -120,9 +114,7 @@ class Model_saturating_inductor {
             data = other.data;
         }
         struct {
-            double I_L0;
-            double I_L1;
-            double I_L2;
+[[ states_list ]]
         };
         Eigen::Vector<double, NUM_STATES> data;
     };
