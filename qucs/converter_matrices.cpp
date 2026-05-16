@@ -16,17 +16,19 @@
 inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
 
 static std::unique_ptr<Model_converter::StateSpaceMatrices> calcStateSpace(
-    Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_STATES> const& K1,
-    Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_STATES> const& A1,
-    Eigen::Matrix<double, Model_converter::NUM_STATES, Model_converter::NUM_INPUTS> const& B1,
-    Eigen::Matrix<double, Model_converter::NUM_OUTPUTS, Model_converter::NUM_STATES> const& K2,
-    Eigen::Matrix<double, Model_converter::NUM_OUTPUTS, Model_converter::NUM_STATES> const& C1,
-    Eigen::Matrix<double, Model_converter::NUM_OUTPUTS, Model_converter::NUM_INPUTS> const& D1) {
+    Eigen::MatrixXd const& K1,
+    Eigen::MatrixXd const& A1,
+    Eigen::MatrixXd const& B1,
+    Eigen::MatrixXd const& K2,
+    Eigen::MatrixXd const& C1,
+    Eigen::MatrixXd const& D1) {
     auto ss = std::make_unique<Model_converter::StateSpaceMatrices>();
-    ss->A = K1.partialPivLu().solve(A1);
-    ss->B = K1.partialPivLu().solve(B1);
-    ss->C = (C1 + K2 * ss->A);
-    ss->D = (D1 + K2 * ss->B);
+    Eigen::MatrixXd A = K1.partialPivLu().solve(A1);
+    Eigen::MatrixXd B = K1.partialPivLu().solve(B1);
+    ss->A = A;
+    ss->B = B;
+    ss->C = (C1 + K2 * A);
+    ss->D = (D1 + K2 * B);
     return ss;
 }
 
@@ -367,9 +369,6 @@ void Model_converter::updateStateSpaceMatrices() {
     static std::mutex            cache_mutex;
     std::scoped_lock<std::mutex> lock(cache_mutex);
 
-    // Cache symbolic intermediate matrices per switch combination
-    static std::unordered_map<uint64_t, rlc2ss::StateSpaceMatrices> symbolic_cache;
-    // Cache final numeric state-space matrices per (switch_combination, component_hash)
     using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_converter::StateSpaceMatrices>>;
     static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
     uint64_t switch_combination = switches.all();
@@ -384,56 +383,46 @@ void Model_converter::updateStateSpaceMatrices() {
     }
     std::string netlist = "R_p_p 0 N_dc_p 1E3 \nR_n_p N_dc_n 0 1E3 \nV_dc _net0 N_dc_n DC 1 \nD_a_p N_c_a N_dc_p \nD_b_p N_c_b N_dc_p \nS_a_p N_c_a N_dc_p _net1 _net2 \nS_c_p N_c_c N_dc_p _net3 _net4 \nD_c_p N_c_c N_dc_p \nS_b_p N_c_b N_dc_p _net5 _net6 \nS_a_n N_dc_n N_c_a _net7 _net8 \nD_a_n N_dc_n N_c_a \nS_b_n N_dc_n N_c_b _net9 _net10 \nD_b_n N_dc_n N_c_b \nS_c_n N_dc_n N_c_c _net11 _net12 \nD_c_n N_dc_n N_c_c \nV_a _net13 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_c _net15 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_b _net16 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nL_b _net17 _net16 1M \nL_a _net18 _net13 1M \nL_c _net19 _net15 1M \nC_p 0 _net20 10E-3;I; \nC_n _net21 0 10E-3;I; \nR_n_s N_dc_n _net21 10E-3 \nR_p_s _net20 N_dc_p 10E-3 \nR_a N_c_a _net18 10E-3 \nR_b N_c_b _net17 10E-3 \nR_c N_c_c _net19 10E-3 \nR_dc _net0 N_dc_p 1;I; ";
 
-    // Get or compute symbolic matrices for this switch combination
+    // Cache symbolic intermediate matrices per switch combination
+    static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
     if (!symbolic_cache.contains(switch_combination)) {
         symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
     }
-    rlc2ss::StateSpaceMatrices const& symbolic_ss = symbolic_cache[switch_combination];
+    rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
 
-    // Substitute component values into cached symbolic matrices
-    auto substitute = [&](std::string s) -> std::string {
-        s = rlc2ss::replace(s, "C_n", std::format("({})", components.C_n));
-        s = rlc2ss::replace(s, "C_p", std::format("({})", components.C_p));
-        s = rlc2ss::replace(s, "L_a", std::format("({})", components.L_a));
-        s = rlc2ss::replace(s, "L_b", std::format("({})", components.L_b));
-        s = rlc2ss::replace(s, "L_c", std::format("({})", components.L_c));
-        s = rlc2ss::replace(s, "R_D_a_n", std::format("({})", components.R_D_a_n));
-        s = rlc2ss::replace(s, "R_D_a_p", std::format("({})", components.R_D_a_p));
-        s = rlc2ss::replace(s, "R_D_b_n", std::format("({})", components.R_D_b_n));
-        s = rlc2ss::replace(s, "R_D_b_p", std::format("({})", components.R_D_b_p));
-        s = rlc2ss::replace(s, "R_D_c_n", std::format("({})", components.R_D_c_n));
-        s = rlc2ss::replace(s, "R_D_c_p", std::format("({})", components.R_D_c_p));
-        s = rlc2ss::replace(s, "R_a", std::format("({})", components.R_a));
-        s = rlc2ss::replace(s, "R_b", std::format("({})", components.R_b));
-        s = rlc2ss::replace(s, "R_c", std::format("({})", components.R_c));
-        s = rlc2ss::replace(s, "R_dc", std::format("({})", components.R_dc));
-        s = rlc2ss::replace(s, "R_n_p", std::format("({})", components.R_n_p));
-        s = rlc2ss::replace(s, "R_n_s", std::format("({})", components.R_n_s));
-        s = rlc2ss::replace(s, "R_p_p", std::format("({})", components.R_p_p));
-        s = rlc2ss::replace(s, "R_p_s", std::format("({})", components.R_p_s));
-        return s;
+    // Substitute component values into cached symbolic matrices via the typed
+    // evaluator (memoised DAG walk over the AST nodes, no string parsing).
+    std::unordered_map<std::string, double> values{
+        {"C_n", components.C_n},
+        {"C_p", components.C_p},
+        {"L_a", components.L_a},
+        {"L_b", components.L_b},
+        {"L_c", components.L_c},
+        {"R_D_a_n", components.R_D_a_n},
+        {"R_D_a_p", components.R_D_a_p},
+        {"R_D_b_n", components.R_D_b_n},
+        {"R_D_b_p", components.R_D_b_p},
+        {"R_D_c_n", components.R_D_c_n},
+        {"R_D_c_p", components.R_D_c_p},
+        {"R_a", components.R_a},
+        {"R_b", components.R_b},
+        {"R_c", components.R_c},
+        {"R_dc", components.R_dc},
+        {"R_n_p", components.R_n_p},
+        {"R_n_s", components.R_n_s},
+        {"R_p_p", components.R_p_p},
+        {"R_p_s", components.R_p_s},
     };
-    rlc2ss::StateSpaceMatrices ss{
-        .K1 = substitute(symbolic_ss.K1),
-        .K2 = substitute(symbolic_ss.K2),
-        .A1 = substitute(symbolic_ss.A1),
-        .B1 = substitute(symbolic_ss.B1),
-        .C1 = substitute(symbolic_ss.C1),
-        .D1 = substitute(symbolic_ss.D1),
-    };
-
-    // Create eigen matrices
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
+    Eigen::MatrixXd K1 = rlc2ss::evaluate(symbolic_ss.K1, values);
+    Eigen::MatrixXd K2 = rlc2ss::evaluate(symbolic_ss.K2, values);
+    Eigen::MatrixXd A1 = rlc2ss::evaluate(symbolic_ss.A1, values);
+    Eigen::MatrixXd B1 = rlc2ss::evaluate(symbolic_ss.B1, values);
+    Eigen::MatrixXd C1 = rlc2ss::evaluate(symbolic_ss.C1, values);
+    Eigen::MatrixXd D1 = rlc2ss::evaluate(symbolic_ss.D1, values);
 
     state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
     m_ss = *state_space_cache[switch_combination][component_hash];
 }
-
 bool Model_converter::Components::operator==(Components const& other) const {
     return
         C_n == other.C_n &&

@@ -135,14 +135,14 @@ void compareCombination(Fixture const& fx, std::string const& combination_key, i
         py_matrix("C1", fx.num_outputs, fx.num_states),
         py_matrix("D1", fx.num_outputs, fx.num_inputs));
 
-    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, combination);
+    rlc2ss::SymbolicStateSpace ss = rlc2ss::formStateSpaceMatrices(netlist, combination);
     AbcdMatrices cpp = solveStateSpace(
-        symbolicCsvToMatrix(ss.K1, fx.component_values, fx.num_states,  fx.num_states),
-        symbolicCsvToMatrix(ss.K2, fx.component_values, fx.num_outputs, fx.num_states),
-        symbolicCsvToMatrix(ss.A1, fx.component_values, fx.num_states,  fx.num_states),
-        symbolicCsvToMatrix(ss.B1, fx.component_values, fx.num_states,  fx.num_inputs),
-        symbolicCsvToMatrix(ss.C1, fx.component_values, fx.num_outputs, fx.num_states),
-        symbolicCsvToMatrix(ss.D1, fx.component_values, fx.num_outputs, fx.num_inputs));
+        rlc2ss::evaluate(ss.K1, fx.component_values),
+        rlc2ss::evaluate(ss.K2, fx.component_values),
+        rlc2ss::evaluate(ss.A1, fx.component_values),
+        rlc2ss::evaluate(ss.B1, fx.component_values),
+        rlc2ss::evaluate(ss.C1, fx.component_values),
+        rlc2ss::evaluate(ss.D1, fx.component_values));
 
     dumpIfDiff("A", py.A, cpp.A);
     dumpIfDiff("B", py.B, cpp.B);

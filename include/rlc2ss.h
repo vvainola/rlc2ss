@@ -27,6 +27,12 @@
 #include <bit>
 #include <unordered_map>
 
+#pragma warning(push, 0)
+#include <Eigen/Core>
+#pragma warning(pop)
+
+#include "netlist/linear_expr.hpp"
+
 namespace rlc2ss {
 
 inline constexpr double MINIMUM_TIMESTEP = 1e-12;
@@ -48,9 +54,8 @@ struct ZeroCrossingEvent {
 
 double calcZeroCrossingTime(double y1, double y2);
 
-/// State space matrices in symbolic form. Matrix entries are comma-delimited
-/// expressions containing component names (e.g. "R1", "L1", "C1") that can be
-/// evaluated after replacing component names with numeric values.
+/// State space matrices serialised as comma-delimited expression strings.
+/// Used by the offline JSON-loading code paths (qucs/*_matrices.cpp non-dynamic).
 struct StateSpaceMatrices {
     std::string K1;
     std::string K2;
@@ -60,12 +65,35 @@ struct StateSpaceMatrices {
     std::string D1;
 };
 
-/// Form state space matrices symbolically. The returned matrices contain component
-/// names as symbols. To get numeric matrices, replace component names with their
-/// values using rlc2ss::replace() and then evaluate with getCommaDelimitedValues().
-StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist,
+/// State space matrices as typed symbolic-expression trees. Each entry of each
+/// matrix is a `SymScalar`; downstream code calls `evaluate(SymbolicMatrix, vars)`
+/// to substitute component values and produce an `Eigen::MatrixXd` directly,
+/// without string substitution or parsing.
+struct SymbolicStateSpace {
+    SymbolicMatrix K1;
+    SymbolicMatrix K2;
+    SymbolicMatrix A1;
+    SymbolicMatrix B1;
+    SymbolicMatrix C1;
+    SymbolicMatrix D1;
+};
+
+/// Form state-space matrices symbolically. The returned matrices contain
+/// component names as atomic variables (e.g. "R1", "L1"). To get numeric
+/// matrices, call `evaluate(...)` with a map from component name to value.
+SymbolicStateSpace formStateSpaceMatrices(std::string const& netlist,
                                           uint64_t combination,
                                           bool verbose = false);
+
+/// Evaluate a single symbolic scalar with component values substituted.
+double evaluate(SymScalar const& s,
+                std::unordered_map<std::string, double> const& values);
+
+/// Evaluate a symbolic matrix with component values substituted. Uses a single
+/// memoisation cache across all entries so that shared subexpressions (the AST
+/// nodes referenced by `SymScalar::tree()`) are evaluated at most once.
+Eigen::MatrixXd evaluate(SymbolicMatrix const& m,
+                         std::unordered_map<std::string, double> const& values);
 
 inline void hash_combine(uint64_t& seed, double v) {
     // Treat the double as its raw 64-bit representation
