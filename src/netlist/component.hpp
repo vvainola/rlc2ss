@@ -95,6 +95,11 @@ class Component {
         return m_value * m_derivative;
     }
 
+    LinearExpr const& derivativeSymbol() const {
+        assert(m_name[0] == 'L' || m_name[0] == 'C');
+        return m_derivative;
+    }
+
     LinearExpr v_derivative() const {
         assert(m_name[0] == 'L');
         return m_value * m_derivative + m_mutual_inductance_voltage;

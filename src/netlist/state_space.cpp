@@ -450,13 +450,15 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     all_outputs.insert(output_voltages.begin(), output_voltages.end());
 
     for (auto& mut : netlist.mutual_inductors) {
-        // K * sqrt(L1 * L2)
+        // Mutual inductance M = K * sqrt(L1 * L2). The voltage term added to L1
+        // is M * dI_L2/dt, where derivativeSymbol() returns dI_L2 directly
+        // (without the L2 value factor that derivative() applies).
         double K = std::stod(std::get<0>(mut));
         Component* L1 = std::get<1>(mut);
         Component* L2 = std::get<2>(mut);
         double m = K * sqrt(L1->value() * L2->value());
-        L1->addMutualInductance(m * L2->derivative());
-        L2->addMutualInductance(m * L1->derivative());
+        L1->addMutualInductance(m * L2->derivativeSymbol());
+        L2->addMutualInductance(m * L1->derivativeSymbol());
     }
 
     /* Collect derivative equations */
