@@ -81,8 +81,9 @@ std::vector<LinearExpr> solveLinearSystem(SymbolicMatrix A, std::vector<LinearEx
     for (int i = 0; i < n; ++i) {
         // Find pivot
         int pivot = i;
-        while (pivot < n && A(pivot, i).isZero())
+        while (pivot < n && A(pivot, i).isZero()) {
             pivot++;
+        }
 
         if (pivot == n) {
             continue;
