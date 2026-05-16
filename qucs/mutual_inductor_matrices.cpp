@@ -2,7 +2,7 @@
 #include "mutual_inductor_matrices.hpp"
 #include "rlc2ss.h"
 #include <optional>
-#include <fstream>
+#include <mutex>
 #include <format>
 #include <memory>
 #include "mutual_inductor_matrices_json.h"
@@ -12,6 +12,8 @@
 #pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
+
+inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
 
 static std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calcStateSpace(
     Eigen::Matrix<double, Model_mutual_inductor::NUM_STATES, Model_mutual_inductor::NUM_STATES> const& K1,
@@ -28,11 +30,18 @@ static std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calcStateSpace
     return ss;
 }
 
-static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_mutual_inductor& circuit, Model_mutual_inductor::Outputs const& prev_outputs) {
+std::optional<rlc2ss::ZeroCrossingEvent> Model_mutual_inductor::checkZeroCrossingEvents(Model_mutual_inductor::Outputs const& prev_outputs) {
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
                         std::vector<rlc2ss::ZeroCrossingEvent>,
                         std::greater<rlc2ss::ZeroCrossingEvent>>
         events;
+
+    for (auto const& callback : m_zero_crossing_callbacks) {
+        std::optional<rlc2ss::ZeroCrossingEvent> event = callback(prev_outputs, outputs);
+        if (event) {
+            events.push(*event);
+        }
+    }
 
     if (events.size() > 0) {
         return events.top();
@@ -43,6 +52,60 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_mu
 Model_mutual_inductor::Model_mutual_inductor(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
+}
+
+void Model_mutual_inductor::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
+    // Check that the currents are ascending and inductances are descending
+    assert(currents.size() == inductances.size());
+    for (int i = 1; i < currents.size(); ++i) {
+        assert(currents[i] >= currents[i - 1]);
+        assert(inductances[i] <= inductances[i - 1]);
+    }
+    int i_L_output_idx = -1;
+    if (inductor == &components.L1) {
+        i_L_output_idx = 0;
+    }
+    if (inductor == &components.L2) {
+        i_L_output_idx = 1;
+    }
+    if (inductor == &components.L3) {
+        i_L_output_idx = 2;
+    }
+    if (i_L_output_idx == -1) {
+        assert(("Invalid pointer to inductor", false));
+    }
+
+    for (int i = 1; i < currents.size(); ++i) {
+        double threshold = currents[i];
+        double inductance_prev = inductances[i - 1];
+        double inductance = inductances[i];
+        // Increase inductance when current goes below level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
+            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            if (i_prev > threshold && i_new < threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [&]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            return std::nullopt;
+        });
+        // Decrease inductance when current goes above level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
+            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            if (i_prev < threshold && i_new > threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [&]() {
+                        *inductor = inductance;
+                    }};
+            }
+            return std::nullopt;
+        });
+    }
 }
 
 void Model_mutual_inductor::step(double dt, Inputs const& inputs_) {
@@ -75,8 +138,10 @@ void Model_mutual_inductor::stepWithZeroCrossingDetection(double dt) {
     prev_outputs.data = outputs.data;
 
     stepModel(dt);
-    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
-    while (zc_event) {
+    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(prev_outputs);
+    int zc_event_count = 0;
+    while (zc_event && zc_event_count < MAX_ZERO_CROSS_EVENTS) {
+        zc_event_count++;
         // Redo step
         states.data = prev_state.data;
         stepModel(zc_event->time * dt);
@@ -88,7 +153,7 @@ void Model_mutual_inductor::stepWithZeroCrossingDetection(double dt) {
         dt = dt * (1 - zc_event->time);
         stepModel(dt);
         // Check for new events
-        zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+        zc_event = checkZeroCrossingEvents(prev_outputs);
     }
 }
 
@@ -163,21 +228,21 @@ void Model_mutual_inductor::stepModel(double dt) {
     states.V_Cf = outputs.V_Cf;
 }
 
-struct Model_mutual_inductor_Topology {
-    Model_mutual_inductor::Components components;
-    Model_mutual_inductor::Switches switches;
-    std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> state_space;
-};
-
 void Model_mutual_inductor::updateStateSpaceMatrices() {
-    static std::vector<Model_mutual_inductor_Topology> state_space_cache;
-    auto it = std::find_if(
-        state_space_cache.begin(), state_space_cache.end(), [&](Model_mutual_inductor_Topology const& t) {
-            return t.components == components && t.switches.all() == switches.all();
-        });
-    if (it != state_space_cache.end()) {
-        m_ss = *it->state_space;
-        return;
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t switch_combination = switches.all();
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {
+        std::unordered_map<uint64_t, std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {
+            m_ss = *it->second;
+            return;
+        }
     }
 
     if (m_circuit_json.empty()) {
@@ -218,12 +283,41 @@ void Model_mutual_inductor::updateStateSpaceMatrices() {
     Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
     Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
-    Model_mutual_inductor_Topology& topology = state_space_cache.emplace_back(Model_mutual_inductor_Topology{
-        .components = components,
-        .switches = switches,
-        .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)});
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    m_ss = *state_space_cache[switch_combination][component_hash];
+}
 
-    m_ss = *topology.state_space;
+bool Model_mutual_inductor::Components::operator==(Components const& other) const {
+    return
+        Cf == other.Cf &&
+        FSRC1 == other.FSRC1 &&
+        K12 == other.K12 &&
+        K21 == other.K21 &&
+        K31 == other.K31 &&
+        L1 == other.L1 &&
+        L2 == other.L2 &&
+        L3 == other.L3 &&
+        R1 == other.R1 &&
+        R2 == other.R2 &&
+        R3 == other.R3 &&
+        R4 == other.R4;
+}
+
+uint64_t Model_mutual_inductor::Components::hash() const {
+    uint64_t seed = 0;
+    rlc2ss::hash_combine(seed, Cf);
+    rlc2ss::hash_combine(seed, FSRC1);
+    rlc2ss::hash_combine(seed, K12);
+    rlc2ss::hash_combine(seed, K21);
+    rlc2ss::hash_combine(seed, K31);
+    rlc2ss::hash_combine(seed, L1);
+    rlc2ss::hash_combine(seed, L2);
+    rlc2ss::hash_combine(seed, L3);
+    rlc2ss::hash_combine(seed, R1);
+    rlc2ss::hash_combine(seed, R2);
+    rlc2ss::hash_combine(seed, R3);
+    rlc2ss::hash_combine(seed, R4);
+    return seed;
 }
 
 uint64_t Model_mutual_inductor::Switches::all() const {

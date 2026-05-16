@@ -8,11 +8,15 @@
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
 #include "on_off_delay.hpp"
-#include <Eigen/Dense>
-#include <Eigen/Core>
-#include <Eigen/LU>
 #include "integrator.hpp"
+#include "rlc2ss.h"
+
+#include "Eigen/Dense"
+#include "Eigen/Core"
+#include "Eigen/LU"
+
 #include "nlohmann/json.hpp"
+
 #include <assert.h>
 
 class Model_mutual_inductor {
@@ -55,6 +59,16 @@ class Model_mutual_inductor {
     }
 
     void step(double dt, Inputs const& inputs_);
+
+    /// @brief Add stepwise saturation curve to inductor. The inductance is reduced when the current
+    /// exceeds the breakpoints and increased when current goes below the breakpoints.
+    /// @param inductor Pointer to inductor in component struct e.g. &circuit.components.L0
+    /// @param current Current breakpoints in ascending order. First breakpoint must be 0.
+    /// @param inductance Inductance values at the breakpoints.
+    /// Example:
+    /// currents    = {0,       100,        200,       300}
+    /// inductances = {   100e-6,    75e-6,      50e-6,     25e-6}
+    void addInductorSaturation(double* inductor, std::vector<double> current, std::vector<double> inductance);
 
     union Inputs {
         Inputs() { data.setZero(); }
@@ -108,22 +122,8 @@ class Model_mutual_inductor {
         double R3 = 0.01;
         double R4 = 10.0;
 
-        bool operator==(Components const& other) const {
-            return
-                Cf == other.Cf &&
-                FSRC1 == other.FSRC1 &&
-                K12 == other.K12 &&
-                K21 == other.K21 &&
-                K31 == other.K31 &&
-                L1 == other.L1 &&
-                L2 == other.L2 &&
-                L3 == other.L3 &&
-                R1 == other.R1 &&
-                R2 == other.R2 &&
-                R3 == other.R3 &&
-                R4 == other.R4;
-        }
-
+        uint64_t hash() const;
+        bool operator==(Components const& other) const;
         bool operator!=(Components const& other) const {
             return !(*this == other);
         }
@@ -163,6 +163,7 @@ class Model_mutual_inductor {
     Switches switches;
 
   private:
+    std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
     void stepWithZeroCrossingDetection(double dt);
     void stepModel(double dt);
     void updateStateSpaceMatrices();
@@ -177,6 +178,8 @@ class Model_mutual_inductor {
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
+    std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
     // The json file with symbolic intermediate matrices
     nlohmann::json m_circuit_json;
 

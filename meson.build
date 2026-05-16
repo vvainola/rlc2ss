@@ -158,11 +158,19 @@ executable('rlc2ss',
 executable('tests',
     sources : [
         'tests/expression_eval_test.cpp',
+        'tests/state_matrices_test.cpp',
+    ],
+    cpp_args : [
+        '-DRLC2SS_QUCS_DIR="' + meson.current_source_dir() / 'qucs' + '"',
     ],
     include_directories: [
         'src',
         'include'
     ],
     link_with : [lib_rlc2ss],
-    dependencies: dependency('catch2-with-main')
+    dependencies: [
+        dependency('catch2-with-main'),
+        dependency('eigen3'),
+        dependency('nlohmann_json'),
+    ]
 )
