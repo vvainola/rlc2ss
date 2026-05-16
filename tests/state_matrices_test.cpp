@@ -204,6 +204,11 @@ TEST_CASE("Converter: C++ matches Python JSON") {
     SECTION("combination 0")    { compareCombination(fx, "0",    0); }
     SECTION("combination 1")    { compareCombination(fx, "1",    1); }
     SECTION("combination 7")    { compareCombination(fx, "7",    7); }
-    SECTION("combination 63")   { compareCombination(fx, "63",   63); }
     SECTION("combination 4095") { compareCombination(fx, "4095", 4095); }
+    // Slowest 5 combinations across the full sweep [0, 4095]
+    SECTION("combination 315")  { compareCombination(fx, "315",  315); }
+    SECTION("combination 319")  { compareCombination(fx, "319",  319); }
+    SECTION("combination 63")   { compareCombination(fx, "63",   63); }
+    SECTION("combination 2079") { compareCombination(fx, "2079", 2079); }
+    SECTION("combination 1134") { compareCombination(fx, "1134", 1134); }
 }
