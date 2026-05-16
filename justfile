@@ -46,3 +46,19 @@ build build_folder="build" *opts="":
     #!/usr/bin/env bash
     source .venv/bin/activate
     ninja -C {{build_folder}}
+
+[no-cd]
+[windows]
+test build_folder="build" *opts="":
+    #! powershell
+    .venv/scripts/activate
+    meson compile -C {{build_folder}} tests
+    & .\{{build_folder}}\tests.exe {{opts}}
+
+[no-cd]
+[linux]
+test build_folder="build" *opts="":
+    #!/usr/bin/env bash
+    source .venv/bin/activate
+    ninja -C {{build_folder}} tests
+    ./{{build_folder}}/tests {{opts}}
