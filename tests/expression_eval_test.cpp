@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators_random.hpp>
+#include "netlist/linear_expr.hpp"
+#include "netlist/sym_scalar.hpp"
 #include "rlc2ss.h"
 
 TEST_CASE("Evaluate expression") {
@@ -36,3 +38,27 @@ TEST_CASE("Evaluate expression") {
     CHECK(rlc2ss::evaluateExpression("2^ ( (3+1) * 2 + 1)") == 512);
 }
 
+TEST_CASE("Symbolic scalars fold structurally equal expressions") {
+    CHECK((rlc2ss::SymScalar("R") - rlc2ss::SymScalar("R")).isZero());
+    CHECK((rlc2ss::SymScalar("R") / rlc2ss::SymScalar("R")).isOne());
+}
+
+TEST_CASE("Symbolic linear solve skips structurally zero pivots") {
+    rlc2ss::SymbolicMatrix A = rlc2ss::SymbolicMatrix::Zero(2, 2);
+    A(0, 0) = rlc2ss::SymScalar("R") - rlc2ss::SymScalar("R");
+    A(0, 1) = rlc2ss::SymScalar(1.0);
+    A(1, 0) = rlc2ss::SymScalar("R");
+
+    std::vector<rlc2ss::LinearExpr> b{
+        rlc2ss::LinearExpr("y"),
+        rlc2ss::LinearExpr("x"),
+    };
+    std::vector<std::string> unknowns{"a", "b"};
+
+    std::vector<rlc2ss::LinearExpr> x = rlc2ss::solveLinearSystem(A, b, unknowns);
+
+    REQUIRE(x.size() == 2);
+    REQUIRE(x[0].terms.contains("x"));
+    CHECK(x[0].terms.at("x").str() == "1/R");
+    CHECK(x[1].terms.at("y").isOne());
+}

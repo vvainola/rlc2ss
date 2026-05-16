@@ -52,7 +52,7 @@ class SymScalar {
     SymScalar(double v);                          // numeric constant
     explicit SymScalar(std::string name);         // named symbol (e.g. "R1")
 
-    bool isZero() const { return m_is_zero; }
+    bool isZero() const;
     bool isOne() const { return m_is_one; }
     bool isNumeric() const { return m_is_numeric; }
     double numeric() const;

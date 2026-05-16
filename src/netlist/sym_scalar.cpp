@@ -71,6 +71,52 @@ bool isAddOrSubTop(ExprNode const& n) {
     return n.op == ExprNode::Op::Add || n.op == ExprNode::Op::Sub;
 }
 
+bool structurallyEqual(ExprNode const& lhs, ExprNode const& rhs) {
+    if (&lhs == &rhs) return true;
+    if (lhs.op != rhs.op) return false;
+
+    switch (lhs.op) {
+        case ExprNode::Op::Var:
+            return lhs.name == rhs.name;
+        case ExprNode::Op::Const:
+            return lhs.value == rhs.value;
+        case ExprNode::Op::Neg:
+        case ExprNode::Op::Sqrt:
+            return lhs.lhs && rhs.lhs && structurallyEqual(*lhs.lhs, *rhs.lhs);
+        case ExprNode::Op::Add:
+        case ExprNode::Op::Sub:
+        case ExprNode::Op::Mul:
+        case ExprNode::Op::Div:
+            return lhs.lhs && lhs.rhs && rhs.lhs && rhs.rhs
+                && structurallyEqual(*lhs.lhs, *rhs.lhs)
+                && structurallyEqual(*lhs.rhs, *rhs.rhs);
+    }
+    return false;
+}
+
+bool structurallyZero(ExprNode const& n) {
+    switch (n.op) {
+        case ExprNode::Op::Const:
+            return n.value == 0.0;
+        case ExprNode::Op::Neg:
+        case ExprNode::Op::Sqrt:
+            return n.lhs && structurallyZero(*n.lhs);
+        case ExprNode::Op::Add:
+            return n.lhs && n.rhs && structurallyZero(*n.lhs) && structurallyZero(*n.rhs);
+        case ExprNode::Op::Sub:
+            return n.lhs && n.rhs
+                && (structurallyEqual(*n.lhs, *n.rhs)
+                    || (structurallyZero(*n.lhs) && structurallyZero(*n.rhs)));
+        case ExprNode::Op::Mul:
+            return n.lhs && n.rhs && (structurallyZero(*n.lhs) || structurallyZero(*n.rhs));
+        case ExprNode::Op::Div:
+            return n.lhs && structurallyZero(*n.lhs);
+        case ExprNode::Op::Var:
+            return false;
+    }
+    return false;
+}
+
 // Append the textual representation of node into out, mirroring the parens
 // conventions of the previous string-tree implementation so the downstream
 // evaluateExpression continues to parse correctly.
@@ -212,6 +258,11 @@ std::string const& SymScalar::str() const {
     return *m_cached_str;
 }
 
+bool SymScalar::isZero() const {
+    if (m_is_zero) return true;
+    return m_tree && structurallyZero(*m_tree);
+}
+
 SymScalar SymScalar::operator+(SymScalar const& other) const {
     if (isZero()) return other;
     if (other.isZero()) return *this;
@@ -223,8 +274,8 @@ SymScalar SymScalar::operator-(SymScalar const& other) const {
     if (other.isZero()) return *this;
     if (isZero()) return -other;
     if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric - other.m_numeric);
-    // x - x == 0 (pointer-equality detection on the shared subtree)
-    if (m_tree && m_tree == other.m_tree) return SymScalar(0.0);
+    // x - x == 0, even when equal symbols were created as separate nodes.
+    if (structurallyEqual(*asTreeNode(), *other.asTreeNode())) return SymScalar(0.0);
     return fromTree(makeBinary(ExprNode::Op::Sub, asTreeNode(), other.asTreeNode()));
 }
 
@@ -250,8 +301,8 @@ SymScalar SymScalar::operator/(SymScalar const& other) const {
     if (isZero()) return SymScalar(0.0);
     if (other.m_is_one) return *this;
     if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric / other.m_numeric);
-    // x / x == 1 (pointer-equality detection)
-    if (m_tree && m_tree == other.m_tree) return SymScalar(1.0);
+    // x / x == 1, even when equal symbols were created as separate nodes.
+    if (structurallyEqual(*asTreeNode(), *other.asTreeNode())) return SymScalar(1.0);
     return fromTree(makeBinary(ExprNode::Op::Div, asTreeNode(), other.asTreeNode()));
 }
 
