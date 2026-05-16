@@ -423,6 +423,7 @@ void Model_converter::updateStateSpaceMatrices() {
     state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
     m_ss = *state_space_cache[switch_combination][component_hash];
 }
+
 bool Model_converter::Components::operator==(Components const& other) const {
     return
         C_n == other.C_n &&

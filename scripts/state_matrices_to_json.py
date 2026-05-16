@@ -23,8 +23,9 @@ import os
 from dataclasses import dataclass
 import json
 import sys
-import typing as T
+import textwrap
 import sympy
+from jinja2 import Environment, FileSystemLoader
 
 @dataclass
 class Diode:
@@ -50,6 +51,26 @@ class StateSpaceMatrices:
     D1: sympy.Matrix
 
 TAB = "    "
+TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
+
+
+def render_template(template_name: str, **context) -> str:
+    env = Environment(
+        loader=FileSystemLoader(TEMPLATE_DIR),
+        keep_trailing_newline=True,
+        variable_start_string="[[",
+        variable_end_string="]]",
+        autoescape=False,
+    )
+    return env.get_template(template_name).render(**context)
+
+
+def render_cxx_block(source: str, indent: str = TAB, **replacements: str) -> str:
+    block = textwrap.dedent(source)
+    for key, value in replacements.items():
+        block = block.replace(f"[[{key}]]", value)
+    return textwrap.indent(block, indent)
+
 
 def check_for_invalid_names(component_names: list[str]):
     for name in component_names:
@@ -95,236 +116,9 @@ def write_cpp_files(
     )
     switches_step = f"\n{TAB}".join([f'{str(switch)}.step(dt);' for switch in switches])
 
-    template = '''
-#pragma once
-
-#pragma warning(disable : 4127) // conditional expression is constant
-#pragma warning(disable : 4189) // local variable is initialized but not referenced
-#pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
-#pragma warning(disable : 4408) // anonymous struct did not declare any data members
-#pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
-
-#include "on_off_delay.hpp"
-#include "integrator.hpp"
-#include "rlc2ss.h"
-
-#include "Eigen/Dense"
-#include "Eigen/Core"
-#include "Eigen/LU"
-
-#include "nlohmann/json.hpp"
-
-#include <assert.h>
-
-class {class_name} {{
-  public:
-    struct Components;
-    union Inputs;
-    union Outputs;
-    union States;
-    struct Switches;
-    struct StateSpaceMatrices;
-
-    {class_name}() {{}}
-    {class_name}(Components const& c);
-
-    static inline constexpr size_t NUM_INPUTS = {num_inputs};
-    static inline constexpr size_t NUM_OUTPUTS = {num_outputs};
-    static inline constexpr size_t NUM_STATES = {num_states};
-    static inline constexpr size_t NUM_SWITCHES = {num_switches};
-
-    enum class TimestepErrorCorrectionMode {{
-        // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
-        // e.g. resolution is 0.1e-6 and the variation in timestep length is a multiple of that and
-        // there should not ever be any error although floating point roundings may cause some.
-        NONE,
-        // Round the used timestep to closest multiple of resolution and store the error to accumulator
-        // so that the timestep length error will be corrected when accumulator becomes a multiple of the
-        // timestep resolution.
-        ACCUMULATE,
-        // The timestep length that is not a multiple of timestep resolution will be integrated with
-        // adaptive step size runge-kutta-fehlberg. E.g. If resolution 1us and timestep is 12.1us,
-        // 12 us will be solved with Tustin and remaining 0.1us with RKF to avoid calculating jacobian
-        // inverse for very small timesteps
-        INTEGRATE_ADAPTIVE
-    }};
-
-    void setTimestepResolution(double dt, TimestepErrorCorrectionMode mode) {{
-        m_solver.enableInverseMatrixCaching(true);
-        m_dt_resolution = dt;
-        m_dt_correction_mode = mode;
-    }}
-
-    void step(double dt, Inputs const& inputs_);
-
-    /// @brief Add stepwise saturation curve to inductor. The inductance is reduced when the current
-    /// exceeds the breakpoints and increased when current goes below the breakpoints.
-    /// @param inductor Pointer to inductor in component struct e.g. &circuit.components.L0
-    /// @param current Current breakpoints in ascending order. First breakpoint must be 0.
-    /// @param inductance Inductance values at the breakpoints.
-    /// Example:
-    /// currents    = {{0,       100,        200,       300}}
-    /// inductances = {{   100e-6,    75e-6,      50e-6,     25e-6}}
-    void addInductorSaturation(double* inductor, std::vector<double> current, std::vector<double> inductance);
-
-    union Inputs {{
-        Inputs() {{ data.setZero(); }}
-        Inputs(const Inputs& other) {{ data = other.data; }}
-        struct {{
-{inputs_list}
-        }};
-        Eigen::Vector<double, NUM_INPUTS> data;
-    }};
-
-    union Outputs {{
-        Outputs() {{ data.setZero(); }}
-        Outputs(const Outputs& other) {{ data = other.data; }}
-        struct {{
-{outputs_list}
-        }};
-        Eigen::Vector<double, NUM_OUTPUTS> data;
-    }};
-
-    struct Switches {{
-{switches_list}
-
-        uint64_t all() const;
-        double smallestDelay();
-        void step(double dt);
-    }};
-
-    struct Components {{
-{components_list}
-
-        uint64_t hash() const;
-        bool operator==(Components const& other) const;
-        bool operator!=(Components const& other) const {{
-            return !(*this == other);
-        }}
-    }};
-
-    union States {{
-        States() {{
-            data.setZero();
-        }}
-        States(const States& other) {{
-            data = other.data;
-        }}
-        struct {{
-{states_list}
-        }};
-        Eigen::Vector<double, NUM_STATES> data;
-    }};
-
-    struct StateSpaceMatrices {{
-        Eigen::Matrix<double, NUM_STATES, NUM_STATES> A;
-        Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B;
-        Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES> C;
-        Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D;
-    }};
-
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {{
-        return m_ss.A * state + m_Bu;
-    }}
-
-    Components components;
-    Inputs inputs;
-    States states;
-    Outputs outputs;
-    Switches switches;
-
-  private:
-    std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
-    void stepWithZeroCrossingDetection(double dt);
-    void stepModel(double dt);
-    void updateStateSpaceMatrices();
-
-    Integrator<Eigen::Vector<double, NUM_STATES>,
-               Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
-        m_solver;
-    StateSpaceMatrices m_ss;
-    Components _M_components_DO_NOT_TOUCH;
-    Switches _M_switches_DO_NOT_TOUCH;
-    Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
-    double m_dt_resolution = 0;
-    TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
-    double m_dt_error_accumulator = 0;
-    using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
-    std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
-    // The json file with symbolic intermediate matrices
-    nlohmann::json m_circuit_json;
-
-    static_assert(sizeof(double) * NUM_STATES == sizeof(States));
-    static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));
-    static_assert(sizeof(double) * NUM_OUTPUTS == sizeof(Outputs));
-}};
-
-#pragma warning(default : 4127) // conditional expression is constant
-#pragma warning(default : 4189) // local variable is initialized but not referenced
-#pragma warning(default : 4201) // nonstandard extension used: nameless struct/union
-#pragma warning(default : 4408) // anonymous struct did not declare any data members
-#pragma warning(default : 5054) // operator '&': deprecated between enumerations of different types
-'''
-    hpp.write(template.format(
-        class_name = class_name,
-        num_inputs = len(ss.inputs),
-        num_outputs = len(ss.outputs),
-        num_states = len(ss.states),
-        num_switches = len(switches),
-        components_list = components_list,
-        verify_components = verify_components,
-        states_list = states_list,
-        inputs_list = inputs_list,
-        outputs_list = outputs_list,
-        switches_list = switches_list,
-        update_states = update_states,
-    ).replace('\t', TAB))
-    hpp.close()
-
-    include_json_header = f'#include "{model_basename}_matrices_json.h"' if not dynamic else ''
-    cpp.write(f'''
-#include "{model_basename}_matrices.hpp"
-#include "rlc2ss.h"
-#include <optional>
-#include <mutex>
-#include <format>
-#include <memory>
-{include_json_header}
-
-#pragma warning(disable : 4127) // conditional expression is constant
-#pragma warning(disable : 4189) // local variable is initialized but not referenced
-#pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
-#pragma warning(disable : 4408) // anonymous struct did not declare any data members
-#pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
-
-inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
-
-static std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace(
-    Eigen::MatrixXd const& K1,
-    Eigen::MatrixXd const& A1,
-    Eigen::MatrixXd const& B1,
-    Eigen::MatrixXd const& K2,
-    Eigen::MatrixXd const& C1,
-    Eigen::MatrixXd const& D1) {{
-    auto ss = std::make_unique<{class_name}::StateSpaceMatrices>();
-    Eigen::MatrixXd A = K1.partialPivLu().solve(A1);
-    Eigen::MatrixXd B = K1.partialPivLu().solve(B1);
-    ss->A = A;
-    ss->B = B;
-    ss->C = (C1 + K2 * A);
-    ss->D = (D1 + K2 * B);
-    return ss;
-}}
-
-std::optional<rlc2ss::ZeroCrossingEvent> {class_name}::checkZeroCrossingEvents({class_name}::Outputs const& prev_outputs) {{
-    std::priority_queue<rlc2ss::ZeroCrossingEvent,
-                        std::vector<rlc2ss::ZeroCrossingEvent>,
-                        std::greater<rlc2ss::ZeroCrossingEvent>>
-        events;
-''')
-
     # Sort diodes by their name for deterministic ordering
     diodes.sort(key=lambda d: d.name)
+    diode_zero_crossing_events = ""
     for diode in diodes:
         # Handle either node being ground
         pos_node = f'outputs.{diode.pos_node}'
@@ -338,323 +132,130 @@ std::optional<rlc2ss::ZeroCrossingEvent> {class_name}::checkZeroCrossingEvents({
             neg_node = '0'
             prev_neg_node = '0'
 
-        cpp.write(f'''
-    // Diode {diode.name}
-    double V_{diode.name} = {pos_node} - {neg_node};
-    if (V_{diode.name} > inputs.{diode.forward_voltage} && !switches.{diode.switch}) {{
-        double V_{diode.name}_prev = {prev_pos_node} - {prev_neg_node};
-        events.push(rlc2ss::ZeroCrossingEvent{{
-            .time = rlc2ss::calcZeroCrossingTime(V_{diode.name}_prev, V_{diode.name}),
-            .event_callback = [&]() {{
-                switches.{diode.switch}.forceOutput(true);
+        diode_zero_crossing_events += render_cxx_block(f"""
+            // Diode {diode.name}
+            double V_{diode.name} = {pos_node} - {neg_node};
+            if (V_{diode.name} > inputs.{diode.forward_voltage} && !switches.{diode.switch}) {{
+                double V_{diode.name}_prev = {prev_pos_node} - {prev_neg_node};
+                events.push(rlc2ss::ZeroCrossingEvent{{
+                    .time = rlc2ss::calcZeroCrossingTime(V_{diode.name}_prev, V_{diode.name}),
+                    .event_callback = [&]() {{
+                        switches.{diode.switch}.forceOutput(true);
+                    }}
+                }});
             }}
-        }});
-    }}
-    if (outputs.{diode.current} < 0 && switches.{diode.switch}.outputForced()) {{
-        events.push(rlc2ss::ZeroCrossingEvent{{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.{diode.current}, outputs.{diode.current}),
-            .event_callback = [&]() {{
-                switches.{diode.switch}.forceOutput(std::nullopt);
+            if (outputs.{diode.current} < 0 && switches.{diode.switch}.outputForced()) {{
+                events.push(rlc2ss::ZeroCrossingEvent{{
+                    .time = rlc2ss::calcZeroCrossingTime(prev_outputs.{diode.current}, outputs.{diode.current}),
+                    .event_callback = [&]() {{
+                        switches.{diode.switch}.forceOutput(std::nullopt);
+                    }}
+                }});
             }}
-        }});
-    }}
-''')
+        """)
 
-    cpp.write(f'''
-    for (auto const& callback : m_zero_crossing_callbacks) {{
-        std::optional<rlc2ss::ZeroCrossingEvent> event = callback(prev_outputs, outputs);
-        if (event) {{
-            events.push(*event);
-        }}
-    }}
-
-    if (events.size() > 0) {{
-        return events.top();
-    }}
-    return std::nullopt;
-}}
-
-{class_name}::{class_name}(Components const& c)
-    : components(c),
-      _M_components_DO_NOT_TOUCH(c) {{
-}}
-''')
-
-    cpp.write(f'''
-void {class_name}::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {{
-    // Check that the currents are ascending and inductances are descending
-    assert(currents.size() == inductances.size());
-    for (int i = 1; i < currents.size(); ++i) {{
-        assert(currents[i] >= currents[i - 1]);
-        assert(inductances[i] <= inductances[i - 1]);
-    }}
-    int i_L_output_idx = -1;''')
-
+    inductor_saturation_indices = ""
     for component in ss.component_names:
          if component.startswith('L'):
-            cpp.write(f'''
-    if (inductor == &components.{component}) {{
-        i_L_output_idx = {ss.outputs.index(sympy.Symbol(f'I_{component}'))};
-    }}''')
-    cpp.write(f'''
-    if (i_L_output_idx == -1) {{
-        assert(("Invalid pointer to inductor", false));
-    }}
-
-    for (int i = 1; i < currents.size(); ++i) {{
-        double threshold = currents[i];
-        double inductance_prev = inductances[i - 1];
-        double inductance = inductances[i];
-        // Increase inductance when current goes below level
-        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {{
-            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
-            double i_new = fabs(outputs_new.data[i_L_output_idx]);
-            if (i_prev > threshold && i_new < threshold) {{
-                return rlc2ss::ZeroCrossingEvent{{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [&]() {{
-                        *inductor = inductance_prev;
-                    }}}};
-            }}
-            return std::nullopt;
-        }});
-        // Decrease inductance when current goes above level
-        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {{
-            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
-            double i_new = fabs(outputs_new.data[i_L_output_idx]);
-            if (i_prev < threshold && i_new > threshold) {{
-                return rlc2ss::ZeroCrossingEvent{{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [&]() {{
-                        *inductor = inductance;
-                    }}}};
-            }}
-            return std::nullopt;
-        }});
-    }}
-}}
-''')
-
-    cpp.write(f'''
-void {class_name}::step(double dt, Inputs const& inputs_) {{
-    inputs.data = inputs_.data;
-
-    // Step to the next switching event
-    double smallest_dt = switches.smallestDelay();
-    while (smallest_dt < dt) {{
-        switches.step(smallest_dt);
-        stepWithZeroCrossingDetection(smallest_dt);
-        dt -= smallest_dt;
-        smallest_dt = switches.smallestDelay();
-    }}
-
-    // Step remaining time
-    switches.step(dt);
-    stepWithZeroCrossingDetection(dt);
-}}
-
-void {class_name}::stepWithZeroCrossingDetection(double dt) {{
-    // No need to do anything
-    if (dt < rlc2ss::MINIMUM_TIMESTEP) {{
-        return;
-    }}
-
-    // Copy previous state and outputs if step needs to be redone
-    {class_name}::States prev_state;
-    {class_name}::Outputs prev_outputs;
-    prev_state.data = states.data;
-    prev_outputs.data = outputs.data;
-
-    stepModel(dt);
-    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(prev_outputs);
-    int zc_event_count = 0;
-    while (zc_event && zc_event_count < MAX_ZERO_CROSS_EVENTS) {{
-        zc_event_count++;
-        // Redo step
-        states.data = prev_state.data;
-        stepModel(zc_event->time * dt);
-        // Process event
-        zc_event->event_callback();
-        // Run remaining time
-        prev_state.data = states.data;
-        prev_outputs.data = outputs.data;
-        dt = dt * (1 - zc_event->time);
-        stepModel(dt);
-        // Check for new events
-        zc_event = checkZeroCrossingEvents(prev_outputs);
-    }}
-}}
-
-void {class_name}::stepModel(double dt) {{
-    dt = std::max(dt, m_dt_resolution);
-    // Update state-space matrices if needed
-    if (components != _M_components_DO_NOT_TOUCH || switches.all() != _M_switches_DO_NOT_TOUCH.all() || !m_solver.initialized()) {{
-{verify_components}
-        _M_components_DO_NOT_TOUCH = components;
-        _M_switches_DO_NOT_TOUCH = switches;
-        updateStateSpaceMatrices();
-        m_solver.updateJacobian(m_ss.A);
-        // Solve one step with backward euler to reduce numerical oscillations
-        m_Bu = m_ss.B * inputs.data;
-        if (m_dt_resolution > 0) {{
-            double multiple = std::round(dt / m_dt_resolution);
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, multiple * m_dt_resolution);
-        }} else {{
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
-        }}
-    }} else {{
-        m_Bu = m_ss.B * inputs.data;
-
-        if (m_dt_resolution > 0) {{
-            if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {{
-                // Solve with tustin as multiples of resolution and ignore any error
-                double multiple = std::round(dt / m_dt_resolution);
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
-            }} else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {{
-                // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
-                // on later steps
-                double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
-                m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_resolution);
-            }} else if (m_dt_correction_mode == TimestepErrorCorrectionMode::INTEGRATE_ADAPTIVE) {{
-                // Solve with tustin as multiples of resolution and the remaining time with runge-kutta so
-                // that the matrix inverses required for implicit integration can be cached for common timesteps
-                // and weird small remainders are solved with adaptive integration.
-                double multiple = dt / m_dt_resolution;
-                if (std::abs(std::round(multiple) - multiple) > 1e-6) {{
-                    double dt1 = std::floor(multiple) * m_dt_resolution;
-                    double dt2 = (multiple - std::floor(multiple)) * m_dt_resolution;
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
-                    states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
-                }} else {{
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+            inductor_saturation_indices += render_cxx_block(f"""
+                if (inductor == &components.{component}) {{
+                    i_L_output_idx = {ss.outputs.index(sympy.Symbol(f'I_{component}'))};
                 }}
-            }}
-        }} else {{
-            states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
-        }}
-    }}
+            """).rstrip("\n")
 
-    // Update output
-    outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
-
-    // Update states from outputs to have correct values for dependent states
-{update_states}
-}}
-''')
-
-    cpp.write(f'''
-void {class_name}::updateStateSpaceMatrices() {{
-    static std::mutex            cache_mutex;
-    std::scoped_lock<std::mutex> lock(cache_mutex);
-
-    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<{class_name}::StateSpaceMatrices>>;
-    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
-    uint64_t switch_combination = switches.all();
-    uint64_t component_hash = components.hash();
-    if (state_space_cache.contains(switch_combination)) {{
-        std::unordered_map<uint64_t, std::unique_ptr<{class_name}::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
-        auto it = cache.find(component_hash);
-        if (it != cache.end()) {{
-            m_ss = *it->second;
-            return;
-        }}
-    }}
-''')
-
+    include_json_header = f'#include "{model_basename}_matrices_json.h"' if not dynamic else ''
     if dynamic:
-        cpp.write(f'    std::string netlist = \"{netlist}\";\n')
-        cpp.write(f'''
-    // Cache symbolic intermediate matrices per switch combination
-    static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
-    if (!symbolic_cache.contains(switch_combination)) {{
-        symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
-    }}
-    rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
+        values_list = "".join(f'{TAB}{{"{component}", components.{component}}},\n' for component in ss.component_names)
+        update_state_space_matrices_body = render_cxx_block(f"""\
+            std::string netlist = "{netlist}";
 
-    // Substitute component values into cached symbolic matrices via the typed
-    // evaluator (memoised DAG walk over the AST nodes, no string parsing).
-    std::unordered_map<std::string, double> values{{
-''')
-        for component in ss.component_names:
-            cpp.write(f'{TAB*2}{{"{component}", components.{component}}},\n')
-        cpp.write(f'''    }};
-    Eigen::MatrixXd K1 = rlc2ss::evaluate(symbolic_ss.K1, values);
-    Eigen::MatrixXd K2 = rlc2ss::evaluate(symbolic_ss.K2, values);
-    Eigen::MatrixXd A1 = rlc2ss::evaluate(symbolic_ss.A1, values);
-    Eigen::MatrixXd B1 = rlc2ss::evaluate(symbolic_ss.B1, values);
-    Eigen::MatrixXd C1 = rlc2ss::evaluate(symbolic_ss.C1, values);
-    Eigen::MatrixXd D1 = rlc2ss::evaluate(symbolic_ss.D1, values);
+            // Cache symbolic intermediate matrices per switch combination
+            static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
+            if (!symbolic_cache.contains(switch_combination)) {{
+                symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
+            }}
+            rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
 
-    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
-    m_ss = *state_space_cache[switch_combination][component_hash];
-}}''')
+            // Substitute component values into cached symbolic matrices via the typed
+            // evaluator (memoised DAG walk over the AST nodes, no string parsing).
+            std::unordered_map<std::string, double> values{{
+            [[values_list]]}};
+            Eigen::MatrixXd K1 = rlc2ss::evaluate(symbolic_ss.K1, values);
+            Eigen::MatrixXd K2 = rlc2ss::evaluate(symbolic_ss.K2, values);
+            Eigen::MatrixXd A1 = rlc2ss::evaluate(symbolic_ss.A1, values);
+            Eigen::MatrixXd B1 = rlc2ss::evaluate(symbolic_ss.B1, values);
+            Eigen::MatrixXd C1 = rlc2ss::evaluate(symbolic_ss.C1, values);
+            Eigen::MatrixXd D1 = rlc2ss::evaluate(symbolic_ss.D1, values);
+
+            state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+            m_ss = *state_space_cache[switch_combination][component_hash];""", values_list=values_list)
     else:
-        cpp.write((f'''
-    if (m_circuit_json.empty()) {{
-        m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json_hexdump, {model_basename}_matrices_json_hexdump + {model_basename}_matrices_json_hexdump_len));
-    }}
-    assert(m_circuit_json.contains(std::to_string(switches.all())));
-
-    // Get the intermediate matrices as string for replacing symbolic components with their values
-    std::string s = m_circuit_json[std::to_string(switches.all())].dump();\n'''))
-
-        for component in ss.component_names:
-            cpp.write(f"{TAB}s = rlc2ss::replace(s, \"{component}\", std::format(\"({{}})\", components.{component}));\n")
-        cpp.write((f'''
-    // Parse json for the intermediate matrices
-    nlohmann::json j = nlohmann::json::parse(s);
-    rlc2ss::StateSpaceMatrices ss = {{
-        .K1 = j["K1"],
-        .K2 = j["K2"],
-        .A1 = j["A1"],
-        .B1 = j["B1"],
-        .C1 = j["C1"],
-        .D1 = j["D1"],
-    }};'''))
-
+        replace_components = "".join(
+            f's = rlc2ss::replace(s, "{component}", std::format("({{}})", components.{component}));\n'
+            for component in ss.component_names
+        )
         # The row major template parameter can only be specified if there is more than 1 column
         states_row_major = f", Eigen::RowMajor" if len(ss.states) > 1 else ""
         inputs_row_major = f", Eigen::RowMajor" if len(ss.inputs) > 1 else ""
-        cpp.write(f'''
-    // Create eigen matrices
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES{states_row_major}> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES{states_row_major}> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS{inputs_row_major}> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS{inputs_row_major}> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
+        update_state_space_matrices_body = render_cxx_block(f"""
+            if (m_circuit_json.empty()) {{
+                m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json_hexdump, {model_basename}_matrices_json_hexdump + {model_basename}_matrices_json_hexdump_len));
+            }}
+            assert(m_circuit_json.contains(std::to_string(switches.all())));
 
-    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
-    m_ss = *state_space_cache[switch_combination][component_hash];
-}}''')
+            // Get the intermediate matrices as string for replacing symbolic components with their values
+            std::string s = m_circuit_json[std::to_string(switches.all())].dump();
+            [[replace_components]]
+            // Parse json for the intermediate matrices
+            nlohmann::json j = nlohmann::json::parse(s);
+            rlc2ss::StateSpaceMatrices ss = {{
+                .K1 = j["K1"],
+                .K2 = j["K2"],
+                .A1 = j["A1"],
+                .B1 = j["B1"],
+                .C1 = j["C1"],
+                .D1 = j["D1"],
+            }};
+            // Create eigen matrices
+            Eigen::Matrix<double, NUM_STATES, NUM_STATES{states_row_major}> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
+            Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
+            Eigen::Matrix<double, NUM_STATES, NUM_STATES{states_row_major}> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
+            Eigen::Matrix<double, NUM_STATES, NUM_INPUTS{inputs_row_major}> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
+            Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
+            Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS{inputs_row_major}> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
-    cpp.write(f'''
-bool {class_name}::Components::operator==(Components const& other) const {{
-    return
-{components_compare};
-}}
+            state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+            m_ss = *state_space_cache[switch_combination][component_hash];""", replace_components=replace_components)
 
-uint64_t {class_name}::Components::hash() const {{
-    uint64_t seed = 0;
-{components_hash}
-    return seed;
-}}
-
-uint64_t {class_name}::Switches::all() const {{
-    return {switches_to_int};
-}}
-
-double {class_name}::Switches::smallestDelay() {{
-    return {switches_min_delay};
-}}
-
-void {class_name}::Switches::step(double dt) {{
-    {switches_step}
-}}
-''')
+    template_context = dict(
+        class_name=class_name,
+        model_basename=model_basename,
+        num_inputs=len(ss.inputs),
+        num_outputs=len(ss.outputs),
+        num_states=len(ss.states),
+        num_switches=len(switches),
+        components_list=components_list,
+        components_compare=components_compare,
+        components_hash=components_hash,
+        verify_components=verify_components,
+        states_list=states_list,
+        inputs_list=inputs_list,
+        outputs_list=outputs_list,
+        switches_list=switches_list,
+        update_states=update_states,
+        switches_to_int=switches_to_int,
+        switches_min_delay=switches_min_delay,
+        switches_step=switches_step,
+        include_json_header=include_json_header,
+        diode_zero_crossing_events=diode_zero_crossing_events,
+        inductor_saturation_indices=inductor_saturation_indices,
+        update_state_space_matrices_body=update_state_space_matrices_body,
+    )
+    hpp.write(render_template("model_matrices.hpp.j2", **template_context).replace('\t', TAB))
+    hpp.close()
+    cpp.write(render_template("model_matrices.cpp.j2", **template_context).replace('\t', TAB))
     cpp.close()
-
+    return
 
 def matrices_to_cpp(
     netlist: str,
@@ -674,9 +275,6 @@ def matrices_to_cpp(
     if dynamic:
         return
 
-    write_components = ''
-    for component in ss.component_names:
-        write_components += f'\tdouble {component} = c.{component};\n'
     for i in sorted(circuit_combinations):
         ss = circuit_combinations[i]
         K1 = str(ss.K1).replace('Matrix([[', '').replace(']])', '').replace('[', '').replace('],', ',').replace('**', '^').replace('*', ' * ')
