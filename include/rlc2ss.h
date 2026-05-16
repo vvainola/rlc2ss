@@ -49,6 +49,9 @@ struct ZeroCrossingEvent {
 
 double calcZeroCrossingTime(double y1, double y2);
 
+/// State space matrices in symbolic form. Matrix entries are comma-delimited
+/// expressions containing component names (e.g. "R1", "L1", "C1") that can be
+/// evaluated after replacing component names with numeric values.
 struct StateSpaceMatrices {
     std::string K1;
     std::string K2;
@@ -57,9 +60,12 @@ struct StateSpaceMatrices {
     std::string C1;
     std::string D1;
 };
+
+/// Form state space matrices symbolically. The returned matrices contain component
+/// names as symbols. To get numeric matrices, replace component names with their
+/// values using rlc2ss::replace() and then evaluate with getCommaDelimitedValues().
 StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist,
                                           uint64_t combination,
-                                          std::unordered_map<std::string, double> const& component_values,
                                           bool verbose = false);
 
 inline void hash_combine(uint64_t& seed, double v) {
