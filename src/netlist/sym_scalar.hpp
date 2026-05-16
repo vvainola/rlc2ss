@@ -22,218 +22,74 @@
 
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
-#include <format>
-#include <cmath>
-#include <cassert>
 
 namespace rlc2ss {
 
-/// A symbolic scalar expression represented as a string.
-/// Supports basic arithmetic (+, -, *, /) and tracks special cases (zero, one)
-/// for optimization. The string form is compatible with evaluateExpression().
+// Expression tree node. Owned via shared_ptr so common subexpressions
+// (e.g. the "factor" reused across a row in Gaussian elimination) are
+// referenced rather than copied.
+struct ExprNode {
+    enum class Op : std::uint8_t { Var, Const, Add, Sub, Neg, Mul, Div, Sqrt };
+    Op op;
+    double value = 0.0;                            // for Const
+    std::string name;                              // for Var (and atom-sqrt)
+    std::shared_ptr<ExprNode const> lhs;           // operand 1 (or sole operand for unary)
+    std::shared_ptr<ExprNode const> rhs;           // operand 2 for binary
+};
+
+using ExprNodePtr = std::shared_ptr<ExprNode const>;
+
+// Symbolic scalar represented as a numeric value (fast path) or a shared
+// expression tree. Public API mirrors the previous string-based version so
+// linear_expr.* and state_space.cpp need no changes.
 class SymScalar {
   public:
-    /// Construct zero
-    SymScalar()
-        : m_expr("0"), m_is_zero(true), m_is_one(false), m_numeric(0.0), m_is_numeric(true) {}
-
-    /// Construct from double constant
-    SymScalar(double v)
-        : m_is_zero(v == 0.0), m_is_one(v == 1.0), m_numeric(v), m_is_numeric(true) {
-        if (m_is_zero) {
-            m_expr = "0";
-        } else if (m_is_one) {
-            m_expr = "1";
-        } else {
-            m_expr = std::format("{}", v);
-        }
-    }
-
-    /// Construct from a named symbol (e.g. "R1", "L1")
-    explicit SymScalar(std::string name)
-        : m_expr(std::move(name)), m_is_zero(false), m_is_one(false), m_numeric(0.0), m_is_numeric(false) {
-        // Check if the string is actually a numeric value
-        if (m_expr == "0") {
-            m_is_zero = true;
-            m_is_numeric = true;
-            m_numeric = 0.0;
-        } else if (m_expr == "1") {
-            m_is_one = true;
-            m_is_numeric = true;
-            m_numeric = 1.0;
-        }
-    }
+    SymScalar();                                  // 0
+    SymScalar(double v);                          // numeric constant
+    explicit SymScalar(std::string name);         // named symbol (e.g. "R1")
 
     bool isZero() const { return m_is_zero; }
     bool isOne() const { return m_is_one; }
     bool isNumeric() const { return m_is_numeric; }
-    double numeric() const {
-        assert(m_is_numeric);
-        return m_numeric;
-    }
-    std::string const& str() const { return m_expr; }
+    double numeric() const;
+    std::string const& str() const;
 
-    SymScalar operator+(SymScalar const& other) const {
-        if (m_is_zero) return other;
-        if (other.m_is_zero) return *this;
-        if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric + other.m_numeric);
-        SymScalar result;
-        result.m_is_zero = false;
-        result.m_is_one = false;
-        result.m_is_numeric = false;
-        result.m_expr = std::format("{}+{}", m_expr, other.m_expr);
-        return result;
-    }
+    SymScalar operator+(SymScalar const& other) const;
+    SymScalar operator-(SymScalar const& other) const;
+    SymScalar operator-() const;
+    SymScalar operator*(SymScalar const& other) const;
+    SymScalar operator/(SymScalar const& other) const;
 
-    SymScalar operator-(SymScalar const& other) const {
-        if (other.m_is_zero) return *this;
-        if (m_is_zero) return -other;
-        if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric - other.m_numeric);
-        // x - x = 0 (detect identical expression strings)
-        if (m_expr == other.m_expr) return SymScalar(0.0);
-        SymScalar result;
-        result.m_is_zero = false;
-        result.m_is_one = false;
-        result.m_is_numeric = false;
-        result.m_expr = std::format("{}-({})", m_expr, other.m_expr);
-        return result;
-    }
+    SymScalar& operator+=(SymScalar const& other);
+    SymScalar& operator-=(SymScalar const& other);
+    SymScalar& operator*=(SymScalar const& other);
+    SymScalar& operator/=(SymScalar const& other);
 
-    SymScalar operator-() const {
-        if (m_is_zero) return *this;
-        if (m_is_numeric) return SymScalar(-m_numeric);
-        SymScalar result;
-        result.m_is_zero = false;
-        result.m_is_one = false;
-        result.m_is_numeric = false;
-        if (isAtom()) {
-            result.m_expr = std::format("-{}", m_expr);
-        } else {
-            result.m_expr = std::format("-({})", m_expr);
-        }
-        return result;
-    }
+    bool operator==(double v) const;
+    bool operator!=(double v) const;
 
-    SymScalar operator*(SymScalar const& other) const {
-        if (m_is_zero || other.m_is_zero) return SymScalar(0.0);
-        if (m_is_one) return other;
-        if (other.m_is_one) return *this;
-        if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric * other.m_numeric);
-        // -1 * x = -x
-        if (m_is_numeric && m_numeric == -1.0) return -other;
-        if (other.m_is_numeric && other.m_numeric == -1.0) return -*this;
-        SymScalar result;
-        result.m_is_zero = false;
-        result.m_is_one = false;
-        result.m_is_numeric = false;
-        std::string lhs = needsParensForMul() ? std::format("({})", m_expr) : m_expr;
-        std::string rhs = other.needsParensForMul() ? std::format("({})", other.m_expr) : other.m_expr;
-        result.m_expr = std::format("{}*{}", lhs, rhs);
-        return result;
-    }
-
-    SymScalar operator/(SymScalar const& other) const {
-        assert(!other.m_is_zero && "Division by zero");
-        if (m_is_zero) return SymScalar(0.0);
-        if (other.m_is_one) return *this;
-        if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric / other.m_numeric);
-        // x / x = 1 (detect identical expression strings)
-        if (m_expr == other.m_expr) return SymScalar(1.0);
-        SymScalar result;
-        result.m_is_zero = false;
-        result.m_is_one = false;
-        result.m_is_numeric = false;
-        std::string lhs = needsParensForMul() ? std::format("({})", m_expr) : m_expr;
-        // Denominator always gets parens unless it's an atom
-        std::string rhs = other.isAtom() ? other.m_expr : std::format("({})", other.m_expr);
-        result.m_expr = std::format("{}/{}", lhs, rhs);
-        return result;
-    }
-
-    SymScalar& operator+=(SymScalar const& other) {
-        *this = *this + other;
-        return *this;
-    }
-
-    SymScalar& operator-=(SymScalar const& other) {
-        *this = *this - other;
-        return *this;
-    }
-
-    SymScalar& operator*=(SymScalar const& other) {
-        *this = *this * other;
-        return *this;
-    }
-
-    SymScalar& operator/=(SymScalar const& other) {
-        *this = *this / other;
-        return *this;
-    }
-
-    bool operator==(double v) const {
-        if (v == 0.0) return m_is_zero;
-        if (v == 1.0) return m_is_one;
-        return m_is_numeric && m_numeric == v;
-    }
-
-    bool operator!=(double v) const {
-        return !(*this == v);
-    }
-
-    /// sqrt of a symbolic expression
-    static SymScalar sqrt(SymScalar const& x) {
-        if (x.m_is_zero) return SymScalar(0.0);
-        if (x.m_is_one) return SymScalar(1.0);
-        if (x.m_is_numeric) return SymScalar(std::sqrt(x.m_numeric));
-        SymScalar result;
-        result.m_is_zero = false;
-        result.m_is_one = false;
-        result.m_is_numeric = false;
-        result.m_expr = std::format("sqrt({})", x.m_expr);
-        return result;
-    }
+    // sqrt of a symbolic expression. Numeric values fold; symbolic expressions
+    // become an opaque `sqrt(<inner>)` atom (algebraic simplification of nested
+    // sqrt is out of scope).
+    static SymScalar sqrt(SymScalar const& x);
 
   private:
-    /// Returns true if expression is a simple atom (no operators at top level)
-    bool isAtom() const {
-        if (m_is_numeric) return true;
-        // A symbol name with no operators
-        for (char c : m_expr) {
-            if (c == '+' || c == '-' || c == '*' || c == '/') return false;
-        }
-        return true;
-    }
+    static SymScalar fromTree(ExprNodePtr tree);
+    ExprNodePtr asTreeNode() const;                // null if isZero
 
-    /// Does this expression need parentheses when used as an operand of multiplication?
-    bool needsParensForMul() const {
-        if (m_is_numeric) {
-            return m_numeric < 0; // Negative numbers need parens: (-3)*x
-        }
-        // If the expression contains + or - at top level, needs parens
-        // Simple heuristic: if it contains + or - (not inside parens), it needs wrapping
-        int depth = 0;
-        for (char c : m_expr) {
-            if (c == '(') depth++;
-            else if (c == ')') depth--;
-            else if (depth == 0 && (c == '+' || (c == '-' && &c != &m_expr[0]))) return true;
-        }
-        return false;
-    }
-
-    std::string m_expr;
-    bool m_is_zero;
-    bool m_is_one;
-    double m_numeric;
-    bool m_is_numeric;
+    bool m_is_zero = true;
+    bool m_is_one = false;
+    bool m_is_numeric = true;
+    double m_numeric = 0.0;
+    ExprNodePtr m_tree;                            // null if m_is_numeric
+    mutable std::optional<std::string> m_cached_str;
 };
 
-inline SymScalar operator*(double lhs, SymScalar const& rhs) {
-    return SymScalar(lhs) * rhs;
-}
-
-inline SymScalar operator/(double lhs, SymScalar const& rhs) {
-    return SymScalar(lhs) / rhs;
-}
+SymScalar operator*(double lhs, SymScalar const& rhs);
+SymScalar operator/(double lhs, SymScalar const& rhs);
 
 } // namespace rlc2ss
