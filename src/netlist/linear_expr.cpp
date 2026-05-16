@@ -84,8 +84,9 @@ std::vector<LinearExpr> solveLinearSystem(SymbolicMatrix A, std::vector<LinearEx
         while (pivot < n && A(pivot, i).isZero())
             pivot++;
 
-        if (pivot == n)
+        if (pivot == n) {
             continue;
+        }
 
         // Swap rows in A and b
         if (pivot != i) {
@@ -101,7 +102,9 @@ std::vector<LinearExpr> solveLinearSystem(SymbolicMatrix A, std::vector<LinearEx
 
         // Eliminate
         for (int j = i + 1; j < n; ++j) {
-            if (A(j, i).isZero()) continue;
+            if (A(j, i).isZero()) {
+                continue;
+            }
             SymScalar factor = A(j, i) / A(i, i);
             for (int k = i; k < n; ++k) {
                 A(j, k) -= factor * A(i, k);

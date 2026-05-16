@@ -208,7 +208,9 @@ double evaluateNode(ExprNode const& n,
                     std::unordered_map<std::string, double> const& vars,
                     std::unordered_map<ExprNode const*, double>& cache) {
     auto it = cache.find(&n);
-    if (it != cache.end()) return it->second;
+    if (it != cache.end()) {
+        return it->second;
+    }
     double v = 0.0;
     switch (n.op) {
         case ExprNode::Op::Var: {
@@ -240,7 +242,9 @@ double evaluateNode(ExprNode const& n,
 
 double evaluate(SymScalar const& s,
                 std::unordered_map<std::string, double> const& values) {
-    if (s.isNumeric()) return s.numeric();
+    if (s.isNumeric()) {
+        return s.numeric();
+    }
     auto tree = s.tree();
     assert(tree);
     std::unordered_map<ExprNode const*, double> cache;

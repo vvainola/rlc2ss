@@ -101,8 +101,9 @@ inline void hash_combine(uint64_t& seed, double v) {
     uint64_t bits = std::bit_cast<uint64_t>(v);
 
     // Handle Negative Zero: if -0.0, treat it as 0.0 so they hash identically
-    if (v == 0.0)
+    if (v == 0.0) {
         bits = std::bit_cast<uint64_t>(0.0);
+    }
 
     seed ^= bits + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
