@@ -562,11 +562,30 @@ void {class_name}::updateStateSpaceMatrices() {{
 
     if dynamic:
         cpp.write(f'    std::string netlist = \"{netlist}\";\n')
-        cpp.write('    std::unordered_map<std::string, double> component_values;\n')
-        for component in ss.component_names:
-            cpp.write(f'\tcomponent_values["{component}"] = components.{component};\n')
+        cpp.write(f'''
+    // Cache symbolic intermediate matrices per switch combination
+    static std::unordered_map<uint64_t, rlc2ss::StateSpaceMatrices> symbolic_cache;
+    if (!symbolic_cache.contains(switch_combination)) {{
+        symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
+    }}
+    rlc2ss::StateSpaceMatrices const& symbolic_ss = symbolic_cache[switch_combination];
 
-        cpp.write(f'    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, switch_combination, component_values);\n')
+    // Substitute component values into cached symbolic matrices
+    auto substitute = [&](std::string s) -> std::string {{
+''')
+        for component in ss.component_names:
+            cpp.write(f'{TAB*2}s = rlc2ss::replace(s, "{component}", std::format("({{}})", components.{component}));\n')
+        cpp.write(f'''{TAB*2}return s;
+    }};
+    rlc2ss::StateSpaceMatrices ss{{
+        .K1 = substitute(symbolic_ss.K1),
+        .K2 = substitute(symbolic_ss.K2),
+        .A1 = substitute(symbolic_ss.A1),
+        .B1 = substitute(symbolic_ss.B1),
+        .C1 = substitute(symbolic_ss.C1),
+        .D1 = substitute(symbolic_ss.D1),
+    }};
+''')
     else:
         cpp.write((f'''
     if (m_circuit_json.empty()) {{

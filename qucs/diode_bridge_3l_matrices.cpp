@@ -5,6 +5,7 @@
 #include <fstream>
 #include <format>
 #include <memory>
+#include <unordered_map>
 
 
 #pragma warning(disable : 4127) // conditional expression is constant
@@ -350,55 +351,75 @@ void Model_diode_bridge_3l::updateStateSpaceMatrices() {
         return;
     }
     std::string netlist = "V_src_a _net0 0 DC 1 \nV_src_b _net1 0 DC 1 \nV_src_c _net2 0 DC 1 \nR_conv_a N_conv_a V2_a 1E-3 \nR_conv_b N_conv_b V2_b 1E-3 \nR_conv_c N_conv_c V2_c 1E-3 \nR_grid_a N_cap_a _net3 1E-3 \nR_grid_b N_cap_b _net4 1E-3 \nR_grid_c N_cap_c _net5 1E-3 \nR_src_a _net6 _net7 1E-3 \nR_src_b _net8 _net9 1E-3 \nR_src_c _net10 _net11 1E-3 \nL_conv_a V2_a N_cap_a 1E-6 \nL_conv_b V2_b N_cap_b 1E-6 \nL_conv_c V2_c N_cap_c 1E-6 \nL_grid_a _net3 _net6 1E-6 \nL_grid_b _net4 _net8 1E-6 \nL_grid_c _net5 _net10 1E-6 \nL_src_a _net7 _net0 1E-6 \nL_src_b _net9 _net1 1E-6 \nL_src_c _net11 _net2 1E-6 \nR_f_a _net12 N_cap_0 1E-3 \nR_f_b _net13 N_cap_0 1E-3 \nR_f_c _net14 N_cap_0 1E-3 \nC_f_a N_cap_a _net12 1E-3 \nC_f_b N_cap_b _net13 1E-3 \nC_f_c N_cap_c _net14 1E-3 \nD_p_c N_conv_c N_dc_p \nD_n_c N_dc_n N_conv_c \nV_dc_src _net15 _net16 DC 1 \nR_dc_src_p _net17 _net18 1E3 \nL_dc_src _net15 _net18 10E-6 \nR_dc_pp2 _net17 _net19 1E3 \nR_dc_pn2 _net19 _net16 1E3 \nR_dc_sp2 _net17 _net20 1E-3 \nR_dc_sn2 _net19 _net21 1E-3 \nR_dc_pp1 N_dc_p N_dc_0 1E3 \nR_dc_pn1 N_dc_0 N_dc_n 1E3 \nR_dc_sp1 N_dc_p _net22 1E-3 \nR_dc_sn1 N_dc_0 _net23 1E-3 \nC_dc_p2 _net20 _net19 10E-3 \nC_dc_p1 _net22 N_dc_0 10E-3 \nC_dc_n1 _net23 N_dc_n 10E-3 \nC_dc_n2 _net21 _net16 10E-3 \nL_dc_n _net16 N_dc_n 1E-6 \nL_dc_p _net17 N_dc_p 1E-6 \nR_dc_src_s _net17 _net18 1 \nS_0_a N_conv_a N_dc_0 _net24 _net25 \nS_0_b N_conv_b N_dc_0 _net26 _net27 \nS_0_c N_conv_c N_dc_0 _net28 _net29 \nD_p_a N_conv_a N_dc_p \nD_n_a N_dc_n N_conv_a \nD_p_b N_conv_b N_dc_p \nD_n_b N_dc_n N_conv_b \nS_p_a N_conv_a N_dc_p _net30 _net31 \nS_p_b N_conv_b N_dc_p _net32 _net33 \nS_p_c N_conv_c N_dc_p _net34 _net35 \nS_n_a N_dc_n N_conv_a _net36 _net37 \nS_n_b N_dc_n N_conv_b _net38 _net39 \nS_n_c N_dc_n N_conv_c _net40 _net41 ";
-    std::unordered_map<std::string, double> component_values;
-	component_values["C_dc_n1"] = components.C_dc_n1;
-	component_values["C_dc_n2"] = components.C_dc_n2;
-	component_values["C_dc_p1"] = components.C_dc_p1;
-	component_values["C_dc_p2"] = components.C_dc_p2;
-	component_values["C_f_a"] = components.C_f_a;
-	component_values["C_f_b"] = components.C_f_b;
-	component_values["C_f_c"] = components.C_f_c;
-	component_values["L_conv_a"] = components.L_conv_a;
-	component_values["L_conv_b"] = components.L_conv_b;
-	component_values["L_conv_c"] = components.L_conv_c;
-	component_values["L_dc_n"] = components.L_dc_n;
-	component_values["L_dc_p"] = components.L_dc_p;
-	component_values["L_dc_src"] = components.L_dc_src;
-	component_values["L_grid_a"] = components.L_grid_a;
-	component_values["L_grid_b"] = components.L_grid_b;
-	component_values["L_grid_c"] = components.L_grid_c;
-	component_values["L_src_a"] = components.L_src_a;
-	component_values["L_src_b"] = components.L_src_b;
-	component_values["L_src_c"] = components.L_src_c;
-	component_values["R_D_n_a"] = components.R_D_n_a;
-	component_values["R_D_n_b"] = components.R_D_n_b;
-	component_values["R_D_n_c"] = components.R_D_n_c;
-	component_values["R_D_p_a"] = components.R_D_p_a;
-	component_values["R_D_p_b"] = components.R_D_p_b;
-	component_values["R_D_p_c"] = components.R_D_p_c;
-	component_values["R_conv_a"] = components.R_conv_a;
-	component_values["R_conv_b"] = components.R_conv_b;
-	component_values["R_conv_c"] = components.R_conv_c;
-	component_values["R_dc_pn1"] = components.R_dc_pn1;
-	component_values["R_dc_pn2"] = components.R_dc_pn2;
-	component_values["R_dc_pp1"] = components.R_dc_pp1;
-	component_values["R_dc_pp2"] = components.R_dc_pp2;
-	component_values["R_dc_sn1"] = components.R_dc_sn1;
-	component_values["R_dc_sn2"] = components.R_dc_sn2;
-	component_values["R_dc_sp1"] = components.R_dc_sp1;
-	component_values["R_dc_sp2"] = components.R_dc_sp2;
-	component_values["R_dc_src_p"] = components.R_dc_src_p;
-	component_values["R_dc_src_s"] = components.R_dc_src_s;
-	component_values["R_f_a"] = components.R_f_a;
-	component_values["R_f_b"] = components.R_f_b;
-	component_values["R_f_c"] = components.R_f_c;
-	component_values["R_grid_a"] = components.R_grid_a;
-	component_values["R_grid_b"] = components.R_grid_b;
-	component_values["R_grid_c"] = components.R_grid_c;
-	component_values["R_src_a"] = components.R_src_a;
-	component_values["R_src_b"] = components.R_src_b;
-	component_values["R_src_c"] = components.R_src_c;
-    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, int(switches.all()), component_values);
+    // Cache symbolic intermediate matrices per switch combination
+    static std::unordered_map<uint64_t, rlc2ss::StateSpaceMatrices> symbolic_cache;
+    uint64_t switch_combination_val = switches.all();
+
+    // Get or compute symbolic matrices for this switch combination
+    if (!symbolic_cache.contains(switch_combination_val)) {
+        symbolic_cache[switch_combination_val] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination_val);
+    }
+    rlc2ss::StateSpaceMatrices const& symbolic_ss = symbolic_cache[switch_combination_val];
+
+    // Substitute component values into cached symbolic matrices
+    auto substitute = [&](std::string s) -> std::string {
+        s = rlc2ss::replace(s, "C_dc_n1", std::format("({})", components.C_dc_n1));
+        s = rlc2ss::replace(s, "C_dc_n2", std::format("({})", components.C_dc_n2));
+        s = rlc2ss::replace(s, "C_dc_p1", std::format("({})", components.C_dc_p1));
+        s = rlc2ss::replace(s, "C_dc_p2", std::format("({})", components.C_dc_p2));
+        s = rlc2ss::replace(s, "C_f_a", std::format("({})", components.C_f_a));
+        s = rlc2ss::replace(s, "C_f_b", std::format("({})", components.C_f_b));
+        s = rlc2ss::replace(s, "C_f_c", std::format("({})", components.C_f_c));
+        s = rlc2ss::replace(s, "L_conv_a", std::format("({})", components.L_conv_a));
+        s = rlc2ss::replace(s, "L_conv_b", std::format("({})", components.L_conv_b));
+        s = rlc2ss::replace(s, "L_conv_c", std::format("({})", components.L_conv_c));
+        s = rlc2ss::replace(s, "L_dc_n", std::format("({})", components.L_dc_n));
+        s = rlc2ss::replace(s, "L_dc_p", std::format("({})", components.L_dc_p));
+        s = rlc2ss::replace(s, "L_dc_src", std::format("({})", components.L_dc_src));
+        s = rlc2ss::replace(s, "L_grid_a", std::format("({})", components.L_grid_a));
+        s = rlc2ss::replace(s, "L_grid_b", std::format("({})", components.L_grid_b));
+        s = rlc2ss::replace(s, "L_grid_c", std::format("({})", components.L_grid_c));
+        s = rlc2ss::replace(s, "L_src_a", std::format("({})", components.L_src_a));
+        s = rlc2ss::replace(s, "L_src_b", std::format("({})", components.L_src_b));
+        s = rlc2ss::replace(s, "L_src_c", std::format("({})", components.L_src_c));
+        s = rlc2ss::replace(s, "R_D_n_a", std::format("({})", components.R_D_n_a));
+        s = rlc2ss::replace(s, "R_D_n_b", std::format("({})", components.R_D_n_b));
+        s = rlc2ss::replace(s, "R_D_n_c", std::format("({})", components.R_D_n_c));
+        s = rlc2ss::replace(s, "R_D_p_a", std::format("({})", components.R_D_p_a));
+        s = rlc2ss::replace(s, "R_D_p_b", std::format("({})", components.R_D_p_b));
+        s = rlc2ss::replace(s, "R_D_p_c", std::format("({})", components.R_D_p_c));
+        s = rlc2ss::replace(s, "R_conv_a", std::format("({})", components.R_conv_a));
+        s = rlc2ss::replace(s, "R_conv_b", std::format("({})", components.R_conv_b));
+        s = rlc2ss::replace(s, "R_conv_c", std::format("({})", components.R_conv_c));
+        s = rlc2ss::replace(s, "R_dc_pn1", std::format("({})", components.R_dc_pn1));
+        s = rlc2ss::replace(s, "R_dc_pn2", std::format("({})", components.R_dc_pn2));
+        s = rlc2ss::replace(s, "R_dc_pp1", std::format("({})", components.R_dc_pp1));
+        s = rlc2ss::replace(s, "R_dc_pp2", std::format("({})", components.R_dc_pp2));
+        s = rlc2ss::replace(s, "R_dc_sn1", std::format("({})", components.R_dc_sn1));
+        s = rlc2ss::replace(s, "R_dc_sn2", std::format("({})", components.R_dc_sn2));
+        s = rlc2ss::replace(s, "R_dc_sp1", std::format("({})", components.R_dc_sp1));
+        s = rlc2ss::replace(s, "R_dc_sp2", std::format("({})", components.R_dc_sp2));
+        s = rlc2ss::replace(s, "R_dc_src_p", std::format("({})", components.R_dc_src_p));
+        s = rlc2ss::replace(s, "R_dc_src_s", std::format("({})", components.R_dc_src_s));
+        s = rlc2ss::replace(s, "R_f_a", std::format("({})", components.R_f_a));
+        s = rlc2ss::replace(s, "R_f_b", std::format("({})", components.R_f_b));
+        s = rlc2ss::replace(s, "R_f_c", std::format("({})", components.R_f_c));
+        s = rlc2ss::replace(s, "R_grid_a", std::format("({})", components.R_grid_a));
+        s = rlc2ss::replace(s, "R_grid_b", std::format("({})", components.R_grid_b));
+        s = rlc2ss::replace(s, "R_grid_c", std::format("({})", components.R_grid_c));
+        s = rlc2ss::replace(s, "R_src_a", std::format("({})", components.R_src_a));
+        s = rlc2ss::replace(s, "R_src_b", std::format("({})", components.R_src_b));
+        s = rlc2ss::replace(s, "R_src_c", std::format("({})", components.R_src_c));
+        return s;
+    };
+    rlc2ss::StateSpaceMatrices ss{
+        .K1 = substitute(symbolic_ss.K1),
+        .K2 = substitute(symbolic_ss.K2),
+        .A1 = substitute(symbolic_ss.A1),
+        .B1 = substitute(symbolic_ss.B1),
+        .C1 = substitute(symbolic_ss.C1),
+        .D1 = substitute(symbolic_ss.D1),
+    };
 
     // Create eigen matrices
     Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());

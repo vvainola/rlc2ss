@@ -94,8 +94,11 @@ AbcdMatrices solveStateSpace(Eigen::MatrixXd const& K1,
     return m;
 }
 
-Eigen::MatrixXd csvToMatrix(std::string const& csv, int rows, int cols) {
-    return toRowMajorMatrix(rlc2ss::getCommaDelimitedValues(csv), rows, cols);
+Eigen::MatrixXd symbolicCsvToMatrix(std::string const& csv,
+                                    std::unordered_map<std::string, double> const& values,
+                                    int rows,
+                                    int cols) {
+    return toRowMajorMatrix(evaluateSymbolicCsv(csv, values), rows, cols);
 }
 
 bool closeEnough(Eigen::MatrixXd const& a, Eigen::MatrixXd const& b) {
@@ -119,10 +122,10 @@ void compareCombination(Fixture const& fx, std::string const& combination_key, i
     auto const& j_combo = j[combination_key];
 
     auto py_matrix = [&](char const* key, int rows, int cols) {
-        return toRowMajorMatrix(
-            evaluateSymbolicCsv(j_combo[key].template get<std::string>(), fx.component_values),
-            rows,
-            cols);
+        return symbolicCsvToMatrix(j_combo[key].template get<std::string>(),
+                                   fx.component_values,
+                                   rows,
+                                   cols);
     };
     AbcdMatrices py = solveStateSpace(
         py_matrix("K1", fx.num_states,  fx.num_states),
@@ -132,14 +135,14 @@ void compareCombination(Fixture const& fx, std::string const& combination_key, i
         py_matrix("C1", fx.num_outputs, fx.num_states),
         py_matrix("D1", fx.num_outputs, fx.num_inputs));
 
-    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, combination, fx.component_values);
+    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, combination);
     AbcdMatrices cpp = solveStateSpace(
-        csvToMatrix(ss.K1, fx.num_states,  fx.num_states),
-        csvToMatrix(ss.K2, fx.num_outputs, fx.num_states),
-        csvToMatrix(ss.A1, fx.num_states,  fx.num_states),
-        csvToMatrix(ss.B1, fx.num_states,  fx.num_inputs),
-        csvToMatrix(ss.C1, fx.num_outputs, fx.num_states),
-        csvToMatrix(ss.D1, fx.num_outputs, fx.num_inputs));
+        symbolicCsvToMatrix(ss.K1, fx.component_values, fx.num_states,  fx.num_states),
+        symbolicCsvToMatrix(ss.K2, fx.component_values, fx.num_outputs, fx.num_states),
+        symbolicCsvToMatrix(ss.A1, fx.component_values, fx.num_states,  fx.num_states),
+        symbolicCsvToMatrix(ss.B1, fx.component_values, fx.num_states,  fx.num_inputs),
+        symbolicCsvToMatrix(ss.C1, fx.component_values, fx.num_outputs, fx.num_states),
+        symbolicCsvToMatrix(ss.D1, fx.component_values, fx.num_outputs, fx.num_inputs));
 
     dumpIfDiff("A", py.A, cpp.A);
     dumpIfDiff("B", py.B, cpp.B);

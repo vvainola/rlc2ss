@@ -61,14 +61,14 @@ void print(std::vector<LinearExpr> const& exprs) {
     }
 }
 
-std::string matrixToStr(Eigen::MatrixXd const& matrix) {
+std::string symbolicMatrixToStr(SymbolicMatrix const& matrix) {
     std::string result;
-    for (unsigned int i = 0; i < matrix.rows(); ++i) {
-        for (unsigned int j = 0; j < matrix.cols(); ++j) {
+    for (int i = 0; i < matrix.rows(); ++i) {
+        for (int j = 0; j < matrix.cols(); ++j) {
             if (i != matrix.rows() - 1 || j != matrix.cols() - 1) {
-                result += std::format("{},", matrix(i, j));
+                result += std::format("{},", matrix(i, j).str());
             } else {
-                result += std::format("{}", matrix(i, j));
+                result += std::format("{}", matrix(i, j).str());
             }
         }
     }
@@ -120,9 +120,8 @@ LinearExpr nodeVoltage(Node const* node, Graph const& graph) {
 
 StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
                                           uint64_t combination,
-                                          std::unordered_map<std::string, double> const& component_values,
                                           bool verbose) {
-    Netlist netlist = parseNetlist(netlist_str, combination, component_values);
+    Netlist netlist = parseNetlist(netlist_str, combination);
 
     Graph full_graph;
     for (auto& comp : netlist.components) {
@@ -135,7 +134,7 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
         bool has_path = full_graph.hasPath(ground, node.get());
         if (!has_path) {
             std::string new_name = V_DUMMY + node->name();
-            std::unique_ptr<Component>& component = netlist.components.emplace_back(std::make_unique<Component>(new_name, *node, *ground, 0));
+            std::unique_ptr<Component>& component = netlist.components.emplace_back(std::make_unique<Component>(new_name, *node, *ground, SymScalar(0.0)));
             netlist.voltage_sources.push_back(component.get());
             node->addConnection(component.get());
             ground->addConnection(component.get());
@@ -449,14 +448,16 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     all_outputs.insert(output_currents.begin(), output_currents.end());
     all_outputs.insert(output_voltages.begin(), output_voltages.end());
 
+    // Mutual inductance: M = K * sqrt(L1 * L2)
+    // The mutual voltage term for L1 is M * dI_L2/dt (just the derivative symbol,
+    // not multiplied by L2 - that's what v_derivative() handles via m_value*m_derivative)
     for (auto& mut : netlist.mutual_inductors) {
-        // Mutual inductance M = K * sqrt(L1 * L2). The voltage term added to L1
-        // is M * dI_L2/dt, where derivativeSymbol() returns dI_L2 directly
-        // (without the L2 value factor that derivative() applies).
-        double K = std::stod(std::get<0>(mut));
+        std::string const& k_name = std::get<0>(mut);
         Component* L1 = std::get<1>(mut);
         Component* L2 = std::get<2>(mut);
-        double m = K * sqrt(L1->value() * L2->value());
+        // M = K * sqrt(L1 * L2) symbolically
+        SymScalar m = SymScalar(k_name) * SymScalar::sqrt(L1->value() * L2->value());
+        // Add M * dI_L2 to L1's mutual inductance (derivative symbol only, not L2*dI_L2)
         L1->addMutualInductance(m * L2->derivativeSymbol());
         L2->addMutualInductance(m * L1->derivativeSymbol());
     }
@@ -511,14 +512,14 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
         Component* comp = netlist.getComponent(state.substr(2));
         if (comp->name()[0] == 'L') {
             assert(comp->voltage().terms.size() == 1);
-            assert(comp->voltage().terms.begin()->second == 1);
-            assert(comp->voltage().constant == 0);
+            assert(comp->voltage().terms.begin()->second.isOne());
+            assert(comp->voltage().constant.isZero());
             assert(comp->voltage().str() == "V_" + comp->name());
             replace(deriv_eqs, comp->voltage().str(), comp->v_derivative());
         } else if (comp->name()[0] == 'C') {
             assert(comp->current().terms.size() == 1);
-            assert(comp->current().terms.begin()->second == 1);
-            assert(comp->current().constant == 0);
+            assert(comp->current().terms.begin()->second.isOne());
+            assert(comp->current().constant.isZero());
             assert(comp->current().str() == "I_" + comp->name());
             replace(deriv_eqs, comp->current().str(), comp->i_derivative());
         }
@@ -572,37 +573,49 @@ StateSpaceMatrices formStateSpaceMatrices(std::string const& netlist_str,
     }
     auto [D1, empty2] = linearEqsToMatrix(C4, inputs);
 
-    // H is diagonal matrix containing L and C vales
-    Eigen::MatrixXd H1 = Eigen::MatrixXd::Zero((int)states.size(), (int)states.size());
+    // K2 = C3 * H where H is diagonal matrix containing symbolic L and C values
+    // H[i,i] = component value (symbolic name like "L1", "C1")
+    SymbolicMatrix H1 = SymbolicMatrix::Zero((int)states.size(), (int)states.size());
     for (int i = 0; i < states.size(); ++i) {
         Component* component = netlist.getComponent(states[i].substr(2));
         H1(i, i) = component->value();
     }
-    Eigen::MatrixXd K2 = C3 * H1;
+    // K2 = C3 * H1 (symbolic matrix multiplication)
+    SymbolicMatrix K2 = SymbolicMatrix::Zero(C3.rows(), H1.cols());
+    for (int i = 0; i < C3.rows(); ++i) {
+        for (int j = 0; j < H1.cols(); ++j) {
+            SymScalar sum(0.0);
+            for (int k = 0; k < C3.cols(); ++k) {
+                sum += C3(i, k) * H1(k, j);
+            }
+            K2(i, j) = sum;
+        }
+    }
+
     // Print results
     if (verbose) {
         std::cout << "K1 matrix:" << std::endl;
-        std::cout << K1 << std::endl;
+        std::cout << symbolicMatrixToStr(K1) << std::endl;
         std::cout << "K2 matrix:" << std::endl;
-        std::cout << K2 << std::endl;
+        std::cout << symbolicMatrixToStr(K2) << std::endl;
         std::cout << "A1 matrix:" << std::endl;
-        std::cout << A1 << std::endl;
+        std::cout << symbolicMatrixToStr(A1) << std::endl;
         std::cout << "B1 matrix:" << std::endl;
-        std::cout << B1 << std::endl;
+        std::cout << symbolicMatrixToStr(B1) << std::endl;
         std::cout << "C1 matrix:" << std::endl;
-        std::cout << C1 << std::endl;
+        std::cout << symbolicMatrixToStr(C1) << std::endl;
         std::cout << "D1 matrix:" << std::endl;
-        std::cout << D1 << std::endl;
+        std::cout << symbolicMatrixToStr(D1) << std::endl;
     }
 
     // Collect results
     StateSpaceMatrices matrices{
-        .K1 = matrixToStr(K1),
-        .K2 = matrixToStr(K2),
-        .A1 = matrixToStr(A1),
-        .B1 = matrixToStr(B1),
-        .C1 = matrixToStr(C1),
-        .D1 = matrixToStr(D1),
+        .K1 = symbolicMatrixToStr(K1),
+        .K2 = symbolicMatrixToStr(K2),
+        .A1 = symbolicMatrixToStr(A1),
+        .B1 = symbolicMatrixToStr(B1),
+        .C1 = symbolicMatrixToStr(C1),
+        .D1 = symbolicMatrixToStr(D1),
     };
     return matrices;
 }

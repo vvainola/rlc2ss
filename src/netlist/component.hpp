@@ -55,11 +55,11 @@ class Component {
     Component(const std::string& name,
               Node& pos_node,
               Node& neg_node,
-              double value = 0)
+              SymScalar value)
         : m_name(name),
           m_pos_node(&pos_node),
           m_neg_node(&neg_node),
-          m_value(value),
+          m_value(std::move(value)),
           m_voltage(std::format("V_{}", name)),
           m_current(std::format("I_{}", name)) {
         pos_node.addConnection(this);
@@ -69,15 +69,12 @@ class Component {
         } else if (m_name[0] == 'I') {
             m_current = name;
         } else if (m_name[0] == 'R') {
-            assert(m_value >= 0);
             m_voltage = m_value * m_current;
         }
 
         if (m_name[0] == 'C') {
-            assert(m_value > 0);
             m_derivative = std::format("d{}", voltage().str());
         } else if (m_name[0] == 'L') {
-            assert(m_value > 0);
             m_derivative = std::format("d{}", current().str());
             m_mutual_inductance_voltage = 0;
         }
@@ -90,11 +87,9 @@ class Component {
     const std::string& name() const { return m_name; }
     Node* posNode() const { return m_pos_node; }
     Node* negNode() const { return m_neg_node; }
-    LinearExpr derivative() const {
-        assert(m_name[0] == 'L' || m_name[0] == 'C');
-        return m_value * m_derivative;
-    }
 
+    /// Returns the derivative symbol (dI_L or dV_C) without the L/C scaling factor.
+    /// Use v_derivative() or i_derivative() for the full L*dI/dt or C*dV/dt expression.
     LinearExpr const& derivativeSymbol() const {
         assert(m_name[0] == 'L' || m_name[0] == 'C');
         return m_derivative;
@@ -115,8 +110,8 @@ class Component {
     void setVoltage(const LinearExpr& expr) {
         m_voltage = expr;
         if (m_name[0] == 'C') {
+            m_derivative = LinearExpr(0.0);
             for (auto& [name, coeff] : m_voltage.terms) {
-                m_derivative = 0;
                 if (name[0] == 'V') {
                     m_derivative += LinearExpr("d" + name) * coeff;
                 } else {
@@ -128,7 +123,7 @@ class Component {
     void setCurrent(const LinearExpr& expr) {
         m_current = expr;
         if (m_name[0] == 'L') {
-            m_derivative = 0;
+            m_derivative = LinearExpr(0.0);
             for (auto& [name, coeff] : m_current.terms) {
                 if (name[0] == 'I') {
                     m_derivative += LinearExpr("d" + name) * coeff;
@@ -152,18 +147,18 @@ class Component {
     Node const* posSource() const { return m_pos_src; }
     Node const* negSource() const { return m_neg_src; }
 
-    double value() const { return m_value; }
+    SymScalar const& value() const { return m_value; }
 
   private:
     std::string m_name;
-    double m_value;
+    SymScalar m_value;
     Node* m_pos_node;
     Node* m_neg_node;
     LinearExpr m_voltage;
     LinearExpr m_current;
 
-    LinearExpr m_derivative = 0;
-    LinearExpr m_mutual_inductance_voltage = 0;
+    LinearExpr m_derivative = LinearExpr(0.0);
+    LinearExpr m_mutual_inductance_voltage = LinearExpr(0.0);
     Node const* m_pos_src = nullptr;
     Node const* m_neg_src = nullptr;
 };

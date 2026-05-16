@@ -367,6 +367,9 @@ void Model_converter::updateStateSpaceMatrices() {
     static std::mutex            cache_mutex;
     std::scoped_lock<std::mutex> lock(cache_mutex);
 
+    // Cache symbolic intermediate matrices per switch combination
+    static std::unordered_map<uint64_t, rlc2ss::StateSpaceMatrices> symbolic_cache;
+    // Cache final numeric state-space matrices per (switch_combination, component_hash)
     using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_converter::StateSpaceMatrices>>;
     static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
     uint64_t switch_combination = switches.all();
@@ -380,27 +383,44 @@ void Model_converter::updateStateSpaceMatrices() {
         }
     }
     std::string netlist = "R_p_p 0 N_dc_p 1E3 \nR_n_p N_dc_n 0 1E3 \nV_dc _net0 N_dc_n DC 1 \nD_a_p N_c_a N_dc_p \nD_b_p N_c_b N_dc_p \nS_a_p N_c_a N_dc_p _net1 _net2 \nS_c_p N_c_c N_dc_p _net3 _net4 \nD_c_p N_c_c N_dc_p \nS_b_p N_c_b N_dc_p _net5 _net6 \nS_a_n N_dc_n N_c_a _net7 _net8 \nD_a_n N_dc_n N_c_a \nS_b_n N_dc_n N_c_b _net9 _net10 \nD_b_n N_dc_n N_c_b \nS_c_n N_dc_n N_c_c _net11 _net12 \nD_c_n N_dc_n N_c_c \nV_a _net13 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_c _net15 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_b _net16 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nL_b _net17 _net16 1M \nL_a _net18 _net13 1M \nL_c _net19 _net15 1M \nC_p 0 _net20 10E-3;I; \nC_n _net21 0 10E-3;I; \nR_n_s N_dc_n _net21 10E-3 \nR_p_s _net20 N_dc_p 10E-3 \nR_a N_c_a _net18 10E-3 \nR_b N_c_b _net17 10E-3 \nR_c N_c_c _net19 10E-3 \nR_dc _net0 N_dc_p 1;I; ";
-    std::unordered_map<std::string, double> component_values;
-	component_values["C_n"] = components.C_n;
-	component_values["C_p"] = components.C_p;
-	component_values["L_a"] = components.L_a;
-	component_values["L_b"] = components.L_b;
-	component_values["L_c"] = components.L_c;
-	component_values["R_D_a_n"] = components.R_D_a_n;
-	component_values["R_D_a_p"] = components.R_D_a_p;
-	component_values["R_D_b_n"] = components.R_D_b_n;
-	component_values["R_D_b_p"] = components.R_D_b_p;
-	component_values["R_D_c_n"] = components.R_D_c_n;
-	component_values["R_D_c_p"] = components.R_D_c_p;
-	component_values["R_a"] = components.R_a;
-	component_values["R_b"] = components.R_b;
-	component_values["R_c"] = components.R_c;
-	component_values["R_dc"] = components.R_dc;
-	component_values["R_n_p"] = components.R_n_p;
-	component_values["R_n_s"] = components.R_n_s;
-	component_values["R_p_p"] = components.R_p_p;
-	component_values["R_p_s"] = components.R_p_s;
-    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, switch_combination, component_values);
+
+    // Get or compute symbolic matrices for this switch combination
+    if (!symbolic_cache.contains(switch_combination)) {
+        symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
+    }
+    rlc2ss::StateSpaceMatrices const& symbolic_ss = symbolic_cache[switch_combination];
+
+    // Substitute component values into cached symbolic matrices
+    auto substitute = [&](std::string s) -> std::string {
+        s = rlc2ss::replace(s, "C_n", std::format("({})", components.C_n));
+        s = rlc2ss::replace(s, "C_p", std::format("({})", components.C_p));
+        s = rlc2ss::replace(s, "L_a", std::format("({})", components.L_a));
+        s = rlc2ss::replace(s, "L_b", std::format("({})", components.L_b));
+        s = rlc2ss::replace(s, "L_c", std::format("({})", components.L_c));
+        s = rlc2ss::replace(s, "R_D_a_n", std::format("({})", components.R_D_a_n));
+        s = rlc2ss::replace(s, "R_D_a_p", std::format("({})", components.R_D_a_p));
+        s = rlc2ss::replace(s, "R_D_b_n", std::format("({})", components.R_D_b_n));
+        s = rlc2ss::replace(s, "R_D_b_p", std::format("({})", components.R_D_b_p));
+        s = rlc2ss::replace(s, "R_D_c_n", std::format("({})", components.R_D_c_n));
+        s = rlc2ss::replace(s, "R_D_c_p", std::format("({})", components.R_D_c_p));
+        s = rlc2ss::replace(s, "R_a", std::format("({})", components.R_a));
+        s = rlc2ss::replace(s, "R_b", std::format("({})", components.R_b));
+        s = rlc2ss::replace(s, "R_c", std::format("({})", components.R_c));
+        s = rlc2ss::replace(s, "R_dc", std::format("({})", components.R_dc));
+        s = rlc2ss::replace(s, "R_n_p", std::format("({})", components.R_n_p));
+        s = rlc2ss::replace(s, "R_n_s", std::format("({})", components.R_n_s));
+        s = rlc2ss::replace(s, "R_p_p", std::format("({})", components.R_p_p));
+        s = rlc2ss::replace(s, "R_p_s", std::format("({})", components.R_p_s));
+        return s;
+    };
+    rlc2ss::StateSpaceMatrices ss{
+        .K1 = substitute(symbolic_ss.K1),
+        .K2 = substitute(symbolic_ss.K2),
+        .A1 = substitute(symbolic_ss.A1),
+        .B1 = substitute(symbolic_ss.B1),
+        .C1 = substitute(symbolic_ss.C1),
+        .D1 = substitute(symbolic_ss.D1),
+    };
 
     // Create eigen matrices
     Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
