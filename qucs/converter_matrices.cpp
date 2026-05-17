@@ -185,13 +185,22 @@ void Model_converter::addInductorSaturation(double* inductor, std::vector<double
     }
     int i_L_output_idx = -1;
     if (inductor == &components.L_a) {
-        i_L_output_idx = 2;
+        i_L_output_idx = 5;
     }
     if (inductor == &components.L_b) {
-        i_L_output_idx = 3;
+        i_L_output_idx = 6;
     }
     if (inductor == &components.L_c) {
-        i_L_output_idx = 4;
+        i_L_output_idx = 7;
+    }
+    if (inductor == &components.L_g_a) {
+        i_L_output_idx = 8;
+    }
+    if (inductor == &components.L_g_b) {
+        i_L_output_idx = 9;
+    }
+    if (inductor == &components.L_g_c) {
+        i_L_output_idx = 10;
     }
     if (i_L_output_idx == -1) {
         assert(("Invalid pointer to inductor", false));
@@ -290,11 +299,17 @@ void Model_converter::stepModel(double dt) {
     dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
     if (components != _M_components_DO_NOT_TOUCH || switches.all() != _M_switches_DO_NOT_TOUCH.all() || !m_solver.initialized()) {
+        assert(components.C_a != -1);
+        assert(components.C_b != -1);
+        assert(components.C_c != -1);
         assert(components.C_n != -1);
         assert(components.C_p != -1);
         assert(components.L_a != -1);
         assert(components.L_b != -1);
         assert(components.L_c != -1);
+        assert(components.L_g_a != -1);
+        assert(components.L_g_b != -1);
+        assert(components.L_g_c != -1);
         assert(components.R_D_a_n != -1);
         assert(components.R_D_a_p != -1);
         assert(components.R_D_b_n != -1);
@@ -305,6 +320,9 @@ void Model_converter::stepModel(double dt) {
         assert(components.R_b != -1);
         assert(components.R_c != -1);
         assert(components.R_dc != -1);
+        assert(components.R_g_a != -1);
+        assert(components.R_g_b != -1);
+        assert(components.R_g_c != -1);
         assert(components.R_n_p != -1);
         assert(components.R_n_s != -1);
         assert(components.R_p_p != -1);
@@ -361,6 +379,12 @@ void Model_converter::stepModel(double dt) {
     states.I_L_a = outputs.I_L_a;
     states.I_L_b = outputs.I_L_b;
     states.I_L_c = outputs.I_L_c;
+    states.I_L_g_a = outputs.I_L_g_a;
+    states.I_L_g_b = outputs.I_L_g_b;
+    states.I_L_g_c = outputs.I_L_g_c;
+    states.V_C_a = outputs.V_C_a;
+    states.V_C_b = outputs.V_C_b;
+    states.V_C_c = outputs.V_C_c;
     states.V_C_n = outputs.V_C_n;
     states.V_C_p = outputs.V_C_p;
 }
@@ -381,7 +405,7 @@ void Model_converter::updateStateSpaceMatrices() {
             return;
         }
     }
-    std::string netlist = "R_p_p 0 N_dc_p 1E3 \nR_n_p N_dc_n 0 1E3 \nV_dc _net0 N_dc_n DC 1 \nD_a_p N_c_a N_dc_p \nD_b_p N_c_b N_dc_p \nS_a_p N_c_a N_dc_p _net1 _net2 \nS_c_p N_c_c N_dc_p _net3 _net4 \nD_c_p N_c_c N_dc_p \nS_b_p N_c_b N_dc_p _net5 _net6 \nS_a_n N_dc_n N_c_a _net7 _net8 \nD_a_n N_dc_n N_c_a \nS_b_n N_dc_n N_c_b _net9 _net10 \nD_b_n N_dc_n N_c_b \nS_c_n N_dc_n N_c_c _net11 _net12 \nD_c_n N_dc_n N_c_c \nV_a _net13 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_c _net15 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_b _net16 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nL_b _net17 _net16 1M \nL_a _net18 _net13 1M \nL_c _net19 _net15 1M \nC_p 0 _net20 10E-3;I; \nC_n _net21 0 10E-3;I; \nR_n_s N_dc_n _net21 10E-3 \nR_p_s _net20 N_dc_p 10E-3 \nR_a N_c_a _net18 10E-3 \nR_b N_c_b _net17 10E-3 \nR_c N_c_c _net19 10E-3 \nR_dc _net0 N_dc_p 1;I; ";
+    std::string netlist = "R_p_p 0 N_dc_p 1E3 \nR_n_p N_dc_n 0 1E3 \nV_dc _net0 N_dc_n DC 1 \nD_a_p N_c_a N_dc_p \nD_b_p N_c_b N_dc_p \nS_a_p N_c_a N_dc_p _net1 _net2 \nS_c_p N_c_c N_dc_p _net3 _net4 \nD_c_p N_c_c N_dc_p \nS_b_p N_c_b N_dc_p _net5 _net6 \nS_a_n N_dc_n N_c_a _net7 _net8 \nD_a_n N_dc_n N_c_a \nS_b_n N_dc_n N_c_b _net9 _net10 \nD_b_n N_dc_n N_c_b \nS_c_n N_dc_n N_c_c _net11 _net12 \nD_c_n N_dc_n N_c_c \nL_b _net13 _net14 1M \nL_a _net15 _net16 1M \nL_c _net17 _net18 1M \nC_p 0 _net19 10E-3;I; \nC_n _net20 0 10E-3;I; \nR_n_s N_dc_n _net20 10E-3 \nR_p_s _net19 N_dc_p 10E-3 \nR_a N_c_a _net15 10E-3 \nR_b N_c_b _net13 10E-3 \nR_c N_c_c _net17 10E-3 \nR_dc _net0 N_dc_p 1;I; \nV_a _net21 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_c _net23 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_b _net24 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nL_g_b _net25 _net24 1M \nL_g_a _net26 _net21 1M \nL_g_c _net27 _net23 1M \nR_g_a _net16 _net26 10E-3 \nR_g_b _net14 _net25 10E-3 \nR_g_c _net18 _net27 10E-3 \nC_a _net28 _net16 10E-3;I; \nC_b _net28 _net14 10E-3;I; \nC_c _net28 _net18 10E-3;I; ";
 
     // Cache symbolic intermediate matrices per switch combination
     static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
@@ -393,11 +417,17 @@ void Model_converter::updateStateSpaceMatrices() {
     // Substitute component values into cached symbolic matrices via the typed
     // evaluator (memoised DAG walk over the AST nodes, no string parsing).
     std::unordered_map<std::string, double> values{
+        {"C_a", components.C_a},
+        {"C_b", components.C_b},
+        {"C_c", components.C_c},
         {"C_n", components.C_n},
         {"C_p", components.C_p},
         {"L_a", components.L_a},
         {"L_b", components.L_b},
         {"L_c", components.L_c},
+        {"L_g_a", components.L_g_a},
+        {"L_g_b", components.L_g_b},
+        {"L_g_c", components.L_g_c},
         {"R_D_a_n", components.R_D_a_n},
         {"R_D_a_p", components.R_D_a_p},
         {"R_D_b_n", components.R_D_b_n},
@@ -408,6 +438,9 @@ void Model_converter::updateStateSpaceMatrices() {
         {"R_b", components.R_b},
         {"R_c", components.R_c},
         {"R_dc", components.R_dc},
+        {"R_g_a", components.R_g_a},
+        {"R_g_b", components.R_g_b},
+        {"R_g_c", components.R_g_c},
         {"R_n_p", components.R_n_p},
         {"R_n_s", components.R_n_s},
         {"R_p_p", components.R_p_p},
@@ -426,11 +459,17 @@ void Model_converter::updateStateSpaceMatrices() {
 
 bool Model_converter::Components::operator==(Components const& other) const {
     return
+        C_a == other.C_a &&
+        C_b == other.C_b &&
+        C_c == other.C_c &&
         C_n == other.C_n &&
         C_p == other.C_p &&
         L_a == other.L_a &&
         L_b == other.L_b &&
         L_c == other.L_c &&
+        L_g_a == other.L_g_a &&
+        L_g_b == other.L_g_b &&
+        L_g_c == other.L_g_c &&
         R_D_a_n == other.R_D_a_n &&
         R_D_a_p == other.R_D_a_p &&
         R_D_b_n == other.R_D_b_n &&
@@ -441,6 +480,9 @@ bool Model_converter::Components::operator==(Components const& other) const {
         R_b == other.R_b &&
         R_c == other.R_c &&
         R_dc == other.R_dc &&
+        R_g_a == other.R_g_a &&
+        R_g_b == other.R_g_b &&
+        R_g_c == other.R_g_c &&
         R_n_p == other.R_n_p &&
         R_n_s == other.R_n_s &&
         R_p_p == other.R_p_p &&
@@ -449,11 +491,17 @@ bool Model_converter::Components::operator==(Components const& other) const {
 
 uint64_t Model_converter::Components::hash() const {
     uint64_t seed = 0;
+    rlc2ss::hash_combine(seed, C_a);
+    rlc2ss::hash_combine(seed, C_b);
+    rlc2ss::hash_combine(seed, C_c);
     rlc2ss::hash_combine(seed, C_n);
     rlc2ss::hash_combine(seed, C_p);
     rlc2ss::hash_combine(seed, L_a);
     rlc2ss::hash_combine(seed, L_b);
     rlc2ss::hash_combine(seed, L_c);
+    rlc2ss::hash_combine(seed, L_g_a);
+    rlc2ss::hash_combine(seed, L_g_b);
+    rlc2ss::hash_combine(seed, L_g_c);
     rlc2ss::hash_combine(seed, R_D_a_n);
     rlc2ss::hash_combine(seed, R_D_a_p);
     rlc2ss::hash_combine(seed, R_D_b_n);
@@ -464,6 +512,9 @@ uint64_t Model_converter::Components::hash() const {
     rlc2ss::hash_combine(seed, R_b);
     rlc2ss::hash_combine(seed, R_c);
     rlc2ss::hash_combine(seed, R_dc);
+    rlc2ss::hash_combine(seed, R_g_a);
+    rlc2ss::hash_combine(seed, R_g_b);
+    rlc2ss::hash_combine(seed, R_g_c);
     rlc2ss::hash_combine(seed, R_n_p);
     rlc2ss::hash_combine(seed, R_n_s);
     rlc2ss::hash_combine(seed, R_p_p);

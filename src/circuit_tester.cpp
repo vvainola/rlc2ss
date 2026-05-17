@@ -88,11 +88,17 @@ Model_controlled_sources circuit(Model_controlled_sources::Components{
 });
 #elif defined CONVERTER
 Model_converter circuit(Model_converter::Components{
+    .C_a = 10e-3,
+    .C_b = 10e-3,
+    .C_c = 10e-3,
     .C_n = 100e-3,
     .C_p = 100e-3,
     .L_a = 100e-6,
     .L_b = 100e-6,
     .L_c = 100e-6,
+    .L_g_a = 100e-6,
+    .L_g_b = 100e-6,
+    .L_g_c = 100e-6,
     .R_D_a_n = 1e-3,
     .R_D_a_p = 1e-3,
     .R_D_b_n = 1e-3,
@@ -103,6 +109,9 @@ Model_converter circuit(Model_converter::Components{
     .R_b = 1,
     .R_c = 1,
     .R_dc = 1,
+    .R_g_a = 1,
+    .R_g_b = 1,
+    .R_g_c = 1,
     .R_n_p = 1e3,
     .R_n_s = 10e-3,
     .R_p_p = 1e3,
@@ -155,6 +164,15 @@ extern "C" __declspec(dllexport) void DLL_init(double dt) {
                                   {currents[0], currents[1], currents[2]},
                                   {L0, L1_eff, L2_eff});
     circuit.addInductorSaturation(&circuit.components.L_c,
+                                  {currents[0], currents[1], currents[2]},
+                                  {L0, L1_eff, L2_eff});
+    circuit.addInductorSaturation(&circuit.components.L_g_a,
+                                  {currents[0], currents[1], currents[2]},
+                                  {L0, L1_eff, L2_eff});
+    circuit.addInductorSaturation(&circuit.components.L_g_b,
+                                  {currents[0], currents[1], currents[2]},
+                                  {L0, L1_eff, L2_eff});
+    circuit.addInductorSaturation(&circuit.components.L_g_c,
                                   {currents[0], currents[1], currents[2]},
                                   {L0, L1_eff, L2_eff});
 #endif
