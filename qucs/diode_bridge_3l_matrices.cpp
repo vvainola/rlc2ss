@@ -44,7 +44,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
         double V_D_n_a_prev = prev_outputs.N_dc_n - prev_outputs.N_conv_a;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_n_a_prev, V_D_n_a),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_n_a.forceOutput(true);
             }
         });
@@ -52,7 +52,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
     if (outputs.I_R_D_n_a < 0 && switches.S_D_n_a.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_a, outputs.I_R_D_n_a),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_n_a.forceOutput(std::nullopt);
             }
         });
@@ -64,7 +64,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
         double V_D_n_b_prev = prev_outputs.N_dc_n - prev_outputs.N_conv_b;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_n_b_prev, V_D_n_b),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_n_b.forceOutput(true);
             }
         });
@@ -72,7 +72,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
     if (outputs.I_R_D_n_b < 0 && switches.S_D_n_b.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_b, outputs.I_R_D_n_b),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_n_b.forceOutput(std::nullopt);
             }
         });
@@ -84,7 +84,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
         double V_D_n_c_prev = prev_outputs.N_dc_n - prev_outputs.N_conv_c;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_n_c_prev, V_D_n_c),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_n_c.forceOutput(true);
             }
         });
@@ -92,7 +92,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
     if (outputs.I_R_D_n_c < 0 && switches.S_D_n_c.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_c, outputs.I_R_D_n_c),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_n_c.forceOutput(std::nullopt);
             }
         });
@@ -104,7 +104,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
         double V_D_p_a_prev = prev_outputs.N_conv_a - prev_outputs.N_dc_p;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_p_a_prev, V_D_p_a),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_p_a.forceOutput(true);
             }
         });
@@ -112,7 +112,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
     if (outputs.I_R_D_p_a < 0 && switches.S_D_p_a.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_a, outputs.I_R_D_p_a),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_p_a.forceOutput(std::nullopt);
             }
         });
@@ -124,7 +124,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
         double V_D_p_b_prev = prev_outputs.N_conv_b - prev_outputs.N_dc_p;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_p_b_prev, V_D_p_b),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_p_b.forceOutput(true);
             }
         });
@@ -132,7 +132,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
     if (outputs.I_R_D_p_b < 0 && switches.S_D_p_b.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_b, outputs.I_R_D_p_b),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_p_b.forceOutput(std::nullopt);
             }
         });
@@ -144,7 +144,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
         double V_D_p_c_prev = prev_outputs.N_conv_c - prev_outputs.N_dc_p;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_p_c_prev, V_D_p_c),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_p_c.forceOutput(true);
             }
         });
@@ -152,7 +152,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge_3l::checkZeroCrossin
     if (outputs.I_R_D_p_c < 0 && switches.S_D_p_c.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_c, outputs.I_R_D_p_c),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_p_c.forceOutput(std::nullopt);
             }
         });
@@ -228,14 +228,24 @@ void Model_diode_bridge_3l::addInductorSaturation(double* inductor, std::vector<
         double threshold = currents[i];
         double inductance_prev = inductances[i - 1];
         double inductance = inductances[i];
+        // Check +threshold and -threshold separately. Interpolating abs(current)
+        // gives the wrong event time if current crosses through zero during a
+        // step, e.g. -50 A -> +150 A with a 100 A threshold.
         // Increase inductance when current goes below level
         m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
-            double i_new = fabs(outputs_new.data[i_L_output_idx]);
-            if (i_prev > threshold && i_new < threshold) {
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
+            if (i_prev > threshold && i_new <= threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [&]() {
+                    .event_callback = [inductor, inductance_prev]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            if (i_prev < -threshold && i_new >= -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
+                    .event_callback = [inductor, inductance_prev]() {
                         *inductor = inductance_prev;
                     }};
             }
@@ -243,12 +253,19 @@ void Model_diode_bridge_3l::addInductorSaturation(double* inductor, std::vector<
         });
         // Decrease inductance when current goes above level
         m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
-            double i_new = fabs(outputs_new.data[i_L_output_idx]);
-            if (i_prev < threshold && i_new > threshold) {
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
+            if (i_prev < threshold && i_new >= threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [&]() {
+                    .event_callback = [inductor, inductance]() {
+                        *inductor = inductance;
+                    }};
+            }
+            if (i_prev > -threshold && i_new <= -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
+                    .event_callback = [inductor, inductance]() {
                         *inductor = inductance;
                     }};
             }
@@ -365,9 +382,9 @@ void Model_diode_bridge_3l::stepModel(double dt) {
         m_Bu = m_ss.B * inputs.data;
         if (m_dt_resolution > 0) {
             double multiple = std::round(dt / m_dt_resolution);
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, multiple * m_dt_resolution);
+            states.data = m_solver.stepLinearBackwardEuler(states.data, m_Bu, multiple * m_dt_resolution);
         } else {
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+            states.data = m_solver.stepLinearBackwardEuler(states.data, m_Bu, dt);
         }
     } else {
         m_Bu = m_ss.B * inputs.data;
@@ -376,13 +393,13 @@ void Model_diode_bridge_3l::stepModel(double dt) {
             if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {
                 // Solve with tustin as multiples of resolution and ignore any error
                 double multiple = std::round(dt / m_dt_resolution);
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                states.data = m_solver.stepLinearTustin(states.data, m_Bu, multiple * m_dt_resolution);
             } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {
                 // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
                 // on later steps
                 double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
                 m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_resolution);
+                states.data = m_solver.stepLinearTustin(states.data, m_Bu, std::round(multiple) * m_dt_resolution);
             } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::INTEGRATE_ADAPTIVE) {
                 // Solve with tustin as multiples of resolution and the remaining time with runge-kutta so
                 // that the matrix inverses required for implicit integration can be cached for common timesteps
@@ -391,14 +408,14 @@ void Model_diode_bridge_3l::stepModel(double dt) {
                 if (std::abs(std::round(multiple) - multiple) > 1e-6) {
                     double dt1 = std::floor(multiple) * m_dt_resolution;
                     double dt2 = (multiple - std::floor(multiple)) * m_dt_resolution;
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
+                    states.data = m_solver.stepLinearTustin(states.data, m_Bu, dt1);
                     states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
                 } else {
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                    states.data = m_solver.stepLinearTustin(states.data, m_Bu, multiple * m_dt_resolution);
                 }
             }
         } else {
-            states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
+            states.data = m_solver.stepLinearTustin(states.data, m_Bu, dt);
         }
     }
 
@@ -452,8 +469,7 @@ void Model_diode_bridge_3l::updateStateSpaceMatrices() {
     }
     rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
 
-    // Substitute component values into cached symbolic matrices via the typed
-    // evaluator (memoised DAG walk over the AST nodes, no string parsing).
+    // Substitute component values into cached symbolic matrices
     std::unordered_map<std::string, double> values{
         {"C_dc_n1", components.C_dc_n1},
         {"C_dc_n2", components.C_dc_n2},
@@ -513,6 +529,7 @@ void Model_diode_bridge_3l::updateStateSpaceMatrices() {
     state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
     m_ss = *state_space_cache[switch_combination][component_hash];
 }
+
 bool Model_diode_bridge_3l::Components::operator==(Components const& other) const {
     return
         C_dc_n1 == other.C_dc_n1 &&

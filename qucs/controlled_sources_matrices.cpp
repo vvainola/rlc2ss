@@ -2,7 +2,7 @@
 #include "controlled_sources_matrices.hpp"
 #include "rlc2ss.h"
 #include <optional>
-#include <fstream>
+#include <mutex>
 #include <format>
 #include <memory>
 #include "controlled_sources_matrices_json.h"
@@ -13,26 +13,37 @@
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
+inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
+
 static std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> calcStateSpace(
-    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> const& K1,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_STATES> const& A1,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_STATES, Model_controlled_sources::NUM_INPUTS> const& B1,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> const& K2,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_STATES> const& C1,
-    Eigen::Matrix<double, Model_controlled_sources::NUM_OUTPUTS, Model_controlled_sources::NUM_INPUTS> const& D1) {
+    Eigen::MatrixXd const& K1,
+    Eigen::MatrixXd const& A1,
+    Eigen::MatrixXd const& B1,
+    Eigen::MatrixXd const& K2,
+    Eigen::MatrixXd const& C1,
+    Eigen::MatrixXd const& D1) {
     auto ss = std::make_unique<Model_controlled_sources::StateSpaceMatrices>();
-    ss->A = K1.partialPivLu().solve(A1);
-    ss->B = K1.partialPivLu().solve(B1);
-    ss->C = (C1 + K2 * ss->A);
-    ss->D = (D1 + K2 * ss->B);
+    Eigen::MatrixXd A = K1.partialPivLu().solve(A1);
+    Eigen::MatrixXd B = K1.partialPivLu().solve(B1);
+    ss->A = A;
+    ss->B = B;
+    ss->C = (C1 + K2 * A);
+    ss->D = (D1 + K2 * B);
     return ss;
 }
 
-static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_controlled_sources& circuit, Model_controlled_sources::Outputs const& prev_outputs) {
+std::optional<rlc2ss::ZeroCrossingEvent> Model_controlled_sources::checkZeroCrossingEvents(Model_controlled_sources::Outputs const& prev_outputs) {
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
                         std::vector<rlc2ss::ZeroCrossingEvent>,
                         std::greater<rlc2ss::ZeroCrossingEvent>>
         events;
+
+    for (auto const& callback : m_zero_crossing_callbacks) {
+        std::optional<rlc2ss::ZeroCrossingEvent> event = callback(prev_outputs, outputs);
+        if (event) {
+            events.push(*event);
+        }
+    }
 
     if (events.size() > 0) {
         return events.top();
@@ -43,6 +54,71 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_co
 Model_controlled_sources::Model_controlled_sources(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
+}
+
+void Model_controlled_sources::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
+    // Check that the currents are ascending and inductances are descending
+    assert(currents.size() == inductances.size());
+    for (int i = 1; i < currents.size(); ++i) {
+        assert(currents[i] >= currents[i - 1]);
+        assert(inductances[i] <= inductances[i - 1]);
+    }
+    int i_L_output_idx = -1;
+    if (inductor == &components.L1) {
+        i_L_output_idx = 1;
+    }
+    if (i_L_output_idx == -1) {
+        assert(("Invalid pointer to inductor", false));
+    }
+
+    for (int i = 1; i < currents.size(); ++i) {
+        double threshold = currents[i];
+        double inductance_prev = inductances[i - 1];
+        double inductance = inductances[i];
+        // Check +threshold and -threshold separately. Interpolating abs(current)
+        // gives the wrong event time if current crosses through zero during a
+        // step, e.g. -50 A -> +150 A with a 100 A threshold.
+        // Increase inductance when current goes below level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
+            if (i_prev > threshold && i_new <= threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [inductor, inductance_prev]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            if (i_prev < -threshold && i_new >= -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
+                    .event_callback = [inductor, inductance_prev]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            return std::nullopt;
+        });
+        // Decrease inductance when current goes above level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
+            if (i_prev < threshold && i_new >= threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [inductor, inductance]() {
+                        *inductor = inductance;
+                    }};
+            }
+            if (i_prev > -threshold && i_new <= -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
+                    .event_callback = [inductor, inductance]() {
+                        *inductor = inductance;
+                    }};
+            }
+            return std::nullopt;
+        });
+    }
 }
 
 void Model_controlled_sources::step(double dt, Inputs const& inputs_) {
@@ -75,8 +151,10 @@ void Model_controlled_sources::stepWithZeroCrossingDetection(double dt) {
     prev_outputs.data = outputs.data;
 
     stepModel(dt);
-    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
-    while (zc_event) {
+    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(prev_outputs);
+    int zc_event_count = 0;
+    while (zc_event && zc_event_count < MAX_ZERO_CROSS_EVENTS) {
+        zc_event_count++;
         // Redo step
         states.data = prev_state.data;
         stepModel(zc_event->time * dt);
@@ -88,7 +166,7 @@ void Model_controlled_sources::stepWithZeroCrossingDetection(double dt) {
         dt = dt * (1 - zc_event->time);
         stepModel(dt);
         // Check for new events
-        zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+        zc_event = checkZeroCrossingEvents(prev_outputs);
     }
 }
 
@@ -118,9 +196,9 @@ void Model_controlled_sources::stepModel(double dt) {
         m_Bu = m_ss.B * inputs.data;
         if (m_dt_resolution > 0) {
             double multiple = std::round(dt / m_dt_resolution);
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, multiple * m_dt_resolution);
+            states.data = m_solver.stepLinearBackwardEuler(states.data, m_Bu, multiple * m_dt_resolution);
         } else {
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+            states.data = m_solver.stepLinearBackwardEuler(states.data, m_Bu, dt);
         }
     } else {
         m_Bu = m_ss.B * inputs.data;
@@ -129,13 +207,13 @@ void Model_controlled_sources::stepModel(double dt) {
             if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {
                 // Solve with tustin as multiples of resolution and ignore any error
                 double multiple = std::round(dt / m_dt_resolution);
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                states.data = m_solver.stepLinearTustin(states.data, m_Bu, multiple * m_dt_resolution);
             } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {
                 // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
                 // on later steps
                 double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
                 m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_resolution);
+                states.data = m_solver.stepLinearTustin(states.data, m_Bu, std::round(multiple) * m_dt_resolution);
             } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::INTEGRATE_ADAPTIVE) {
                 // Solve with tustin as multiples of resolution and the remaining time with runge-kutta so
                 // that the matrix inverses required for implicit integration can be cached for common timesteps
@@ -144,14 +222,14 @@ void Model_controlled_sources::stepModel(double dt) {
                 if (std::abs(std::round(multiple) - multiple) > 1e-6) {
                     double dt1 = std::floor(multiple) * m_dt_resolution;
                     double dt2 = (multiple - std::floor(multiple)) * m_dt_resolution;
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
+                    states.data = m_solver.stepLinearTustin(states.data, m_Bu, dt1);
                     states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
                 } else {
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                    states.data = m_solver.stepLinearTustin(states.data, m_Bu, multiple * m_dt_resolution);
                 }
             }
         } else {
-            states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
+            states.data = m_solver.stepLinearTustin(states.data, m_Bu, dt);
         }
     }
 
@@ -164,21 +242,21 @@ void Model_controlled_sources::stepModel(double dt) {
     states.V_C_2 = outputs.V_C_2;
 }
 
-struct Model_controlled_sources_Topology {
-    Model_controlled_sources::Components components;
-    Model_controlled_sources::Switches switches;
-    std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> state_space;
-};
-
 void Model_controlled_sources::updateStateSpaceMatrices() {
-    static std::vector<Model_controlled_sources_Topology> state_space_cache;
-    auto it = std::find_if(
-        state_space_cache.begin(), state_space_cache.end(), [&](Model_controlled_sources_Topology const& t) {
-            return t.components == components && t.switches.all() == switches.all();
-        });
-    if (it != state_space_cache.end()) {
-        m_ss = *it->state_space;
-        return;
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_controlled_sources::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t switch_combination = switches.all();
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {
+        std::unordered_map<uint64_t, std::unique_ptr<Model_controlled_sources::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {
+            m_ss = *it->second;
+            return;
+        }
     }
 
     if (m_circuit_json.empty()) {
@@ -221,12 +299,45 @@ void Model_controlled_sources::updateStateSpaceMatrices() {
     Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
     Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
-    Model_controlled_sources_Topology& topology = state_space_cache.emplace_back(Model_controlled_sources_Topology{
-        .components = components,
-        .switches = switches,
-        .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)});
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    m_ss = *state_space_cache[switch_combination][component_hash];
+}
 
-    m_ss = *topology.state_space;
+bool Model_controlled_sources::Components::operator==(Components const& other) const {
+    return
+        C_1 == other.C_1 &&
+        C_2 == other.C_2 &&
+        ESRC3 == other.ESRC3 &&
+        FSRC5 == other.FSRC5 &&
+        GSRC1 == other.GSRC1 &&
+        HSRC4 == other.HSRC4 &&
+        L1 == other.L1 &&
+        R1 == other.R1 &&
+        R2 == other.R2 &&
+        R3 == other.R3 &&
+        R4 == other.R4 &&
+        R5 == other.R5 &&
+        R6 == other.R6 &&
+        R7 == other.R7;
+}
+
+uint64_t Model_controlled_sources::Components::hash() const {
+    uint64_t seed = 0;
+    rlc2ss::hash_combine(seed, C_1);
+    rlc2ss::hash_combine(seed, C_2);
+    rlc2ss::hash_combine(seed, ESRC3);
+    rlc2ss::hash_combine(seed, FSRC5);
+    rlc2ss::hash_combine(seed, GSRC1);
+    rlc2ss::hash_combine(seed, HSRC4);
+    rlc2ss::hash_combine(seed, L1);
+    rlc2ss::hash_combine(seed, R1);
+    rlc2ss::hash_combine(seed, R2);
+    rlc2ss::hash_combine(seed, R3);
+    rlc2ss::hash_combine(seed, R4);
+    rlc2ss::hash_combine(seed, R5);
+    rlc2ss::hash_combine(seed, R6);
+    rlc2ss::hash_combine(seed, R7);
+    return seed;
 }
 
 uint64_t Model_controlled_sources::Switches::all() const {

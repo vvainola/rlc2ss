@@ -81,13 +81,23 @@ void Model_saturating_inductor::addInductorSaturation(double* inductor, std::vec
         double threshold = currents[i];
         double inductance_prev = inductances[i - 1];
         double inductance = inductances[i];
+        // Check +threshold and -threshold separately. Interpolating abs(current)
+        // gives the wrong event time if current crosses through zero during a
+        // step, e.g. -50 A -> +150 A with a 100 A threshold.
         // Increase inductance when current goes below level
         m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
-            double i_new = fabs(outputs_new.data[i_L_output_idx]);
-            if (i_prev > threshold && i_new < threshold) {
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
+            if (i_prev > threshold && i_new <= threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [inductor, inductance_prev]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            if (i_prev < -threshold && i_new >= -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
                     .event_callback = [inductor, inductance_prev]() {
                         *inductor = inductance_prev;
                     }};
@@ -96,11 +106,18 @@ void Model_saturating_inductor::addInductorSaturation(double* inductor, std::vec
         });
         // Decrease inductance when current goes above level
         m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
-            double i_new = fabs(outputs_new.data[i_L_output_idx]);
-            if (i_prev < threshold && i_new > threshold) {
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
+            if (i_prev < threshold && i_new >= threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [inductor, inductance]() {
+                        *inductor = inductance;
+                    }};
+            }
+            if (i_prev > -threshold && i_new <= -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
                     .event_callback = [inductor, inductance]() {
                         *inductor = inductance;
                     }};
@@ -175,9 +192,9 @@ void Model_saturating_inductor::stepModel(double dt) {
         m_Bu = m_ss.B * inputs.data;
         if (m_dt_resolution > 0) {
             double multiple = std::round(dt / m_dt_resolution);
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, multiple * m_dt_resolution);
+            states.data = m_solver.stepLinearBackwardEuler(states.data, m_Bu, multiple * m_dt_resolution);
         } else {
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+            states.data = m_solver.stepLinearBackwardEuler(states.data, m_Bu, dt);
         }
     } else {
         m_Bu = m_ss.B * inputs.data;
@@ -186,13 +203,13 @@ void Model_saturating_inductor::stepModel(double dt) {
             if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {
                 // Solve with tustin as multiples of resolution and ignore any error
                 double multiple = std::round(dt / m_dt_resolution);
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                states.data = m_solver.stepLinearTustin(states.data, m_Bu, multiple * m_dt_resolution);
             } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {
                 // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
                 // on later steps
                 double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
                 m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_resolution);
+                states.data = m_solver.stepLinearTustin(states.data, m_Bu, std::round(multiple) * m_dt_resolution);
             } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::INTEGRATE_ADAPTIVE) {
                 // Solve with tustin as multiples of resolution and the remaining time with runge-kutta so
                 // that the matrix inverses required for implicit integration can be cached for common timesteps
@@ -201,14 +218,14 @@ void Model_saturating_inductor::stepModel(double dt) {
                 if (std::abs(std::round(multiple) - multiple) > 1e-6) {
                     double dt1 = std::floor(multiple) * m_dt_resolution;
                     double dt2 = (multiple - std::floor(multiple)) * m_dt_resolution;
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
+                    states.data = m_solver.stepLinearTustin(states.data, m_Bu, dt1);
                     states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
                 } else {
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                    states.data = m_solver.stepLinearTustin(states.data, m_Bu, multiple * m_dt_resolution);
                 }
             }
         } else {
-            states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
+            states.data = m_solver.stepLinearTustin(states.data, m_Bu, dt);
         }
     }
 
