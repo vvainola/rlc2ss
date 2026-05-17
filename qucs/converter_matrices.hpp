@@ -32,8 +32,8 @@ class Model_converter {
     Model_converter(Components const& c);
 
     static inline constexpr size_t NUM_INPUTS = 10;
-    static inline constexpr size_t NUM_OUTPUTS = 19;
-    static inline constexpr size_t NUM_STATES = 5;
+    static inline constexpr size_t NUM_OUTPUTS = 28;
+    static inline constexpr size_t NUM_STATES = 11;
     static inline constexpr size_t NUM_SWITCHES = 12;
 
     enum class TimestepErrorCorrectionMode {
@@ -92,11 +92,17 @@ class Model_converter {
         Outputs() { data.setZero(); }
         Outputs(const Outputs& other) { data = other.data; }
         struct {
+            double I_C_a;
+            double I_C_b;
+            double I_C_c;
             double I_C_n;
             double I_C_p;
             double I_L_a;
             double I_L_b;
             double I_L_c;
+            double I_L_g_a;
+            double I_L_g_b;
+            double I_L_g_c;
             double I_R_D_a_n;
             double I_R_D_a_p;
             double I_R_D_b_n;
@@ -109,6 +115,9 @@ class Model_converter {
             double N_c_c;
             double N_dc_n;
             double N_dc_p;
+            double V_C_a;
+            double V_C_b;
+            double V_C_c;
             double V_C_n;
             double V_C_p;
         };
@@ -135,11 +144,17 @@ class Model_converter {
     };
 
     struct Components {
+        double C_a = 0.01;
+        double C_b = 0.01;
+        double C_c = 0.01;
         double C_n = 0.01;
         double C_p = 0.01;
         double L_a = 0.001;
         double L_b = 0.001;
         double L_c = 0.001;
+        double L_g_a = 0.001;
+        double L_g_b = 0.001;
+        double L_g_c = 0.001;
         double R_D_a_n = -1.0;
         double R_D_a_p = -1.0;
         double R_D_b_n = -1.0;
@@ -150,6 +165,9 @@ class Model_converter {
         double R_b = 0.01;
         double R_c = 0.01;
         double R_dc = 1.0;
+        double R_g_a = 0.01;
+        double R_g_b = 0.01;
+        double R_g_c = 0.01;
         double R_n_p = 1000.0;
         double R_n_s = 0.01;
         double R_p_p = 1000.0;
@@ -173,6 +191,12 @@ class Model_converter {
             double I_L_a;
             double I_L_b;
             double I_L_c;
+            double I_L_g_a;
+            double I_L_g_b;
+            double I_L_g_c;
+            double V_C_a;
+            double V_C_b;
+            double V_C_c;
             double V_C_n;
             double V_C_p;
         };
