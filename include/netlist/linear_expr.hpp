@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "sym_scalar.hpp"
+#include "netlist/sym_scalar.hpp"
 
 #include <unordered_map>
 #include <string>

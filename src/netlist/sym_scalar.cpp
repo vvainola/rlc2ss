@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "sym_scalar.hpp"
+#include "netlist/sym_scalar.hpp"
 
 #include <cassert>
 #include <cmath>
