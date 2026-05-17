@@ -139,7 +139,7 @@ def write_cpp_files(
                 double V_{diode.name}_prev = {prev_pos_node} - {prev_neg_node};
                 events.push(rlc2ss::ZeroCrossingEvent{{
                     .time = rlc2ss::calcZeroCrossingTime(V_{diode.name}_prev, V_{diode.name}),
-                    .event_callback = [&]() {{
+                    .event_callback = [this]() {{
                         switches.{diode.switch}.forceOutput(true);
                     }}
                 }});
@@ -147,7 +147,7 @@ def write_cpp_files(
             if (outputs.{diode.current} < 0 && switches.{diode.switch}.outputForced()) {{
                 events.push(rlc2ss::ZeroCrossingEvent{{
                     .time = rlc2ss::calcZeroCrossingTime(prev_outputs.{diode.current}, outputs.{diode.current}),
-                    .event_callback = [&]() {{
+                    .event_callback = [this]() {{
                         switches.{diode.switch}.forceOutput(std::nullopt);
                     }}
                 }});
