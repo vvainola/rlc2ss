@@ -72,13 +72,23 @@ void [[ class_name ]]::addInductorSaturation(double* inductor, std::vector<doubl
         double threshold = currents[i];
         double inductance_prev = inductances[i - 1];
         double inductance = inductances[i];
+        // Check +threshold and -threshold separately. Interpolating abs(current)
+        // gives the wrong event time if current crosses through zero during a
+        // step, e.g. -50 A -> +150 A with a 100 A threshold.
         // Increase inductance when current goes below level
         m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
-            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
             if (i_prev > threshold && i_new < threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [inductor, inductance_prev]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            if (i_prev < -threshold && i_new > -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
                     .event_callback = [inductor, inductance_prev]() {
                         *inductor = inductance_prev;
                     }};
@@ -87,11 +97,18 @@ void [[ class_name ]]::addInductorSaturation(double* inductor, std::vector<doubl
         });
         // Decrease inductance when current goes above level
         m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = fabs(outputs_prev.data[i_L_output_idx]);
-            double i_new = fabs(outputs_new.data[i_L_output_idx]);
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
             if (i_prev < threshold && i_new > threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [inductor, inductance]() {
+                        *inductor = inductance;
+                    }};
+            }
+            if (i_prev > -threshold && i_new < -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
                     .event_callback = [inductor, inductance]() {
                         *inductor = inductance;
                     }};
