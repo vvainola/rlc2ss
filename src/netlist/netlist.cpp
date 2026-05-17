@@ -151,23 +151,22 @@ Netlist parseNetlist(std::string const& netlist_str,
         Node& pos_node = getOrCreateNode(netlist.nodes, tokens[1]);
         Node& neg_node = getOrCreateNode(netlist.nodes, tokens[2]);
         std::string default_value_txt = "-1";
+        for (auto it = tokens.rbegin(); it != tokens.rend(); ++it) {
+            if (it->find(';') != std::string::npos) {
+                default_value_txt = *it;
+                break;
+            }
+        }
 
         // Use the component NAME as the symbolic value for R, L, C, and dependent sources
         SymScalar value(0.0);
         if (name[0] == 'V' || name[0] == 'I') {
-            default_value_txt = tokens.size() > 4 ? tokens[4] : "-1";
             // Voltage/current sources don't have a "value" in the component sense
             value = SymScalar(0.0);
         } else if (name[0] == 'R' || name[0] == 'L' || name[0] == 'C') {
-            default_value_txt = tokens.size() > 3 ? tokens[3] : "-1";
             // Use the component name as symbolic value
             value = SymScalar(name);
-        } else if (name[0] == 'E' || name[0] == 'G') {
-            default_value_txt = tokens.size() > 5 ? tokens[5] : "-1";
-            // Use the component name as symbolic value (gain)
-            value = SymScalar(name);
-        } else if (name[0] == 'F' || name[0] == 'H') {
-            default_value_txt = tokens.size() > 4 ? tokens[4] : "-1";
+        } else if (name[0] == 'E' || name[0] == 'G' || name[0] == 'F' || name[0] == 'H') {
             // Use the component name as symbolic value (gain)
             value = SymScalar(name);
         } else {

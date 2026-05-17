@@ -302,12 +302,11 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         pos_node = nodes[nodes.index(Node(line_split[POS_NODE]))]
         neg_node = nodes[nodes.index(Node(line_split[NEG_NODE]))]
         name = line_split[NAME]
-        if name.startswith('V') or name.startswith('I'):
-            default_value_txt = line_split[4] if len(line_split) > 4 else "-1"
-        elif name.startswith('R') or name.startswith('L') or name.startswith('C'):
-            default_value_txt = line_split[3] if len(line_split) > 3 else "-1"
-        else:
-            default_value_txt = "-1" # Ignore default
+        default_value_txt = "-1"
+        for tok in reversed(line_split):
+            if ';' in tok:
+                default_value_txt = tok
+                break
         # The default value may have output specifiers after ;
         default_value = default_value_txt.split(';')[0]
         component = Component(line_split[NAME], pos_node, neg_node, default_value)
