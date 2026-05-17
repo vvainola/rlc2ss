@@ -86,7 +86,7 @@ void Model_mutual_inductor::addInductorSaturation(double* inductor, std::vector<
             if (i_prev > threshold && i_new < threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [&]() {
+                    .event_callback = [inductor, inductance_prev]() {
                         *inductor = inductance_prev;
                     }};
             }
@@ -99,7 +99,7 @@ void Model_mutual_inductor::addInductorSaturation(double* inductor, std::vector<
             if (i_prev < threshold && i_new > threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [&]() {
+                    .event_callback = [inductor, inductance]() {
                         *inductor = inductance;
                     }};
             }

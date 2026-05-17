@@ -217,7 +217,7 @@ void Model_converter::addInductorSaturation(double* inductor, std::vector<double
             if (i_prev > threshold && i_new < threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [&]() {
+                    .event_callback = [inductor, inductance_prev]() {
                         *inductor = inductance_prev;
                     }};
             }
@@ -230,7 +230,7 @@ void Model_converter::addInductorSaturation(double* inductor, std::vector<double
             if (i_prev < threshold && i_new > threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [&]() {
+                    .event_callback = [inductor, inductance]() {
                         *inductor = inductance;
                     }};
             }
