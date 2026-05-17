@@ -217,14 +217,14 @@ void Model_converter::addInductorSaturation(double* inductor, std::vector<double
         m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
             double i_prev = outputs_prev.data[i_L_output_idx];
             double i_new = outputs_new.data[i_L_output_idx];
-            if (i_prev > threshold && i_new < threshold) {
+            if (i_prev > threshold && i_new <= threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
                     .event_callback = [inductor, inductance_prev]() {
                         *inductor = inductance_prev;
                     }};
             }
-            if (i_prev < -threshold && i_new > -threshold) {
+            if (i_prev < -threshold && i_new >= -threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
                     .event_callback = [inductor, inductance_prev]() {
@@ -237,14 +237,14 @@ void Model_converter::addInductorSaturation(double* inductor, std::vector<double
         m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
             double i_prev = outputs_prev.data[i_L_output_idx];
             double i_new = outputs_new.data[i_L_output_idx];
-            if (i_prev < threshold && i_new > threshold) {
+            if (i_prev < threshold && i_new >= threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
                     .event_callback = [inductor, inductance]() {
                         *inductor = inductance;
                     }};
             }
-            if (i_prev > -threshold && i_new < -threshold) {
+            if (i_prev > -threshold && i_new <= -threshold) {
                 return rlc2ss::ZeroCrossingEvent{
                     .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
                     .event_callback = [inductor, inductance]() {
