@@ -23,7 +23,7 @@
 #pragma once
 
 #include "str_helpers.h"
-#include "linear_expr.hpp"
+#include "netlist/linear_expr.hpp"
 
 #include <vector>
 #include <string>

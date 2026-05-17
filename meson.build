@@ -30,7 +30,6 @@ lib_rlc2ss = static_library('rlc2ss',
     include_directories : [
         'include',
         'src',
-        'src/netlist'
     ],
     dependencies : deps
 )
@@ -56,7 +55,6 @@ if meson.is_subproject()
         include_directories : [
             'include',
             'src',
-            'src/netlist'
         ],
         dependencies : deps
     )
