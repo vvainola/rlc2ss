@@ -176,8 +176,7 @@ def write_cpp_files(
             }}
             rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
 
-            // Substitute component values into cached symbolic matrices via the typed
-            // evaluator (memoised DAG walk over the AST nodes, no string parsing).
+            // Substitute component values into cached symbolic matrices
             std::unordered_map<std::string, double> values{{
             [[values_list]]}};
             Eigen::MatrixXd K1 = rlc2ss::evaluate(symbolic_ss.K1, values);
