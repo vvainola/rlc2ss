@@ -44,7 +44,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
         double V_D_a_n_prev = prev_outputs.N_dc_n - prev_outputs.N_c_a;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_a_n_prev, V_D_a_n),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_a_n.forceOutput(true);
             }
         });
@@ -52,7 +52,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
     if (outputs.I_R_D_a_n < 0 && switches.S_D_a_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_n, outputs.I_R_D_a_n),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_a_n.forceOutput(std::nullopt);
             }
         });
@@ -64,7 +64,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
         double V_D_a_p_prev = prev_outputs.N_c_a - prev_outputs.N_dc_p;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_a_p_prev, V_D_a_p),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_a_p.forceOutput(true);
             }
         });
@@ -72,7 +72,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
     if (outputs.I_R_D_a_p < 0 && switches.S_D_a_p.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_p, outputs.I_R_D_a_p),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_a_p.forceOutput(std::nullopt);
             }
         });
@@ -84,7 +84,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
         double V_D_b_n_prev = prev_outputs.N_dc_n - prev_outputs.N_c_b;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_b_n_prev, V_D_b_n),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_b_n.forceOutput(true);
             }
         });
@@ -92,7 +92,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
     if (outputs.I_R_D_b_n < 0 && switches.S_D_b_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_n, outputs.I_R_D_b_n),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_b_n.forceOutput(std::nullopt);
             }
         });
@@ -104,7 +104,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
         double V_D_b_p_prev = prev_outputs.N_c_b - prev_outputs.N_dc_p;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_b_p_prev, V_D_b_p),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_b_p.forceOutput(true);
             }
         });
@@ -112,7 +112,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
     if (outputs.I_R_D_b_p < 0 && switches.S_D_b_p.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_p, outputs.I_R_D_b_p),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_b_p.forceOutput(std::nullopt);
             }
         });
@@ -124,7 +124,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
         double V_D_c_n_prev = prev_outputs.N_dc_n - prev_outputs.N_c_c;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_c_n_prev, V_D_c_n),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_c_n.forceOutput(true);
             }
         });
@@ -132,7 +132,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
     if (outputs.I_R_D_c_n < 0 && switches.S_D_c_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_n, outputs.I_R_D_c_n),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_c_n.forceOutput(std::nullopt);
             }
         });
@@ -144,7 +144,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
         double V_D_c_p_prev = prev_outputs.N_c_c - prev_outputs.N_dc_p;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_c_p_prev, V_D_c_p),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_c_p.forceOutput(true);
             }
         });
@@ -152,7 +152,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
     if (outputs.I_R_D_c_p < 0 && switches.S_D_c_p.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_p, outputs.I_R_D_c_p),
-            .event_callback = [&]() {
+            .event_callback = [this]() {
                 switches.S_D_c_p.forceOutput(std::nullopt);
             }
         });
