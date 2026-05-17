@@ -278,7 +278,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     iv_sources: T.List[Component] = []
     vi_sources: T.List[Component] = []
     ii_sources: T.List[Component] = []
-    mutual_inductors: T.List[T.Tuple[str, Component, Component]] = []
+    mutual_inductors: T.List[T.Tuple[str, Component, Component, str]] = []
     for line in netlist:
         line_split = line.split()
         if line_split[NAME][0] == 'K' or line_split[NAME][0] == 'X' or line_split[NAME][0] == 'Y':
@@ -294,7 +294,12 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
         if line_split[NAME][0] == 'K':
             L1 = get_component(components, line_split[1])
             L2 = get_component(components, line_split[2])
-            mutual_inductors.append((line_split[NAME], L1, L2))
+            default_value_txt = "-1"
+            for tok in reversed(line_split):
+                if ';' in tok:
+                    default_value_txt = tok
+                    break
+            mutual_inductors.append((line_split[NAME], L1, L2, default_value_txt.split(';')[0]))
             continue
         elif line_split[NAME][0] == 'X' or line_split[NAME][0] == 'Y':
             continue
@@ -664,6 +669,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     default_values = {c.name: c.default_value for c in components}
     for Lm in mutual_inductors:
         component_names.append(Lm[0])
+        default_values[Lm[0]] = Lm[3]
     component_names.sort()
     ss = StateSpaceMatrices(
         component_names = component_names,
