@@ -215,15 +215,8 @@ double evaluateNode(ExprNode const& n,
     switch (n.op) {
         case ExprNode::Op::Var: {
             auto vit = vars.find(n.name);
-            if (vit == vars.end()) {
-                // Allow "sqrt(...)" pseudo-variables to be evaluated when the
-                // inner expression is itself substitutable by the caller. For
-                // now, treat unknown names as 0 to match the previous
-                // behaviour with default-zero netlist parameters.
-                v = 0.0;
-            } else {
-                v = vit->second;
-            }
+            assert(vit != vars.end() && "Missing symbolic variable value");
+            v = vit->second;
             break;
         }
         case ExprNode::Op::Const: v = n.value; break;
