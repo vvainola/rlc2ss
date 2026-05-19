@@ -130,10 +130,12 @@ class LinearExpr {
 
     LinearExpr operator*(double scalar) const {
         LinearExpr result = *this;
-        for (auto& [name, coeff] : result.terms) {
-            coeff *= scalar;
-            if (coeff == 0.0) {
-                result.terms.erase(name);
+        for (auto it = result.terms.begin(); it != result.terms.end();) {
+            it->second *= scalar;
+            if (it->second == 0.0) {
+                it = result.terms.erase(it);
+            } else {
+                ++it;
             }
         }
         result.constant *= scalar;
@@ -143,10 +145,12 @@ class LinearExpr {
 
     LinearExpr operator/(double scalar) const {
         LinearExpr result = *this;
-        for (auto& [name, coeff] : result.terms) {
-            coeff /= scalar;
-            if (coeff == 0.0) {
-                result.terms.erase(name);
+        for (auto it = result.terms.begin(); it != result.terms.end();) {
+            it->second /= scalar;
+            if (it->second == 0.0) {
+                it = result.terms.erase(it);
+            } else {
+                ++it;
             }
         }
         result.constant /= scalar;
