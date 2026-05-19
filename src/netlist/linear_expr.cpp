@@ -85,9 +85,7 @@ std::vector<LinearExpr> solveLinearSystem(SymbolicMatrix A, std::vector<LinearEx
             pivot++;
         }
 
-        if (pivot == n) {
-            continue;
-        }
+        assert(pivot != n && "Singular or unsupported symbolic system");
 
         // Swap rows in A and b
         if (pivot != i) {
@@ -100,6 +98,7 @@ std::vector<LinearExpr> solveLinearSystem(SymbolicMatrix A, std::vector<LinearEx
             b[i] = b[pivot];
             b[pivot] = temp_b;
         }
+        assert(!A(i, i).isZero() && "Zero pivot selected");
 
         // Eliminate
         for (int j = i + 1; j < n; ++j) {
