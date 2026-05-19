@@ -44,8 +44,7 @@ struct ExprNode {
 using ExprNodePtr = std::shared_ptr<ExprNode const>;
 
 // Symbolic scalar represented as a numeric value (fast path) or a shared
-// expression tree. Public API mirrors the previous string-based version so
-// linear_expr.* and state_space.cpp need no changes.
+// expression tree.
 class SymScalar {
   public:
     SymScalar();                                  // 0

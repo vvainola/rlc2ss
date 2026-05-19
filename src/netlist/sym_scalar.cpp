@@ -117,8 +117,8 @@ bool structurallyZero(ExprNode const& n) {
     return false;
 }
 
-// Append the textual representation of node into out, mirroring the parens
-// conventions of the previous string-tree implementation.
+// Append the textual representation of node into out with enough parentheses
+// to preserve expression semantics for downstream string consumers.
 void appendStr(std::string& out, ExprNode const& n) {
     switch (n.op) {
         case ExprNode::Op::Var:
