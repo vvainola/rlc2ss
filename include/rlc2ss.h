@@ -25,6 +25,8 @@
 #include <vector>
 #include <functional>
 #include <bit>
+#include <unordered_map>
+#include <cstdint>
 
 namespace rlc2ss {
 
