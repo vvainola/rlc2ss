@@ -86,10 +86,6 @@ SymbolicStateSpace formStateSpaceMatrices(std::string const& netlist,
                                           uint64_t combination,
                                           bool verbose = false);
 
-/// Evaluate a single symbolic scalar with component values substituted.
-double evaluate(SymScalar const& s,
-                std::unordered_map<std::string, double> const& values);
-
 /// Evaluate a symbolic matrix with component values substituted. Uses a single
 /// memoisation cache across all entries so that shared subexpressions (the AST
 /// nodes referenced by `SymScalar::tree()`) are evaluated at most once.

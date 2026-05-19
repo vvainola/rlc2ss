@@ -233,17 +233,6 @@ double evaluateNode(ExprNode const& n,
 
 } // namespace
 
-double evaluate(SymScalar const& s,
-                std::unordered_map<std::string, double> const& values) {
-    if (s.isNumeric()) {
-        return s.numeric();
-    }
-    auto tree = s.tree();
-    assert(tree);
-    std::unordered_map<ExprNode const*, double> cache;
-    return evaluateNode(*tree, values, cache);
-}
-
 Eigen::MatrixXd evaluate(SymbolicMatrix const& m,
                          std::unordered_map<std::string, double> const& values) {
     Eigen::MatrixXd out(m.rows(), m.cols());
