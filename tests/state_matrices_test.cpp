@@ -94,8 +94,11 @@ AbcdMatrices solveStateSpace(Eigen::MatrixXd const& K1,
     return m;
 }
 
-Eigen::MatrixXd csvToMatrix(std::string const& csv, int rows, int cols) {
-    return toRowMajorMatrix(rlc2ss::getCommaDelimitedValues(csv), rows, cols);
+Eigen::MatrixXd symbolicCsvToMatrix(std::string const& csv,
+                                    std::unordered_map<std::string, double> const& values,
+                                    int rows,
+                                    int cols) {
+    return toRowMajorMatrix(evaluateSymbolicCsv(csv, values), rows, cols);
 }
 
 bool closeEnough(Eigen::MatrixXd const& a, Eigen::MatrixXd const& b) {
@@ -119,10 +122,10 @@ void compareCombination(Fixture const& fx, std::string const& combination_key, i
     auto const& j_combo = j[combination_key];
 
     auto py_matrix = [&](char const* key, int rows, int cols) {
-        return toRowMajorMatrix(
-            evaluateSymbolicCsv(j_combo[key].template get<std::string>(), fx.component_values),
-            rows,
-            cols);
+        return symbolicCsvToMatrix(j_combo[key].template get<std::string>(),
+                                   fx.component_values,
+                                   rows,
+                                   cols);
     };
     AbcdMatrices py = solveStateSpace(
         py_matrix("K1", fx.num_states,  fx.num_states),
@@ -132,14 +135,14 @@ void compareCombination(Fixture const& fx, std::string const& combination_key, i
         py_matrix("C1", fx.num_outputs, fx.num_states),
         py_matrix("D1", fx.num_outputs, fx.num_inputs));
 
-    rlc2ss::StateSpaceMatrices ss = rlc2ss::formStateSpaceMatrices(netlist, combination, fx.component_values);
+    rlc2ss::SymbolicStateSpace ss = rlc2ss::formStateSpaceMatrices(netlist, combination);
     AbcdMatrices cpp = solveStateSpace(
-        csvToMatrix(ss.K1, fx.num_states,  fx.num_states),
-        csvToMatrix(ss.K2, fx.num_outputs, fx.num_states),
-        csvToMatrix(ss.A1, fx.num_states,  fx.num_states),
-        csvToMatrix(ss.B1, fx.num_states,  fx.num_inputs),
-        csvToMatrix(ss.C1, fx.num_outputs, fx.num_states),
-        csvToMatrix(ss.D1, fx.num_outputs, fx.num_inputs));
+        rlc2ss::evaluate(ss.K1, fx.component_values),
+        rlc2ss::evaluate(ss.K2, fx.component_values),
+        rlc2ss::evaluate(ss.A1, fx.component_values),
+        rlc2ss::evaluate(ss.B1, fx.component_values),
+        rlc2ss::evaluate(ss.C1, fx.component_values),
+        rlc2ss::evaluate(ss.D1, fx.component_values));
 
     dumpIfDiff("A", py.A, cpp.A);
     dumpIfDiff("B", py.B, cpp.B);
@@ -182,17 +185,20 @@ TEST_CASE("Converter: C++ matches Python JSON") {
     Fixture fx{
         .cir_filename = "converter.cir",
         .json_filename = "converter_matrices.json",
-        .num_states = 5,
+        .num_states = 11,
         .num_inputs = 10,
-        .num_outputs = 19,
+        .num_outputs = 28,
         .component_values = {
+            {"C_a", 10e-3}, {"C_b", 10e-3}, {"C_c", 10e-3},
             {"C_n", 10e-3}, {"C_p", 10e-3},
             {"L_a", 1e-3}, {"L_b", 1e-3}, {"L_c", 1e-3},
+            {"L_g_a", 1e-3}, {"L_g_b", 1e-3}, {"L_g_c", 1e-3},
             {"R_D_a_n", 0.5}, {"R_D_a_p", 0.5},
             {"R_D_b_n", 0.5}, {"R_D_b_p", 0.5},
             {"R_D_c_n", 0.5}, {"R_D_c_p", 0.5},
             {"R_a", 10e-3}, {"R_b", 10e-3}, {"R_c", 10e-3},
             {"R_dc", 1.0},
+            {"R_g_a", 10e-3}, {"R_g_b", 10e-3}, {"R_g_c", 10e-3},
             {"R_n_p", 1e3}, {"R_n_s", 10e-3},
             {"R_p_p", 1e3}, {"R_p_s", 10e-3},
         },
@@ -201,6 +207,11 @@ TEST_CASE("Converter: C++ matches Python JSON") {
     SECTION("combination 0")    { compareCombination(fx, "0",    0); }
     SECTION("combination 1")    { compareCombination(fx, "1",    1); }
     SECTION("combination 7")    { compareCombination(fx, "7",    7); }
-    SECTION("combination 63")   { compareCombination(fx, "63",   63); }
     SECTION("combination 4095") { compareCombination(fx, "4095", 4095); }
+    // Slowest 5 combinations across the full sweep [0, 4095]
+    SECTION("combination 315")  { compareCombination(fx, "315",  315); }
+    SECTION("combination 319")  { compareCombination(fx, "319",  319); }
+    SECTION("combination 63")   { compareCombination(fx, "63",   63); }
+    SECTION("combination 2079") { compareCombination(fx, "2079", 2079); }
+    SECTION("combination 1134") { compareCombination(fx, "1134", 1134); }
 }

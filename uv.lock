@@ -343,6 +343,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "conan" },
+    { name = "jinja2" },
     { name = "meson" },
     { name = "networkx" },
     { name = "sympy" },
@@ -352,6 +353,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "conan", specifier = ">=2.0" },
+    { name = "jinja2", specifier = ">=3.1.6" },
     { name = "meson", specifier = ">=1.5.2" },
     { name = "networkx", specifier = ">=3.3" },
     { name = "sympy", specifier = ">=1.13.3" },

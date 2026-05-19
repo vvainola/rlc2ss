@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "linear_expr.hpp"
+#include "netlist/linear_expr.hpp"
 
 #include <set>
 
@@ -45,7 +45,7 @@ SymbolicSystem linearEqsToMatrix(const std::vector<LinearExpr>& eqns, const std:
     int cols = unknowns.size();
 
     SymbolicSystem sys;
-    sys.A = Eigen::MatrixXd::Zero(rows, cols);
+    sys.A = SymbolicMatrix::Zero(rows, cols);
     sys.b.resize(rows);
 
     for (int i = 0; i < rows; ++i) {
@@ -73,35 +73,42 @@ SymbolicSystem linearEqsToMatrix(const std::vector<LinearExpr>& eqns, const std:
     return sys;
 }
 
-// Solves Ax = b using Gaussian elimination (fast numeric version)
-std::vector<LinearExpr> solveLinearSystem(Eigen::MatrixXd A, std::vector<LinearExpr> b, const std::vector<std::string>& unknowns) {
+// Solves Ax = b using Gaussian elimination with symbolic scalars
+std::vector<LinearExpr> solveLinearSystem(SymbolicMatrix A, std::vector<LinearExpr> b, const std::vector<std::string>& unknowns) {
     int n = unknowns.size();
 
     // Forward Elimination
     for (int i = 0; i < n; ++i) {
         // Find pivot
         int pivot = i;
-        while (pivot < n && A(pivot, i) == 0)
+        while (pivot < n && A(pivot, i).isZero()) {
             pivot++;
+        }
 
-        if (pivot == n)
+        if (pivot == n) {
             continue;
+        }
 
         // Swap rows in A and b
-        for (int k = 0; k < n; ++k) {
-            double temp = A(i, k);
-            A(i, k) = A(pivot, k);
-            A(pivot, k) = temp;
+        if (pivot != i) {
+            for (int k = 0; k < n; ++k) {
+                SymScalar temp = A(i, k);
+                A(i, k) = A(pivot, k);
+                A(pivot, k) = temp;
+            }
+            LinearExpr temp_b = b[i];
+            b[i] = b[pivot];
+            b[pivot] = temp_b;
         }
-        LinearExpr temp_b = b[i];
-        b[i] = b[pivot];
-        b[pivot] = temp_b;
 
         // Eliminate
         for (int j = i + 1; j < n; ++j) {
-            double factor = A(j, i) / A(i, i);
+            if (A(j, i).isZero()) {
+                continue;
+            }
+            SymScalar factor = A(j, i) / A(i, i);
             for (int k = i; k < n; ++k) {
-                A(j, k) = A(j, k) - factor * A(i, k);
+                A(j, k) -= factor * A(i, k);
             }
             b[j] = b[j] - factor * b[i];
         }

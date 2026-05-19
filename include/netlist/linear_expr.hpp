@@ -22,6 +22,8 @@
 
 #pragma once
 
+#include "netlist/sym_scalar.hpp"
+
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -38,11 +40,15 @@ namespace rlc2ss {
 class LinearExpr {
   public:
     LinearExpr(std::string const& symbol_name) {
-        terms[symbol_name] = 1.0;
+        terms[symbol_name] = SymScalar(1.0);
         updateStr();
     }
     LinearExpr(double c) {
-        constant = c;
+        constant = SymScalar(c);
+        updateStr();
+    }
+    LinearExpr(SymScalar c) {
+        constant = std::move(c);
         updateStr();
     }
     LinearExpr() = default;
@@ -50,24 +56,27 @@ class LinearExpr {
     std::string str() const {
         std::string result;
         for (auto const& [name, coeff] : terms) {
-            if (!result.empty() && coeff >= 0) {
+            if (coeff.isZero()) continue;
+            if (!result.empty()) {
                 result += "+";
             }
-            if (coeff == 1.0) {
+            if (coeff.isOne()) {
                 result += name;
-                continue;
-            } else if (coeff == -1.0) {
+            } else if (coeff.isNumeric() && coeff.numeric() == -1.0) {
+                // Remove trailing '+' if we just added one
+                if (!result.empty() && result.back() == '+') {
+                    result.pop_back();
+                }
                 result += std::format("-{}", name);
-                continue;
             } else {
-                result += std::format("{}*{}", coeff, name);
+                result += std::format("{}*{}", coeff.str(), name);
             }
         }
-        if (constant != 0.0) {
-            if (!result.empty() && constant >= 0) {
+        if (!constant.isZero()) {
+            if (!result.empty()) {
                 result += "+";
             }
-            result += std::format("{}", constant);
+            result += constant.str();
         }
         return result.empty() ? "0" : result;
     }
@@ -82,7 +91,7 @@ class LinearExpr {
         LinearExpr result = *this;
         for (auto const& [name, coeff] : other.terms) {
             result.terms[name] += coeff;
-            if (result.terms[name] == 0.0) {
+            if (result.terms[name].isZero()) {
                 result.terms.erase(name);
             }
         }
@@ -94,7 +103,7 @@ class LinearExpr {
     LinearExpr& operator+=(const LinearExpr& other) {
         for (auto const& [name, coeff] : other.terms) {
             terms[name] += coeff;
-            if (terms[name] == 0.0) {
+            if (terms[name].isZero()) {
                 terms.erase(name);
             }
         }
@@ -107,7 +116,7 @@ class LinearExpr {
         LinearExpr result = *this;
         for (auto const& [name, coeff] : other.terms) {
             result.terms[name] -= coeff;
-            if (result.terms[name] == 0.0) {
+            if (result.terms[name].isZero()) {
                 result.terms.erase(name);
             }
         }
@@ -119,7 +128,7 @@ class LinearExpr {
     LinearExpr& operator-=(const LinearExpr& other) {
         for (auto const& [name, coeff] : other.terms) {
             terms[name] -= coeff;
-            if (terms[name] == 0.0) {
+            if (terms[name].isZero()) {
                 terms.erase(name);
             }
         }
@@ -128,11 +137,12 @@ class LinearExpr {
         return *this;
     }
 
-    LinearExpr operator*(double scalar) const {
+    LinearExpr operator*(SymScalar scalar) const {
+        if (scalar.isZero()) return LinearExpr(0.0);
         LinearExpr result = *this;
         for (auto it = result.terms.begin(); it != result.terms.end();) {
             it->second *= scalar;
-            if (it->second == 0.0) {
+            if (it->second.isZero()) {
                 it = result.terms.erase(it);
             } else {
                 ++it;
@@ -143,11 +153,17 @@ class LinearExpr {
         return result;
     }
 
-    LinearExpr operator/(double scalar) const {
+    LinearExpr operator*(double scalar) const {
+        return *this * SymScalar(scalar);
+    }
+
+    LinearExpr operator/(SymScalar scalar) const {
+        assert(!scalar.isZero());
+        if (scalar.isOne()) return *this;
         LinearExpr result = *this;
         for (auto it = result.terms.begin(); it != result.terms.end();) {
             it->second /= scalar;
-            if (it->second == 0.0) {
+            if (it->second.isZero()) {
                 it = result.terms.erase(it);
             } else {
                 ++it;
@@ -158,14 +174,18 @@ class LinearExpr {
         return result;
     }
 
+    LinearExpr operator/(double scalar) const {
+        return *this / SymScalar(scalar);
+    }
+
     void replace(const std::string& symbol_name, const LinearExpr& new_expr) {
         if (terms.contains(symbol_name)) {
-            double coeff = terms[symbol_name];
+            SymScalar coeff = terms[symbol_name];
             terms.erase(symbol_name);
             // Add new_expr scaled by coeff
             for (auto const& [name, new_coeff] : new_expr.terms) {
                 terms[name] += coeff * new_coeff;
-                if (terms[name] == 0.0) {
+                if (terms[name].isZero()) {
                     terms.erase(name);
                 }
             }
@@ -178,9 +198,13 @@ class LinearExpr {
 #if ALWAYS_UPDATE_STR
     std::string m_str;
 #endif
-    std::unordered_map<std::string, double> terms; // symbol_name -> coefficient
-    double constant = 0.0;
+    std::unordered_map<std::string, SymScalar> terms; // symbol_name -> coefficient
+    SymScalar constant;
 };
+
+inline LinearExpr operator*(SymScalar const& scalar, const LinearExpr& expr) {
+    return expr * scalar;
+}
 
 inline LinearExpr operator*(double const scalar, const LinearExpr& expr) {
     return expr * scalar;
@@ -192,12 +216,27 @@ inline LinearExpr operator-(const LinearExpr& expr) {
 
 std::vector<LinearExpr> operator*(const Eigen::MatrixXd& mat, const std::vector<LinearExpr>& vec);
 
+struct SymbolicMatrix {
+    std::vector<std::vector<SymScalar>> data;
+    int rows() const { return (int)data.size(); }
+    int cols() const { return data.empty() ? 0 : (int)data[0].size(); }
+
+    SymScalar& operator()(int r, int c) { return data[r][c]; }
+    SymScalar const& operator()(int r, int c) const { return data[r][c]; }
+
+    static SymbolicMatrix Zero(int rows, int cols) {
+        SymbolicMatrix m;
+        m.data.resize(rows, std::vector<SymScalar>(cols, SymScalar(0.0)));
+        return m;
+    }
+};
+
 struct SymbolicSystem {
-    Eigen::MatrixXd A;
+    SymbolicMatrix A;
     std::vector<LinearExpr> b;
 };
 
 SymbolicSystem linearEqsToMatrix(const std::vector<LinearExpr>& eqns, const std::vector<std::string>& unknowns);
-std::vector<LinearExpr> solveLinearSystem(Eigen::MatrixXd A, std::vector<LinearExpr> b, const std::vector<std::string>& unknowns);
+std::vector<LinearExpr> solveLinearSystem(SymbolicMatrix A, std::vector<LinearExpr> b, const std::vector<std::string>& unknowns);
 
 } // namespace rlc2ss

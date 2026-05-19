@@ -23,13 +23,13 @@ lib_rlc2ss = static_library('rlc2ss',
         'src/netlist/netlist.cpp',
         'src/netlist/state_space.cpp',
         'src/netlist/linear_expr.cpp',
+        'src/netlist/sym_scalar.cpp',
         'src/rlc2ss.cpp',
         'src/str_helpers.cpp',
     ],
     include_directories : [
         'include',
         'src',
-        'src/netlist'
     ],
     dependencies : deps
 )
@@ -48,13 +48,13 @@ if meson.is_subproject()
             'src/netlist/netlist.cpp',
             'src/netlist/state_space.cpp',
             'src/netlist/linear_expr.cpp',
+            'src/netlist/sym_scalar.cpp',
             'src/rlc2ss.cpp',
             'src/str_helpers.cpp',
         ],
         include_directories : [
             'include',
             'src',
-            'src/netlist'
         ],
         dependencies : deps
     )

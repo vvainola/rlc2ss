@@ -66,8 +66,10 @@ class Integrator {
     /// <returns>New state</returns>
     template <class System>
     vector_t stepBackwardEuler(System const& system, vector_t const& x0, double t, double dt);
+    vector_t stepLinearBackwardEuler(vector_t const& x0, vector_t const& Bu, double dt);
     template <class System>
     vector_t stepTustin(System const& system, vector_t const& x0, double t, double dt);
+    vector_t stepLinearTustin(vector_t const& x0, vector_t const& Bu, double dt);
 
     void updateJacobian(matrix_t const& jacobian) {
         m_dt_prev = -1;
@@ -75,6 +77,8 @@ class Integrator {
         uint64_t hash = matrixHash(jacobian);
         m_used_euler_cache = &m_euler_caches[hash];
         m_used_tustin_cache = &m_tustin_caches[hash];
+        m_used_linear_euler_cache = &m_linear_euler_caches[hash];
+        m_used_linear_tustin_cache = &m_linear_tustin_caches[hash];
     }
 
     void enableInverseMatrixCaching(bool enable) {
@@ -82,11 +86,16 @@ class Integrator {
     }
 
     bool initialized() const {
-        return m_used_euler_cache != nullptr && m_used_tustin_cache != nullptr;
+        return m_used_euler_cache != nullptr && m_used_tustin_cache != nullptr && m_used_linear_euler_cache != nullptr && m_used_linear_tustin_cache != nullptr;
     }
 
   private:
     using MatrixHash = uint64_t;
+    struct LinearStepCoefficients {
+        matrix_t state;
+        matrix_t input;
+    };
+
     MatrixHash matrixHash(matrix_t const& matrix);
 
     matrix_t m_jacobian;
@@ -100,8 +109,12 @@ class Integrator {
     // Matrx inverse caches
     std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_euler_caches;
     std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_tustin_caches;
+    std::unordered_map<MatrixHash, std::unordered_map<double, LinearStepCoefficients>> m_linear_euler_caches;
+    std::unordered_map<MatrixHash, std::unordered_map<double, LinearStepCoefficients>> m_linear_tustin_caches;
     std::unordered_map<double, matrix_t>* m_used_euler_cache = nullptr;
     std::unordered_map<double, matrix_t>* m_used_tustin_cache = nullptr;
+    std::unordered_map<double, LinearStepCoefficients>* m_used_linear_euler_cache = nullptr;
+    std::unordered_map<double, LinearStepCoefficients>* m_used_linear_tustin_cache = nullptr;
     bool m_caching_enabled = false;
 
     bool withinTolerances(vector_t const& x, vector_t const& err) {
@@ -188,6 +201,53 @@ inline vector_t Integrator<vector_t, matrix_t>::stepBackwardEuler(System const& 
 
 template <class vector_t,
           class matrix_t>
+inline vector_t Integrator<vector_t, matrix_t>::stepLinearBackwardEuler(vector_t const& x0, vector_t const& Bu, double dt) {
+    // Fast path for linear systems: dx/dt = A*x + Bu, where m_jacobian == A and
+    // Bu is constant over this step. Backward Euler solves
+    //
+    //     x1 = x0 + dt*f(x1)
+    //
+    // Substituting f(x) = A*x + Bu gives
+    //
+    //     (I - dt*A) * x1 = x0 + dt*Bu
+    //
+    // so the exact implicit solution for this linear step is
+    //
+    //     x1 = F*x0 + G*Bu
+    //     F = inv(I - dt*A)
+    //     G = inv(I - dt*A) * dt
+    //
+    // This is mathematically the same fixed point that stepBackwardEuler's
+    // Newton loop converges to, but avoids repeated dxdt calls and
+    // inverse-vector products.
+    //
+    // Do not use this fast path for nonlinear systems or systems whose A/Bu
+    // changes within the integration step. Examples where the generic
+    // stepBackwardEuler() path is required include state-dependent Jacobians,
+    // input callbacks that change during the step, component saturation modeled
+    // continuously rather than as piecewise-constant matrix updates, or any
+    // System::dxdt implementation that is not exactly A*x + constant Bu for the
+    // current cached Jacobian.
+    if (!m_caching_enabled) {
+        m_used_linear_euler_cache->clear();
+    }
+
+    auto it = m_used_linear_euler_cache->find(dt);
+    if (it == m_used_linear_euler_cache->end()) {
+        matrix_t lhs_inv = (matrix_t::Identity() - dt * m_jacobian).inverse();
+        LinearStepCoefficients coeffs{
+            .state = lhs_inv,
+            .input = lhs_inv * dt,
+        };
+        it = m_used_linear_euler_cache->emplace(dt, std::move(coeffs)).first;
+    }
+
+    LinearStepCoefficients const& coeffs = it->second;
+    return coeffs.state * x0 + coeffs.input * Bu;
+}
+
+template <class vector_t,
+          class matrix_t>
 template <class System>
 inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system, vector_t const& x0, double t, double dt) {
     t += dt;
@@ -219,6 +279,52 @@ inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system,
         ++iterations;
     }
     return x;
+}
+
+template <class vector_t,
+          class matrix_t>
+inline vector_t Integrator<vector_t, matrix_t>::stepLinearTustin(vector_t const& x0, vector_t const& Bu, double dt) {
+    // Fast path for linear systems: dx/dt = A*x + Bu, where m_jacobian == A and
+    // Bu is constant over this step. The generic Tustin method solves
+    //
+    //     x1 = x0 + 0.5*dt*(f(x0) + f(x1))
+    //
+    // Substituting f(x) = A*x + Bu gives
+    //
+    //     (I - 0.5*dt*A) * x1 = (I + 0.5*dt*A) * x0 + dt*Bu
+    //
+    // so the exact implicit solution for this linear step is
+    //
+    //     x1 = F*x0 + G*Bu
+    //     F = inv(I - 0.5*dt*A) * (I + 0.5*dt*A)
+    //     G = inv(I - 0.5*dt*A) * dt
+    //
+    // This is mathematically the same fixed point that stepTustin's Newton loop
+    // converges to, but avoids repeated dxdt calls and inverse-vector products.
+    //
+    // Do not use this fast path for nonlinear systems or systems whose A/Bu
+    // changes within the integration step. Examples where the generic
+    // stepTustin() path is required include state-dependent Jacobians, input
+    // callbacks that change during the step, component saturation modeled
+    // continuously rather than as piecewise-constant matrix updates, or any
+    // System::dxdt implementation that is not exactly A*x + constant Bu for the
+    // current cached Jacobian.
+    if (!m_caching_enabled) {
+        m_used_linear_tustin_cache->clear();
+    }
+
+    auto it = m_used_linear_tustin_cache->find(dt);
+    if (it == m_used_linear_tustin_cache->end()) {
+        matrix_t lhs_inv = (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse();
+        LinearStepCoefficients coeffs{
+            .state = lhs_inv * (matrix_t::Identity() + 0.5 * dt * m_jacobian),
+            .input = lhs_inv * dt,
+        };
+        it = m_used_linear_tustin_cache->emplace(dt, std::move(coeffs)).first;
+    }
+
+    LinearStepCoefficients const& coeffs = it->second;
+    return coeffs.state * x0 + coeffs.input * Bu;
 }
 
 template <class vector_t, class matrix_t>

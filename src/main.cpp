@@ -5,6 +5,8 @@
 
 #include <filesystem>
 #include <chrono>
+#include <format>
+#include <optional>
 
 int main(int argc, char** argv) {
     cxxopts::Options options("Generate C++ state-space matrices from given netlist");
@@ -12,14 +14,20 @@ int main(int argc, char** argv) {
     // clang-format off
     options.add_options()
         ("h,help", "Show help and exit")
-        ("v,verbose", "Enable verbose output");
+        ("v,verbose", "Enable verbose output")
+        ("c,combination", "Solve only the given switch combination (default: sweep all)",
+            cxxopts::value<int>());
     // clang-format on
     cxxopts::ParseResult parsed_options;
     bool verbose = false;
+    std::optional<int> single_combination;
     try {
         parsed_options = options.parse(argc, argv);
         if (parsed_options.count("verbose")) {
             verbose = true;
+        }
+        if (parsed_options.count("combination")) {
+            single_combination = parsed_options["combination"].as<int>();
         }
     } catch (const cxxopts::OptionException& e) {
         std::cerr << "Error parsing options: " << e.what() << std::endl;
@@ -40,10 +48,22 @@ int main(int argc, char** argv) {
         }
         std::vector<std::string> netlist_lines = rlc2ss::collectNetlistLines(*file_content);
         std::vector<std::string> switches = rlc2ss::extractSwitches(netlist_lines);
-        for (int combination = 0; combination < (1 << switches.size()); ++combination) {
+
+        int begin = 0;
+        int end = 1 << switches.size();
+        if (single_combination) {
+            if (*single_combination < 0 || *single_combination >= end) {
+                throw std::runtime_error(std::format(
+                    "--combination {} is out of range [0, {})", *single_combination, end));
+            }
+            begin = *single_combination;
+            end = begin + 1;
+        }
+        for (int combination = begin; combination < end; ++combination) {
             std::cout << combination << " ";
             auto t_start = std::chrono::steady_clock::now();
-            rlc2ss::StateSpaceMatrices output = rlc2ss::formStateSpaceMatrices(*file_content, combination, {}, verbose);
+            rlc2ss::SymbolicStateSpace output = rlc2ss::formStateSpaceMatrices(*file_content, combination, verbose);
+            (void)output;
             auto t_end = std::chrono::steady_clock::now();
             auto elapsed_us = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
             std::cout << "formStateSpaceMatrices took " << elapsed_us << " ms" << std::endl;

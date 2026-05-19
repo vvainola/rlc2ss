@@ -16,20 +16,29 @@ S_b_n N_dc_n  N_c_b  _net9  _net10
 D_b_n N_dc_n  N_c_b 
 S_c_n N_dc_n  N_c_c  _net11  _net12 
 D_c_n N_dc_n  N_c_c 
-V_a _net13 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
-V_c _net15 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
-V_b _net16 _net14 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
-L_b _net17 _net16  1M 
-L_a _net18 _net13  1M 
-L_c _net19 _net15  1M 
-C_p 0 _net20  10E-3;I; 
-C_n _net21 0  10E-3;I; 
-R_n_s N_dc_n _net21  10E-3
-R_p_s _net20 N_dc_p  10E-3
-R_a N_c_a _net18  10E-3
-R_b N_c_b _net17  10E-3
-R_c N_c_c _net19  10E-3
+L_b _net13 _net14  1M 
+L_a _net15 _net16  1M 
+L_c _net17 _net18  1M 
+C_p 0 _net19  10E-3;I; 
+C_n _net20 0  10E-3;I; 
+R_n_s N_dc_n _net20  10E-3
+R_p_s _net19 N_dc_p  10E-3
+R_a N_c_a _net15  10E-3
+R_b N_c_b _net13  10E-3
+R_c N_c_c _net17  10E-3
 R_dc _net0 N_dc_p  1;I;
+V_a _net21 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
+V_c _net23 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
+V_b _net24 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
+L_g_b _net25 _net24  1M 
+L_g_a _net26 _net21  1M 
+L_g_c _net27 _net23  1M 
+R_g_a _net16 _net26  10E-3
+R_g_b _net14 _net25  10E-3
+R_g_c _net18 _net27  10E-3
+C_a _net28 _net16  10E-3;I; 
+C_b _net28 _net14  10E-3;I; 
+C_c _net28 _net18  10E-3;I; 
 .control
 set filetype=ascii
 op

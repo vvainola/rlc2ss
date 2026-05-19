@@ -66,8 +66,8 @@ class Model_saturating_inductor {
     /// @param current Current breakpoints in ascending order. First breakpoint must be 0.
     /// @param inductance Inductance values at the breakpoints.
     /// Example:
-    /// currents   = {0,       100,   200,   300}
-    /// inductances = {100e-6, 75e-6, 50e-6, 25e-6}
+    /// currents    = {0,       100,        200,       300}
+    /// inductances = {   100e-6,    75e-6,      50e-6,     25e-6}
     void addInductorSaturation(double* inductor, std::vector<double> current, std::vector<double> inductance);
 
     union Inputs {
@@ -105,14 +105,8 @@ class Model_saturating_inductor {
         double L2 = 3.344481605351208e-05;
         double R = 0.1;
 
-        bool operator==(Components const& other) const {
-            return
-                L0 == other.L0 &&
-                L1 == other.L1 &&
-                L2 == other.L2 &&
-                R == other.R;
-        }
-
+        uint64_t hash() const;
+        bool operator==(Components const& other) const;
         bool operator!=(Components const& other) const {
             return !(*this == other);
         }

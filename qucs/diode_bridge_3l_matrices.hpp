@@ -8,11 +8,15 @@
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
 #include "on_off_delay.hpp"
-#include <Eigen/Dense>
-#include <Eigen/Core>
-#include <Eigen/LU>
 #include "integrator.hpp"
+#include "rlc2ss.h"
+
+#include "Eigen/Dense"
+#include "Eigen/Core"
+#include "Eigen/LU"
+
 #include "nlohmann/json.hpp"
+
 #include <assert.h>
 
 class Model_diode_bridge_3l {
@@ -55,6 +59,16 @@ class Model_diode_bridge_3l {
     }
 
     void step(double dt, Inputs const& inputs_);
+
+    /// @brief Add stepwise saturation curve to inductor. The inductance is reduced when the current
+    /// exceeds the breakpoints and increased when current goes below the breakpoints.
+    /// @param inductor Pointer to inductor in component struct e.g. &circuit.components.L0
+    /// @param current Current breakpoints in ascending order. First breakpoint must be 0.
+    /// @param inductance Inductance values at the breakpoints.
+    /// Example:
+    /// currents    = {0,       100,        200,       300}
+    /// inductances = {   100e-6,    75e-6,      50e-6,     25e-6}
+    void addInductorSaturation(double* inductor, std::vector<double> current, std::vector<double> inductance);
 
     union Inputs {
         Inputs() { data.setZero(); }
@@ -188,57 +202,8 @@ class Model_diode_bridge_3l {
         double R_src_b = 0.001;
         double R_src_c = 0.001;
 
-        bool operator==(Components const& other) const {
-            return
-                C_dc_n1 == other.C_dc_n1 &&
-                C_dc_n2 == other.C_dc_n2 &&
-                C_dc_p1 == other.C_dc_p1 &&
-                C_dc_p2 == other.C_dc_p2 &&
-                C_f_a == other.C_f_a &&
-                C_f_b == other.C_f_b &&
-                C_f_c == other.C_f_c &&
-                L_conv_a == other.L_conv_a &&
-                L_conv_b == other.L_conv_b &&
-                L_conv_c == other.L_conv_c &&
-                L_dc_n == other.L_dc_n &&
-                L_dc_p == other.L_dc_p &&
-                L_dc_src == other.L_dc_src &&
-                L_grid_a == other.L_grid_a &&
-                L_grid_b == other.L_grid_b &&
-                L_grid_c == other.L_grid_c &&
-                L_src_a == other.L_src_a &&
-                L_src_b == other.L_src_b &&
-                L_src_c == other.L_src_c &&
-                R_D_n_a == other.R_D_n_a &&
-                R_D_n_b == other.R_D_n_b &&
-                R_D_n_c == other.R_D_n_c &&
-                R_D_p_a == other.R_D_p_a &&
-                R_D_p_b == other.R_D_p_b &&
-                R_D_p_c == other.R_D_p_c &&
-                R_conv_a == other.R_conv_a &&
-                R_conv_b == other.R_conv_b &&
-                R_conv_c == other.R_conv_c &&
-                R_dc_pn1 == other.R_dc_pn1 &&
-                R_dc_pn2 == other.R_dc_pn2 &&
-                R_dc_pp1 == other.R_dc_pp1 &&
-                R_dc_pp2 == other.R_dc_pp2 &&
-                R_dc_sn1 == other.R_dc_sn1 &&
-                R_dc_sn2 == other.R_dc_sn2 &&
-                R_dc_sp1 == other.R_dc_sp1 &&
-                R_dc_sp2 == other.R_dc_sp2 &&
-                R_dc_src_p == other.R_dc_src_p &&
-                R_dc_src_s == other.R_dc_src_s &&
-                R_f_a == other.R_f_a &&
-                R_f_b == other.R_f_b &&
-                R_f_c == other.R_f_c &&
-                R_grid_a == other.R_grid_a &&
-                R_grid_b == other.R_grid_b &&
-                R_grid_c == other.R_grid_c &&
-                R_src_a == other.R_src_a &&
-                R_src_b == other.R_src_b &&
-                R_src_c == other.R_src_c;
-        }
-
+        uint64_t hash() const;
+        bool operator==(Components const& other) const;
         bool operator!=(Components const& other) const {
             return !(*this == other);
         }
@@ -293,6 +258,7 @@ class Model_diode_bridge_3l {
     Switches switches;
 
   private:
+    std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
     void stepWithZeroCrossingDetection(double dt);
     void stepModel(double dt);
     void updateStateSpaceMatrices();
@@ -307,6 +273,8 @@ class Model_diode_bridge_3l {
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
+    std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
     // The json file with symbolic intermediate matrices
     nlohmann::json m_circuit_json;
 

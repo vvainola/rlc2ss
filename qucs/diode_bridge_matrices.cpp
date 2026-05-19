@@ -2,7 +2,7 @@
 #include "diode_bridge_matrices.hpp"
 #include "rlc2ss.h"
 #include <optional>
-#include <fstream>
+#include <mutex>
 #include <format>
 #include <memory>
 #include "diode_bridge_matrices_json.h"
@@ -13,145 +13,156 @@
 #pragma warning(disable : 4408) // anonymous struct did not declare any data members
 #pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
 
+inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
+
 static std::unique_ptr<Model_diode_bridge::StateSpaceMatrices> calcStateSpace(
-    Eigen::Matrix<double, Model_diode_bridge::NUM_STATES, Model_diode_bridge::NUM_STATES> const& K1,
-    Eigen::Matrix<double, Model_diode_bridge::NUM_STATES, Model_diode_bridge::NUM_STATES> const& A1,
-    Eigen::Matrix<double, Model_diode_bridge::NUM_STATES, Model_diode_bridge::NUM_INPUTS> const& B1,
-    Eigen::Matrix<double, Model_diode_bridge::NUM_OUTPUTS, Model_diode_bridge::NUM_STATES> const& K2,
-    Eigen::Matrix<double, Model_diode_bridge::NUM_OUTPUTS, Model_diode_bridge::NUM_STATES> const& C1,
-    Eigen::Matrix<double, Model_diode_bridge::NUM_OUTPUTS, Model_diode_bridge::NUM_INPUTS> const& D1) {
+    Eigen::MatrixXd const& K1,
+    Eigen::MatrixXd const& A1,
+    Eigen::MatrixXd const& B1,
+    Eigen::MatrixXd const& K2,
+    Eigen::MatrixXd const& C1,
+    Eigen::MatrixXd const& D1) {
     auto ss = std::make_unique<Model_diode_bridge::StateSpaceMatrices>();
-    ss->A = K1.partialPivLu().solve(A1);
-    ss->B = K1.partialPivLu().solve(B1);
-    ss->C = (C1 + K2 * ss->A);
-    ss->D = (D1 + K2 * ss->B);
+    Eigen::MatrixXd A = K1.partialPivLu().solve(A1);
+    Eigen::MatrixXd B = K1.partialPivLu().solve(B1);
+    ss->A = A;
+    ss->B = B;
+    ss->C = (C1 + K2 * A);
+    ss->D = (D1 + K2 * B);
     return ss;
 }
 
-static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_diode_bridge& circuit, Model_diode_bridge::Outputs const& prev_outputs) {
+std::optional<rlc2ss::ZeroCrossingEvent> Model_diode_bridge::checkZeroCrossingEvents(Model_diode_bridge::Outputs const& prev_outputs) {
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
                         std::vector<rlc2ss::ZeroCrossingEvent>,
                         std::greater<rlc2ss::ZeroCrossingEvent>>
         events;
 
-    // Diode D_p_a
-    double V_D_p_a = circuit.outputs._net0 - circuit.outputs.N_dc_p;
-    if (V_D_p_a > circuit.inputs.V_D_p_a && !circuit.switches.S_D_p_a) {
-        double V_D_p_a_prev = prev_outputs._net0 - prev_outputs.N_dc_p;
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(V_D_p_a_prev, V_D_p_a),
-            .event_callback = [&]() {
-                circuit.switches.S_D_p_a = 1;
-            }
-        });
-    }
-    if (circuit.outputs.I_R_D_p_a < 0 && circuit.switches.S_D_p_a) {
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_a, circuit.outputs.I_R_D_p_a),
-            .event_callback = [&]() {
-                circuit.switches.S_D_p_a = 0;
-            }
-        });
-    }
-
-    // Diode D_p_b
-    double V_D_p_b = circuit.outputs._net1 - circuit.outputs.N_dc_p;
-    if (V_D_p_b > circuit.inputs.V_D_p_b && !circuit.switches.S_D_p_b) {
-        double V_D_p_b_prev = prev_outputs._net1 - prev_outputs.N_dc_p;
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(V_D_p_b_prev, V_D_p_b),
-            .event_callback = [&]() {
-                circuit.switches.S_D_p_b = 1;
-            }
-        });
-    }
-    if (circuit.outputs.I_R_D_p_b < 0 && circuit.switches.S_D_p_b) {
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_b, circuit.outputs.I_R_D_p_b),
-            .event_callback = [&]() {
-                circuit.switches.S_D_p_b = 0;
-            }
-        });
-    }
-
-    // Diode D_p_c
-    double V_D_p_c = circuit.outputs._net2 - circuit.outputs.N_dc_p;
-    if (V_D_p_c > circuit.inputs.V_D_p_c && !circuit.switches.S_D_p_c) {
-        double V_D_p_c_prev = prev_outputs._net2 - prev_outputs.N_dc_p;
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(V_D_p_c_prev, V_D_p_c),
-            .event_callback = [&]() {
-                circuit.switches.S_D_p_c = 1;
-            }
-        });
-    }
-    if (circuit.outputs.I_R_D_p_c < 0 && circuit.switches.S_D_p_c) {
-        events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_c, circuit.outputs.I_R_D_p_c),
-            .event_callback = [&]() {
-                circuit.switches.S_D_p_c = 0;
-            }
-        });
-    }
-
     // Diode D_n_a
-    double V_D_n_a = circuit.outputs.N_dc_n - circuit.outputs._net0;
-    if (V_D_n_a > circuit.inputs.V_D_n_a && !circuit.switches.S_D_n_a) {
+    double V_D_n_a = outputs.N_dc_n - outputs._net0;
+    if (V_D_n_a > inputs.V_D_n_a && !switches.S_D_n_a) {
         double V_D_n_a_prev = prev_outputs.N_dc_n - prev_outputs._net0;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_n_a_prev, V_D_n_a),
-            .event_callback = [&]() {
-                circuit.switches.S_D_n_a = 1;
+            .event_callback = [this]() {
+                switches.S_D_n_a.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_n_a < 0 && circuit.switches.S_D_n_a) {
+    if (outputs.I_R_D_n_a < 0 && switches.S_D_n_a.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_a, circuit.outputs.I_R_D_n_a),
-            .event_callback = [&]() {
-                circuit.switches.S_D_n_a = 0;
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_a, outputs.I_R_D_n_a),
+            .event_callback = [this]() {
+                switches.S_D_n_a.forceOutput(std::nullopt);
             }
         });
     }
 
     // Diode D_n_b
-    double V_D_n_b = circuit.outputs.N_dc_n - circuit.outputs._net1;
-    if (V_D_n_b > circuit.inputs.V_D_n_b && !circuit.switches.S_D_n_b) {
+    double V_D_n_b = outputs.N_dc_n - outputs._net1;
+    if (V_D_n_b > inputs.V_D_n_b && !switches.S_D_n_b) {
         double V_D_n_b_prev = prev_outputs.N_dc_n - prev_outputs._net1;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_n_b_prev, V_D_n_b),
-            .event_callback = [&]() {
-                circuit.switches.S_D_n_b = 1;
+            .event_callback = [this]() {
+                switches.S_D_n_b.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_n_b < 0 && circuit.switches.S_D_n_b) {
+    if (outputs.I_R_D_n_b < 0 && switches.S_D_n_b.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_b, circuit.outputs.I_R_D_n_b),
-            .event_callback = [&]() {
-                circuit.switches.S_D_n_b = 0;
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_b, outputs.I_R_D_n_b),
+            .event_callback = [this]() {
+                switches.S_D_n_b.forceOutput(std::nullopt);
             }
         });
     }
 
     // Diode D_n_c
-    double V_D_n_c = circuit.outputs.N_dc_n - circuit.outputs._net2;
-    if (V_D_n_c > circuit.inputs.V_D_n_c && !circuit.switches.S_D_n_c) {
+    double V_D_n_c = outputs.N_dc_n - outputs._net2;
+    if (V_D_n_c > inputs.V_D_n_c && !switches.S_D_n_c) {
         double V_D_n_c_prev = prev_outputs.N_dc_n - prev_outputs._net2;
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(V_D_n_c_prev, V_D_n_c),
-            .event_callback = [&]() {
-                circuit.switches.S_D_n_c = 1;
+            .event_callback = [this]() {
+                switches.S_D_n_c.forceOutput(true);
             }
         });
     }
-    if (circuit.outputs.I_R_D_n_c < 0 && circuit.switches.S_D_n_c) {
+    if (outputs.I_R_D_n_c < 0 && switches.S_D_n_c.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
-            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_c, circuit.outputs.I_R_D_n_c),
-            .event_callback = [&]() {
-                circuit.switches.S_D_n_c = 0;
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_n_c, outputs.I_R_D_n_c),
+            .event_callback = [this]() {
+                switches.S_D_n_c.forceOutput(std::nullopt);
             }
         });
+    }
+
+    // Diode D_p_a
+    double V_D_p_a = outputs._net0 - outputs.N_dc_p;
+    if (V_D_p_a > inputs.V_D_p_a && !switches.S_D_p_a) {
+        double V_D_p_a_prev = prev_outputs._net0 - prev_outputs.N_dc_p;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_p_a_prev, V_D_p_a),
+            .event_callback = [this]() {
+                switches.S_D_p_a.forceOutput(true);
+            }
+        });
+    }
+    if (outputs.I_R_D_p_a < 0 && switches.S_D_p_a.outputForced()) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_a, outputs.I_R_D_p_a),
+            .event_callback = [this]() {
+                switches.S_D_p_a.forceOutput(std::nullopt);
+            }
+        });
+    }
+
+    // Diode D_p_b
+    double V_D_p_b = outputs._net1 - outputs.N_dc_p;
+    if (V_D_p_b > inputs.V_D_p_b && !switches.S_D_p_b) {
+        double V_D_p_b_prev = prev_outputs._net1 - prev_outputs.N_dc_p;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_p_b_prev, V_D_p_b),
+            .event_callback = [this]() {
+                switches.S_D_p_b.forceOutput(true);
+            }
+        });
+    }
+    if (outputs.I_R_D_p_b < 0 && switches.S_D_p_b.outputForced()) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_b, outputs.I_R_D_p_b),
+            .event_callback = [this]() {
+                switches.S_D_p_b.forceOutput(std::nullopt);
+            }
+        });
+    }
+
+    // Diode D_p_c
+    double V_D_p_c = outputs._net2 - outputs.N_dc_p;
+    if (V_D_p_c > inputs.V_D_p_c && !switches.S_D_p_c) {
+        double V_D_p_c_prev = prev_outputs._net2 - prev_outputs.N_dc_p;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D_p_c_prev, V_D_p_c),
+            .event_callback = [this]() {
+                switches.S_D_p_c.forceOutput(true);
+            }
+        });
+    }
+    if (outputs.I_R_D_p_c < 0 && switches.S_D_p_c.outputForced()) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_p_c, outputs.I_R_D_p_c),
+            .event_callback = [this]() {
+                switches.S_D_p_c.forceOutput(std::nullopt);
+            }
+        });
+    }
+
+    for (auto const& callback : m_zero_crossing_callbacks) {
+        std::optional<rlc2ss::ZeroCrossingEvent> event = callback(prev_outputs, outputs);
+        if (event) {
+            events.push(*event);
+        }
     }
 
     if (events.size() > 0) {
@@ -163,8 +174,77 @@ static std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Model_di
 Model_diode_bridge::Model_diode_bridge(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
-    updateStateSpaceMatrices();
-    m_solver.updateJacobian(m_ss.A);
+}
+
+void Model_diode_bridge::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
+    // Check that the currents are ascending and inductances are descending
+    assert(currents.size() == inductances.size());
+    for (int i = 1; i < currents.size(); ++i) {
+        assert(currents[i] >= currents[i - 1]);
+        assert(inductances[i] <= inductances[i - 1]);
+    }
+    int i_L_output_idx = -1;
+    if (inductor == &components.L_a) {
+        i_L_output_idx = 0;
+    }
+    if (inductor == &components.L_b) {
+        i_L_output_idx = 1;
+    }
+    if (inductor == &components.L_c) {
+        i_L_output_idx = 2;
+    }
+    if (i_L_output_idx == -1) {
+        assert(("Invalid pointer to inductor", false));
+    }
+
+    for (int i = 1; i < currents.size(); ++i) {
+        double threshold = currents[i];
+        double inductance_prev = inductances[i - 1];
+        double inductance = inductances[i];
+        // Check +threshold and -threshold separately. Interpolating abs(current)
+        // gives the wrong event time if current crosses through zero during a
+        // step, e.g. -50 A -> +150 A with a 100 A threshold.
+        // Increase inductance when current goes below level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
+            if (i_prev > threshold && i_new <= threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [inductor, inductance_prev]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            if (i_prev < -threshold && i_new >= -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
+                    .event_callback = [inductor, inductance_prev]() {
+                        *inductor = inductance_prev;
+                    }};
+            }
+            return std::nullopt;
+        });
+        // Decrease inductance when current goes above level
+        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+            double i_prev = outputs_prev.data[i_L_output_idx];
+            double i_new = outputs_new.data[i_L_output_idx];
+            if (i_prev < threshold && i_new >= threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
+                    .event_callback = [inductor, inductance]() {
+                        *inductor = inductance;
+                    }};
+            }
+            if (i_prev > -threshold && i_new <= -threshold) {
+                return rlc2ss::ZeroCrossingEvent{
+                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
+                    .event_callback = [inductor, inductance]() {
+                        *inductor = inductance;
+                    }};
+            }
+            return std::nullopt;
+        });
+    }
 }
 
 void Model_diode_bridge::step(double dt, Inputs const& inputs_) {
@@ -197,8 +277,10 @@ void Model_diode_bridge::stepWithZeroCrossingDetection(double dt) {
     prev_outputs.data = outputs.data;
 
     stepModel(dt);
-    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(*this, prev_outputs);
-    while (zc_event) {
+    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(prev_outputs);
+    int zc_event_count = 0;
+    while (zc_event && zc_event_count < MAX_ZERO_CROSS_EVENTS) {
+        zc_event_count++;
         // Redo step
         states.data = prev_state.data;
         stepModel(zc_event->time * dt);
@@ -210,7 +292,7 @@ void Model_diode_bridge::stepWithZeroCrossingDetection(double dt) {
         dt = dt * (1 - zc_event->time);
         stepModel(dt);
         // Check for new events
-        zc_event = checkZeroCrossingEvents(*this, prev_outputs);
+        zc_event = checkZeroCrossingEvents(prev_outputs);
     }
 }
 
@@ -241,9 +323,9 @@ void Model_diode_bridge::stepModel(double dt) {
         m_Bu = m_ss.B * inputs.data;
         if (m_dt_resolution > 0) {
             double multiple = std::round(dt / m_dt_resolution);
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, multiple * m_dt_resolution);
+            states.data = m_solver.stepLinearBackwardEuler(states.data, m_Bu, multiple * m_dt_resolution);
         } else {
-            states.data = m_solver.stepBackwardEuler(*this, states.data, 0.0, dt);
+            states.data = m_solver.stepLinearBackwardEuler(states.data, m_Bu, dt);
         }
     } else {
         m_Bu = m_ss.B * inputs.data;
@@ -252,13 +334,13 @@ void Model_diode_bridge::stepModel(double dt) {
             if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {
                 // Solve with tustin as multiples of resolution and ignore any error
                 double multiple = std::round(dt / m_dt_resolution);
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                states.data = m_solver.stepLinearTustin(states.data, m_Bu, multiple * m_dt_resolution);
             } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {
                 // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
                 // on later steps
                 double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
                 m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
-                states.data = m_solver.stepTustin(*this, states.data, 0.0, std::round(multiple) * m_dt_resolution);
+                states.data = m_solver.stepLinearTustin(states.data, m_Bu, std::round(multiple) * m_dt_resolution);
             } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::INTEGRATE_ADAPTIVE) {
                 // Solve with tustin as multiples of resolution and the remaining time with runge-kutta so
                 // that the matrix inverses required for implicit integration can be cached for common timesteps
@@ -267,14 +349,14 @@ void Model_diode_bridge::stepModel(double dt) {
                 if (std::abs(std::round(multiple) - multiple) > 1e-6) {
                     double dt1 = std::floor(multiple) * m_dt_resolution;
                     double dt2 = (multiple - std::floor(multiple)) * m_dt_resolution;
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, dt1);
+                    states.data = m_solver.stepLinearTustin(states.data, m_Bu, dt1);
                     states.data = m_solver.stepRungeKuttaFehlberg(*this, states.data, 0.0, dt2);
                 } else {
-                    states.data = m_solver.stepTustin(*this, states.data, 0.0, multiple * m_dt_resolution);
+                    states.data = m_solver.stepLinearTustin(states.data, m_Bu, multiple * m_dt_resolution);
                 }
             }
         } else {
-            states.data = m_solver.stepTustin(*this, states.data, 0.0, dt);
+            states.data = m_solver.stepLinearTustin(states.data, m_Bu, dt);
         }
     }
 
@@ -288,21 +370,21 @@ void Model_diode_bridge::stepModel(double dt) {
     states.V_C_dc = outputs.V_C_dc;
 }
 
-struct Model_diode_bridge_Topology {
-    Model_diode_bridge::Components components;
-    Model_diode_bridge::Switches switches;
-    std::unique_ptr<Model_diode_bridge::StateSpaceMatrices> state_space;
-};
-
 void Model_diode_bridge::updateStateSpaceMatrices() {
-    static std::vector<Model_diode_bridge_Topology> state_space_cache;
-    auto it = std::find_if(
-        state_space_cache.begin(), state_space_cache.end(), [&](Model_diode_bridge_Topology const& t) {
-            return t.components == components && t.switches.all() == switches.all();
-        });
-    if (it != state_space_cache.end()) {
-        m_ss = *it->state_space;
-        return;
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_diode_bridge::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t switch_combination = switches.all();
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {
+        std::unordered_map<uint64_t, std::unique_ptr<Model_diode_bridge::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {
+            m_ss = *it->second;
+            return;
+        }
     }
 
     if (m_circuit_json.empty()) {
@@ -312,45 +394,81 @@ void Model_diode_bridge::updateStateSpaceMatrices() {
 
     // Get the intermediate matrices as string for replacing symbolic components with their values
     std::string s = m_circuit_json[std::to_string(switches.all())].dump();
-	s = rlc2ss::replace(s, "C_dc", std::to_string(components.C_dc));
-	s = rlc2ss::replace(s, "L_a", std::to_string(components.L_a));
-	s = rlc2ss::replace(s, "L_b", std::to_string(components.L_b));
-	s = rlc2ss::replace(s, "L_c", std::to_string(components.L_c));
-	s = rlc2ss::replace(s, "R_D_n_a", std::to_string(components.R_D_n_a));
-	s = rlc2ss::replace(s, "R_D_n_b", std::to_string(components.R_D_n_b));
-	s = rlc2ss::replace(s, "R_D_n_c", std::to_string(components.R_D_n_c));
-	s = rlc2ss::replace(s, "R_D_p_a", std::to_string(components.R_D_p_a));
-	s = rlc2ss::replace(s, "R_D_p_b", std::to_string(components.R_D_p_b));
-	s = rlc2ss::replace(s, "R_D_p_c", std::to_string(components.R_D_p_c));
-	s = rlc2ss::replace(s, "R_a", std::to_string(components.R_a));
-	s = rlc2ss::replace(s, "R_b", std::to_string(components.R_b));
-	s = rlc2ss::replace(s, "R_c", std::to_string(components.R_c));
-	s = rlc2ss::replace(s, "R_dc", std::to_string(components.R_dc));
-	s = rlc2ss::replace(s, "R_load", std::to_string(components.R_load));
+    s = rlc2ss::replace(s, "C_dc", std::format("({})", components.C_dc));
+    s = rlc2ss::replace(s, "L_a", std::format("({})", components.L_a));
+    s = rlc2ss::replace(s, "L_b", std::format("({})", components.L_b));
+    s = rlc2ss::replace(s, "L_c", std::format("({})", components.L_c));
+    s = rlc2ss::replace(s, "R_D_n_a", std::format("({})", components.R_D_n_a));
+    s = rlc2ss::replace(s, "R_D_n_b", std::format("({})", components.R_D_n_b));
+    s = rlc2ss::replace(s, "R_D_n_c", std::format("({})", components.R_D_n_c));
+    s = rlc2ss::replace(s, "R_D_p_a", std::format("({})", components.R_D_p_a));
+    s = rlc2ss::replace(s, "R_D_p_b", std::format("({})", components.R_D_p_b));
+    s = rlc2ss::replace(s, "R_D_p_c", std::format("({})", components.R_D_p_c));
+    s = rlc2ss::replace(s, "R_a", std::format("({})", components.R_a));
+    s = rlc2ss::replace(s, "R_b", std::format("({})", components.R_b));
+    s = rlc2ss::replace(s, "R_c", std::format("({})", components.R_c));
+    s = rlc2ss::replace(s, "R_dc", std::format("({})", components.R_dc));
+    s = rlc2ss::replace(s, "R_load", std::format("({})", components.R_load));
 
     // Parse json for the intermediate matrices
     nlohmann::json j = nlohmann::json::parse(s);
-    std::string K1_str = j["K1"];
-    std::string K2_str = j["K2"];
-    std::string A1_str = j["A1"];
-    std::string B1_str = j["B1"];
-    std::string C1_str = j["C1"];
-    std::string D1_str = j["D1"];
-
+    rlc2ss::StateSpaceMatrices ss = {
+        .K1 = j["K1"],
+        .K2 = j["K2"],
+        .A1 = j["A1"],
+        .B1 = j["B1"],
+        .C1 = j["C1"],
+        .D1 = j["D1"],
+    };
     // Create eigen matrices
-    Eigen::Matrix<double, Model_diode_bridge::NUM_STATES, Model_diode_bridge::NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(K1_str).data());
-    Eigen::Matrix<double, Model_diode_bridge::NUM_OUTPUTS, Model_diode_bridge::NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(K2_str).data());
-    Eigen::Matrix<double, Model_diode_bridge::NUM_STATES, Model_diode_bridge::NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(A1_str).data());
-    Eigen::Matrix<double, Model_diode_bridge::NUM_STATES, Model_diode_bridge::NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(B1_str).data());
-    Eigen::Matrix<double, Model_diode_bridge::NUM_OUTPUTS, Model_diode_bridge::NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(C1_str).data());
-    Eigen::Matrix<double, Model_diode_bridge::NUM_OUTPUTS, Model_diode_bridge::NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(D1_str).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
+    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
+    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
-    Model_diode_bridge_Topology& topology = state_space_cache.emplace_back(Model_diode_bridge_Topology{
-        .components = components,
-        .switches = switches,
-        .state_space = calcStateSpace(K1, A1, B1, K2, C1, D1)});
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    m_ss = *state_space_cache[switch_combination][component_hash];
+}
 
-    m_ss = *topology.state_space;
+bool Model_diode_bridge::Components::operator==(Components const& other) const {
+    return
+        C_dc == other.C_dc &&
+        L_a == other.L_a &&
+        L_b == other.L_b &&
+        L_c == other.L_c &&
+        R_D_n_a == other.R_D_n_a &&
+        R_D_n_b == other.R_D_n_b &&
+        R_D_n_c == other.R_D_n_c &&
+        R_D_p_a == other.R_D_p_a &&
+        R_D_p_b == other.R_D_p_b &&
+        R_D_p_c == other.R_D_p_c &&
+        R_a == other.R_a &&
+        R_b == other.R_b &&
+        R_c == other.R_c &&
+        R_dc == other.R_dc &&
+        R_load == other.R_load;
+}
+
+uint64_t Model_diode_bridge::Components::hash() const {
+    uint64_t seed = 0;
+    rlc2ss::hash_combine(seed, C_dc);
+    rlc2ss::hash_combine(seed, L_a);
+    rlc2ss::hash_combine(seed, L_b);
+    rlc2ss::hash_combine(seed, L_c);
+    rlc2ss::hash_combine(seed, R_D_n_a);
+    rlc2ss::hash_combine(seed, R_D_n_b);
+    rlc2ss::hash_combine(seed, R_D_n_c);
+    rlc2ss::hash_combine(seed, R_D_p_a);
+    rlc2ss::hash_combine(seed, R_D_p_b);
+    rlc2ss::hash_combine(seed, R_D_p_c);
+    rlc2ss::hash_combine(seed, R_a);
+    rlc2ss::hash_combine(seed, R_b);
+    rlc2ss::hash_combine(seed, R_c);
+    rlc2ss::hash_combine(seed, R_dc);
+    rlc2ss::hash_combine(seed, R_load);
+    return seed;
 }
 
 uint64_t Model_diode_bridge::Switches::all() const {
