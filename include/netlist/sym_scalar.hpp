@@ -36,7 +36,7 @@ struct ExprNode {
     enum class Op : std::uint8_t { Var, Const, Add, Sub, Neg, Mul, Div, Sqrt };
     Op op;
     double value = 0.0;                            // for Const
-    std::string name;                              // for Var (and atom-sqrt)
+    std::string name;                              // for Var
     std::shared_ptr<ExprNode const> lhs;           // operand 1 (or sole operand for unary)
     std::shared_ptr<ExprNode const> rhs;           // operand 2 for binary
 };
@@ -53,8 +53,8 @@ class SymScalar {
     explicit SymScalar(std::string name);         // named symbol (e.g. "R1")
 
     bool isZero() const;
-    bool isOne() const { return m_is_one; }
-    bool isNumeric() const { return m_is_numeric; }
+    bool isOne() const;
+    bool isNumeric() const { return !m_tree; }
     double numeric() const;
     std::string const& str() const;
 
@@ -73,8 +73,7 @@ class SymScalar {
     bool operator!=(double v) const;
 
     // sqrt of a symbolic expression. Numeric values fold; symbolic expressions
-    // become an opaque `sqrt(<inner>)` atom (algebraic simplification of nested
-    // sqrt is out of scope).
+    // become an expression-tree Sqrt node.
     static SymScalar sqrt(SymScalar const& x);
 
     // Returns the underlying expression-tree node, or null when this scalar
@@ -83,13 +82,10 @@ class SymScalar {
 
   private:
     static SymScalar fromTree(ExprNodePtr tree);
-    ExprNodePtr asTreeNode() const;                // null if isZero
+    ExprNodePtr asTreeNode() const;
 
-    bool m_is_zero = true;
-    bool m_is_one = false;
-    bool m_is_numeric = true;
     double m_numeric = 0.0;
-    ExprNodePtr m_tree;                            // null if m_is_numeric
+    ExprNodePtr m_tree;                            // null if numeric
     mutable std::optional<std::string> m_cached_str;
 };
 

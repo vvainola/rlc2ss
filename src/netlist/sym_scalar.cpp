@@ -118,8 +118,7 @@ bool structurallyZero(ExprNode const& n) {
 }
 
 // Append the textual representation of node into out, mirroring the parens
-// conventions of the previous string-tree implementation so the downstream
-// evaluateExpression continues to parse correctly.
+// conventions of the previous string-tree implementation.
 void appendStr(std::string& out, ExprNode const& n) {
     switch (n.op) {
         case ExprNode::Op::Var:
@@ -195,58 +194,43 @@ void appendStr(std::string& out, ExprNode const& n) {
 
 SymScalar SymScalar::fromTree(ExprNodePtr tree) {
     SymScalar r;
-    r.m_is_zero = false;
-    r.m_is_one = false;
-    r.m_is_numeric = false;
     r.m_tree = std::move(tree);
     return r;
 }
 
 ExprNodePtr SymScalar::asTreeNode() const {
     if (m_tree) return m_tree;
-    if (m_is_zero) return makeConst(0.0);
-    if (m_is_one) return makeConst(1.0);
     return makeConst(m_numeric);
 }
 
 SymScalar::SymScalar() = default;
 
 SymScalar::SymScalar(double v)
-    : m_is_zero(v == 0.0),
-      m_is_one(v == 1.0),
-      m_is_numeric(true),
-      m_numeric(v) {}
+    : m_numeric(v) {}
 
 SymScalar::SymScalar(std::string name) {
     if (name == "0") {
-        m_is_zero = true;
-        m_is_numeric = true;
         m_numeric = 0.0;
     } else if (name == "1") {
-        m_is_one = true;
-        m_is_numeric = true;
         m_numeric = 1.0;
     } else {
-        m_is_zero = false;
-        m_is_one = false;
-        m_is_numeric = false;
         m_numeric = 0.0;
         m_tree = makeVar(std::move(name));
     }
 }
 
 double SymScalar::numeric() const {
-    assert(m_is_numeric);
+    assert(isNumeric());
     return m_numeric;
 }
 
 std::string const& SymScalar::str() const {
     if (m_cached_str) return *m_cached_str;
     std::string out;
-    if (m_is_numeric) {
-        if (m_is_zero) {
+    if (isNumeric()) {
+        if (isZero()) {
             out = "0";
-        } else if (m_is_one) {
+        } else if (isOne()) {
             out = "1";
         } else {
             out = std::format("{}", m_numeric);
@@ -259,21 +243,25 @@ std::string const& SymScalar::str() const {
 }
 
 bool SymScalar::isZero() const {
-    if (m_is_zero) return true;
+    if (isNumeric()) return m_numeric == 0.0;
     return m_tree && structurallyZero(*m_tree);
+}
+
+bool SymScalar::isOne() const {
+    return isNumeric() && m_numeric == 1.0;
 }
 
 SymScalar SymScalar::operator+(SymScalar const& other) const {
     if (isZero()) return other;
     if (other.isZero()) return *this;
-    if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric + other.m_numeric);
+    if (isNumeric() && other.isNumeric()) return SymScalar(m_numeric + other.m_numeric);
     return fromTree(makeBinary(ExprNode::Op::Add, asTreeNode(), other.asTreeNode()));
 }
 
 SymScalar SymScalar::operator-(SymScalar const& other) const {
     if (other.isZero()) return *this;
     if (isZero()) return -other;
-    if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric - other.m_numeric);
+    if (isNumeric() && other.isNumeric()) return SymScalar(m_numeric - other.m_numeric);
     // x - x == 0, even when equal symbols were created as separate nodes.
     if (structurallyEqual(*asTreeNode(), *other.asTreeNode())) return SymScalar(0.0);
     return fromTree(makeBinary(ExprNode::Op::Sub, asTreeNode(), other.asTreeNode()));
@@ -281,26 +269,26 @@ SymScalar SymScalar::operator-(SymScalar const& other) const {
 
 SymScalar SymScalar::operator-() const {
     if (isZero()) return *this;
-    if (m_is_numeric) return SymScalar(-m_numeric);
+    if (isNumeric()) return SymScalar(-m_numeric);
     return fromTree(makeUnary(ExprNode::Op::Neg, asTreeNode()));
 }
 
 SymScalar SymScalar::operator*(SymScalar const& other) const {
     if (isZero() || other.isZero()) return SymScalar(0.0);
-    if (m_is_one) return other;
-    if (other.m_is_one) return *this;
-    if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric * other.m_numeric);
+    if (isOne()) return other;
+    if (other.isOne()) return *this;
+    if (isNumeric() && other.isNumeric()) return SymScalar(m_numeric * other.m_numeric);
     // -1 * x == -x  (avoids producing "-1*..." which would surprise the parser)
-    if (m_is_numeric && m_numeric == -1.0) return -other;
-    if (other.m_is_numeric && other.m_numeric == -1.0) return -*this;
+    if (isNumeric() && m_numeric == -1.0) return -other;
+    if (other.isNumeric() && other.m_numeric == -1.0) return -*this;
     return fromTree(makeBinary(ExprNode::Op::Mul, asTreeNode(), other.asTreeNode()));
 }
 
 SymScalar SymScalar::operator/(SymScalar const& other) const {
     assert(!other.isZero() && "Division by zero in SymScalar");
     if (isZero()) return SymScalar(0.0);
-    if (other.m_is_one) return *this;
-    if (m_is_numeric && other.m_is_numeric) return SymScalar(m_numeric / other.m_numeric);
+    if (other.isOne()) return *this;
+    if (isNumeric() && other.isNumeric()) return SymScalar(m_numeric / other.m_numeric);
     // x / x == 1, even when equal symbols were created as separate nodes.
     if (structurallyEqual(*asTreeNode(), *other.asTreeNode())) return SymScalar(1.0);
     return fromTree(makeBinary(ExprNode::Op::Div, asTreeNode(), other.asTreeNode()));
@@ -324,9 +312,9 @@ SymScalar& SymScalar::operator/=(SymScalar const& other) {
 }
 
 bool SymScalar::operator==(double v) const {
-    if (v == 0.0) return m_is_zero;
-    if (v == 1.0) return m_is_one;
-    return m_is_numeric && m_numeric == v;
+    if (v == 0.0) return isZero();
+    if (v == 1.0) return isOne();
+    return isNumeric() && m_numeric == v;
 }
 
 bool SymScalar::operator!=(double v) const {
@@ -336,7 +324,7 @@ bool SymScalar::operator!=(double v) const {
 SymScalar SymScalar::sqrt(SymScalar const& x) {
     if (x.isZero()) return SymScalar(0.0);
     if (x.isOne()) return SymScalar(1.0);
-    if (x.m_is_numeric) return SymScalar(std::sqrt(x.m_numeric));
+    if (x.isNumeric()) return SymScalar(std::sqrt(x.m_numeric));
     return fromTree(makeUnary(ExprNode::Op::Sqrt, x.asTreeNode()));
 }
 
