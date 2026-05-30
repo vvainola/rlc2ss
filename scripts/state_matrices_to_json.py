@@ -99,6 +99,7 @@ def render_diode_continuity_methods(
     controlled_switches = [switch for switch in switches if switch not in diode_output_names]
     controlled_switches_to_int = render_switch_mask_expr(controlled_switches, prefix="switches.")
     diode_count = len(diodes)
+
     if diode_count == 0:
         return render_cxx_block(f"""
             void {class_name}::resolveDiodeContinuity() {{
@@ -107,7 +108,7 @@ def render_diode_continuity_methods(
 
             {class_name}::Outputs {class_name}::calcInstantaneousOutputs(uint64_t switch_combination) {{
                 Outputs instantaneous_outputs;
-                StateSpaceMatrices ss = calcStateSpaceMatrices(switch_combination);
+                StateSpaceMatrices const& ss = calcStateSpaceMatrices(switch_combination);
                 instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
                 return instantaneous_outputs;
             }}
@@ -216,7 +217,7 @@ def render_diode_continuity_methods(
             // The state vector is not advanced, so any mismatch between inductor
             // output currents and stored inductor states is a real switching
             // discontinuity.
-            StateSpaceMatrices ss = calcStateSpaceMatrices(switch_combination);
+            StateSpaceMatrices const& ss = calcStateSpaceMatrices(switch_combination);
             instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
             return instantaneous_outputs;
         }}

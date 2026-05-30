@@ -194,7 +194,7 @@ Model_converter::Outputs Model_converter::calcInstantaneousOutputs(uint64_t swit
     // The state vector is not advanced, so any mismatch between inductor
     // output currents and stored inductor states is a real switching
     // discontinuity.
-    StateSpaceMatrices ss = calcStateSpaceMatrices(switch_combination);
+    StateSpaceMatrices const& ss = calcStateSpaceMatrices(switch_combination);
     instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
     return instantaneous_outputs;
 }
@@ -732,7 +732,7 @@ void Model_converter::stepModel(double dt) {
     states.V_C_p = outputs.V_C_p;
 }
 
-Model_converter::StateSpaceMatrices Model_converter::calcStateSpaceMatrices(uint64_t switch_combination) {
+Model_converter::StateSpaceMatrices const& Model_converter::calcStateSpaceMatrices(uint64_t switch_combination) {
     static std::mutex            cache_mutex;
     std::scoped_lock<std::mutex> lock(cache_mutex);
 

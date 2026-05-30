@@ -225,7 +225,7 @@ class Model_converter {
     std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
     void resolveDiodeContinuity();
     Outputs calcInstantaneousOutputs(uint64_t switch_combination);
-    StateSpaceMatrices calcStateSpaceMatrices(uint64_t switch_combination);
+    StateSpaceMatrices const& calcStateSpaceMatrices(uint64_t switch_combination);
     uint64_t controlledSwitchMask() const;
     uint64_t closedDiodeMask() const;
     uint64_t inductorCurrentSignMask() const;

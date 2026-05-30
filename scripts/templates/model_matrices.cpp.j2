@@ -247,7 +247,7 @@ void [[ class_name ]]::stepModel(double dt) {
 [[ update_states ]]
 }
 
-[[ class_name ]]::StateSpaceMatrices [[ class_name ]]::calcStateSpaceMatrices(uint64_t switch_combination) {
+[[ class_name ]]::StateSpaceMatrices const& [[ class_name ]]::calcStateSpaceMatrices(uint64_t switch_combination) {
     static std::mutex            cache_mutex;
     std::scoped_lock<std::mutex> lock(cache_mutex);
 
