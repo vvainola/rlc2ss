@@ -157,6 +157,7 @@ executable('rlc2ss',
 
 executable('tests',
     sources : [
+        'tests/diode_continuity_test.cpp',
         'tests/expression_eval_test.cpp',
         'tests/state_matrices_test.cpp',
     ],

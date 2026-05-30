@@ -166,7 +166,7 @@ extern "C" __declspec(dllexport) void DLL_init(double dt) {
     circuit.addInductorSaturation(&circuit.components.L_c,
                                   {currents[0], currents[1], currents[2]},
                                   {L0, L1_eff, L2_eff});
-    circuit.addInductorSaturation(&circuit.components.L_g_a,
+    /*circuit.addInductorSaturation(&circuit.components.L_g_a,
                                   {currents[0], currents[1], currents[2]},
                                   {L0, L1_eff, L2_eff});
     circuit.addInductorSaturation(&circuit.components.L_g_b,
@@ -174,7 +174,7 @@ extern "C" __declspec(dllexport) void DLL_init(double dt) {
                                   {L0, L1_eff, L2_eff});
     circuit.addInductorSaturation(&circuit.components.L_g_c,
                                   {currents[0], currents[1], currents[2]},
-                                  {L0, L1_eff, L2_eff});
+                                  {L0, L1_eff, L2_eff});*/
 #endif
 }
 

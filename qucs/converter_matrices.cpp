@@ -1,10 +1,14 @@
 
 #include "converter_matrices.hpp"
+#include "diode_continuity.hpp"
 #include "rlc2ss.h"
+#include <algorithm>
+#include <limits>
 #include <optional>
 #include <mutex>
 #include <format>
 #include <memory>
+#include <stdexcept>
 
 
 #pragma warning(disable : 4127) // conditional expression is constant
@@ -176,6 +180,318 @@ Model_converter::Model_converter(Components const& c)
       _M_components_DO_NOT_TOUCH(c) {
 }
 
+
+namespace {
+uint64_t mixContinuityCacheKey(uint64_t seed, uint64_t value) {
+    seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+    return seed;
+}
+} // namespace
+
+Model_converter::Outputs Model_converter::calcInstantaneousOutputs(uint64_t switch_combination) {
+    Outputs instantaneous_outputs;
+    // Evaluate the algebraic outputs for an explicit switch mask at t+0.
+    // The state vector is not advanced, so any mismatch between inductor
+    // output currents and stored inductor states is a real switching
+    // discontinuity.
+    StateSpaceMatrices ss = calcStateSpaceMatrices(switch_combination);
+    instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
+    return instantaneous_outputs;
+}
+
+uint64_t Model_converter::controlledSwitchMask() const {
+    return 0 |
+        (switches.S_a_n << 0) |
+        (switches.S_a_p << 1) |
+        (switches.S_b_n << 2) |
+        (switches.S_b_p << 3) |
+        (switches.S_c_n << 4) |
+        (switches.S_c_p << 5);
+}
+
+uint64_t Model_converter::closedDiodeMask() const {
+    uint64_t mask = 0;
+    for (size_t diode_idx = 0; diode_idx < 6; ++diode_idx) {
+        if (diodeClosed(diode_idx)) {
+            mask |= uint64_t{1} << diode_idx;
+        }
+    }
+    return mask;
+}
+
+uint64_t Model_converter::inductorCurrentSignMask() const {
+    uint64_t mask = 0;
+    if (states.I_L_a > 0.0) {
+        mask |= uint64_t{1} << 0;
+    } else if (states.I_L_a < 0.0) {
+        mask |= uint64_t{1} << 1;
+    }
+    if (states.I_L_b > 0.0) {
+        mask |= uint64_t{1} << 2;
+    } else if (states.I_L_b < 0.0) {
+        mask |= uint64_t{1} << 3;
+    }
+    if (states.I_L_c > 0.0) {
+        mask |= uint64_t{1} << 4;
+    } else if (states.I_L_c < 0.0) {
+        mask |= uint64_t{1} << 5;
+    }
+    if (states.I_L_g_a > 0.0) {
+        mask |= uint64_t{1} << 6;
+    } else if (states.I_L_g_a < 0.0) {
+        mask |= uint64_t{1} << 7;
+    }
+    if (states.I_L_g_b > 0.0) {
+        mask |= uint64_t{1} << 8;
+    } else if (states.I_L_g_b < 0.0) {
+        mask |= uint64_t{1} << 9;
+    }
+    if (states.I_L_g_c > 0.0) {
+        mask |= uint64_t{1} << 10;
+    } else if (states.I_L_g_c < 0.0) {
+        mask |= uint64_t{1} << 11;
+    }
+    return mask;
+}
+
+uint64_t Model_converter::switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t closed_diode_mask) const {
+    uint64_t switch_mask = base_switch_mask;
+    if ((closed_diode_mask & (uint64_t{1} << 0)) != 0) {
+        switch_mask |= uint64_t{1} << 0;
+    } else {
+        switch_mask &= ~(uint64_t{1} << 0);
+    }
+    if ((closed_diode_mask & (uint64_t{1} << 1)) != 0) {
+        switch_mask |= uint64_t{1} << 1;
+    } else {
+        switch_mask &= ~(uint64_t{1} << 1);
+    }
+    if ((closed_diode_mask & (uint64_t{1} << 2)) != 0) {
+        switch_mask |= uint64_t{1} << 2;
+    } else {
+        switch_mask &= ~(uint64_t{1} << 2);
+    }
+    if ((closed_diode_mask & (uint64_t{1} << 3)) != 0) {
+        switch_mask |= uint64_t{1} << 3;
+    } else {
+        switch_mask &= ~(uint64_t{1} << 3);
+    }
+    if ((closed_diode_mask & (uint64_t{1} << 4)) != 0) {
+        switch_mask |= uint64_t{1} << 4;
+    } else {
+        switch_mask &= ~(uint64_t{1} << 4);
+    }
+    if ((closed_diode_mask & (uint64_t{1} << 5)) != 0) {
+        switch_mask |= uint64_t{1} << 5;
+    } else {
+        switch_mask &= ~(uint64_t{1} << 5);
+    }
+    return switch_mask;
+}
+
+bool Model_converter::diodeClosed(size_t diode_idx) const {
+    switch (diode_idx) {
+        case 0: return switches.S_D_a_n;
+        case 1: return switches.S_D_a_p;
+        case 2: return switches.S_D_b_n;
+        case 3: return switches.S_D_b_p;
+        case 4: return switches.S_D_c_n;
+        case 5: return switches.S_D_c_p;
+    default:
+        return false;
+    }
+}
+
+double Model_converter::diodeCurrent(size_t diode_idx, Outputs const& outputs_) const {
+    switch (diode_idx) {
+        case 0: return outputs_.I_R_D_a_n;
+        case 1: return outputs_.I_R_D_a_p;
+        case 2: return outputs_.I_R_D_b_n;
+        case 3: return outputs_.I_R_D_b_p;
+        case 4: return outputs_.I_R_D_c_n;
+        case 5: return outputs_.I_R_D_c_p;
+    default:
+        return 0.0;
+    }
+}
+
+double Model_converter::diodeForwardOverdrive(size_t diode_idx, Outputs const& outputs_) const {
+    // Positive overdrive means an open diode would be forward-biased
+    // for this instantaneous solution.
+    switch (diode_idx) {
+        case 0: return outputs_.N_dc_n - outputs_.N_c_a - inputs.V_D_a_n;
+        case 1: return outputs_.N_c_a - outputs_.N_dc_p - inputs.V_D_a_p;
+        case 2: return outputs_.N_dc_n - outputs_.N_c_b - inputs.V_D_b_n;
+        case 3: return outputs_.N_c_b - outputs_.N_dc_p - inputs.V_D_b_p;
+        case 4: return outputs_.N_dc_n - outputs_.N_c_c - inputs.V_D_c_n;
+        case 5: return outputs_.N_c_c - outputs_.N_dc_p - inputs.V_D_c_p;
+    default:
+        return 0.0;
+    }
+}
+
+double Model_converter::inductorCurrentDiscontinuity(Outputs const& outputs_) const {
+    double discontinuity = 0.0;
+    // Inductor current is continuous. The generated state vector stores
+    // every inductor current, including dependent inductors, so continuity
+    // can be checked without topology-specific knowledge.
+    discontinuity = std::max(discontinuity, std::abs(outputs_.data[5] - states.data[0]));
+    discontinuity = std::max(discontinuity, std::abs(outputs_.data[6] - states.data[1]));
+    discontinuity = std::max(discontinuity, std::abs(outputs_.data[7] - states.data[2]));
+    discontinuity = std::max(discontinuity, std::abs(outputs_.data[8] - states.data[3]));
+    discontinuity = std::max(discontinuity, std::abs(outputs_.data[9] - states.data[4]));
+    discontinuity = std::max(discontinuity, std::abs(outputs_.data[10] - states.data[5]));
+    return discontinuity;
+}
+
+void Model_converter::forceClosedDiodeMask(uint64_t closed_diode_mask) {
+    // Generated diodes are represented as switches in the state-space
+    // matrices. Setting a bit here forces that diode closed;
+    // clearing a bit releases the force, which leaves generated diode
+    // outputs open until diode zero-crossing logic forces them closed.
+    for (size_t diode_idx = 0; diode_idx < 6; ++diode_idx) {
+        switch (diode_idx) {
+        case 0:
+            switches.S_D_a_n.forceOutput((closed_diode_mask & (uint64_t{1} << 0)) != 0 ? std::optional<bool>{true} : std::nullopt);
+            break;
+        case 1:
+            switches.S_D_a_p.forceOutput((closed_diode_mask & (uint64_t{1} << 1)) != 0 ? std::optional<bool>{true} : std::nullopt);
+            break;
+        case 2:
+            switches.S_D_b_n.forceOutput((closed_diode_mask & (uint64_t{1} << 2)) != 0 ? std::optional<bool>{true} : std::nullopt);
+            break;
+        case 3:
+            switches.S_D_b_p.forceOutput((closed_diode_mask & (uint64_t{1} << 3)) != 0 ? std::optional<bool>{true} : std::nullopt);
+            break;
+        case 4:
+            switches.S_D_c_n.forceOutput((closed_diode_mask & (uint64_t{1} << 4)) != 0 ? std::optional<bool>{true} : std::nullopt);
+            break;
+        case 5:
+            switches.S_D_c_p.forceOutput((closed_diode_mask & (uint64_t{1} << 5)) != 0 ? std::optional<bool>{true} : std::nullopt);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+void Model_converter::releaseReverseCurrentDiodes() {
+    constexpr double DIODE_CONTINUITY_TOLERANCE = 1e-9;
+    uint64_t current_switch_mask = switches.all();
+    uint64_t closed_diode_mask = closedDiodeMask();
+    if (closed_diode_mask == 0) {
+        m_last_switch_mask = current_switch_mask;
+        return;
+    }
+
+    // A controlled switch closing cannot fix an inductor-current
+    // discontinuity by opening diodes; it only gives existing current
+    // another path. The full continuity resolver is therefore reserved
+    // for switch openings. On a closing-only transition, only release
+    // forced diodes that are already carrying reverse current at t+0.
+    uint64_t switch_mask = switchMaskWithClosedDiodes(current_switch_mask, closed_diode_mask);
+    Outputs instantaneous_outputs = calcInstantaneousOutputs(switch_mask);
+    uint64_t updated_closed_diode_mask = closed_diode_mask;
+    for (size_t diode_idx = 0; diode_idx < 6; ++diode_idx) {
+        uint64_t diode_bit = uint64_t{1} << diode_idx;
+        if ((closed_diode_mask & diode_bit) != 0 &&
+            diodeCurrent(diode_idx, instantaneous_outputs) < -DIODE_CONTINUITY_TOLERANCE) {
+            updated_closed_diode_mask &= ~diode_bit;
+        }
+    }
+
+    if (updated_closed_diode_mask != closed_diode_mask) {
+        forceClosedDiodeMask(updated_closed_diode_mask);
+    }
+    m_last_switch_mask = switchMaskWithClosedDiodes(current_switch_mask, updated_closed_diode_mask);
+}
+
+void Model_converter::resolveDiodeContinuity() {
+    constexpr double DIODE_CONTINUITY_TOLERANCE = 1e-9;
+    uint64_t current_switch_mask = switches.all();
+    uint64_t initial_closed_diode_mask = closedDiodeMask();
+
+    // Check the diode complementarity part of the candidate solution.
+    // Closed diodes may conduct zero or positive current. Open diodes
+    // must not be forward-biased.
+    auto diode_complementarity_violation = [this](uint64_t closed_diode_mask, Outputs const& outputs_) {
+        double violation = 0.0;
+        for (size_t diode_idx = 0; diode_idx < 6; ++diode_idx) {
+            if ((closed_diode_mask & (uint64_t{1} << diode_idx)) != 0) {
+                violation = std::max(violation, -diodeCurrent(diode_idx, outputs_));
+            } else {
+                violation = std::max(violation, diodeForwardOverdrive(diode_idx, outputs_));
+            }
+        }
+        return violation;
+    };
+
+    double best_attempt_discontinuity = std::numeric_limits<double>::infinity();
+    double best_attempt_complementarity_violation = std::numeric_limits<double>::infinity();
+    // Evaluate one diode mask at t+0. The state vector is not advanced,
+    // so any mismatch between inductor outputs and stored states is the
+    // switching discontinuity caused by this topology.
+    auto evaluate_mask = [&](uint64_t closed_diode_mask) {
+        uint64_t switch_mask = switchMaskWithClosedDiodes(current_switch_mask, closed_diode_mask);
+        Outputs instantaneous_outputs = calcInstantaneousOutputs(switch_mask);
+        double discontinuity = inductorCurrentDiscontinuity(instantaneous_outputs);
+        double complementarity_violation = diode_complementarity_violation(closed_diode_mask, instantaneous_outputs);
+        best_attempt_discontinuity = std::min(best_attempt_discontinuity, discontinuity);
+        best_attempt_complementarity_violation = std::min(best_attempt_complementarity_violation, complementarity_violation);
+        return rlc2ss::DiodeContinuityMetrics{
+            .discontinuity = discontinuity,
+            .complementarity_violation = complementarity_violation,
+        };
+    };
+
+    // Cache only a warm-start set of closed diodes. The same switch
+    // transition can need different diodes depending on current direction,
+    // so the key includes the inductor-current sign pattern. A cached mask
+    // is still fully revalidated before use.
+    uint64_t cache_key = 0;
+    cache_key = mixContinuityCacheKey(cache_key, m_last_switch_mask);
+    cache_key = mixContinuityCacheKey(cache_key, current_switch_mask);
+    cache_key = mixContinuityCacheKey(cache_key, initial_closed_diode_mask);
+    cache_key = mixContinuityCacheKey(cache_key, inductorCurrentSignMask());
+
+    if (auto cached = m_diode_continuity_cache.find(cache_key); cached != m_diode_continuity_cache.end()) {
+        rlc2ss::DiodeContinuityMetrics cached_metrics = evaluate_mask(cached->second);
+        if (rlc2ss::diodeContinuityValid(cached_metrics, DIODE_CONTINUITY_TOLERANCE)) {
+            uint64_t cached_switch_mask = switchMaskWithClosedDiodes(current_switch_mask, cached->second);
+            forceClosedDiodeMask(cached->second);
+            m_last_switch_mask = cached_switch_mask;
+            return;
+        }
+    }
+
+    // Fall back to a complete mask search. The helper searches by
+    // increasing diode-state changes from the current diode mask, so the
+    // common one-diode freewheel case is found before wider combinations
+    // are evaluated.
+    rlc2ss::DiodeContinuitySelection selection = rlc2ss::selectDiodeContinuityMask(
+        6,
+        initial_closed_diode_mask,
+        DIODE_CONTINUITY_TOLERANCE,
+        evaluate_mask);
+
+    if (selection.found) {
+        uint64_t final_switch_mask = switchMaskWithClosedDiodes(current_switch_mask, selection.mask);
+        forceClosedDiodeMask(selection.mask);
+        m_diode_continuity_cache[cache_key] = selection.mask;
+        m_last_switch_mask = final_switch_mask;
+        return;
+    }
+
+    throw std::runtime_error(std::format(
+        "Diode continuity resolver could not find a diode mask satisfying continuity and complementarity; "
+        "switch combination {} initial diode mask {} best residual {} best complementarity violation {}",
+        current_switch_mask,
+        initial_closed_diode_mask,
+        best_attempt_discontinuity,
+        best_attempt_complementarity_violation));
+}
+
+
 void Model_converter::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
     // Check that the currents are ascending and inductances are descending
     assert(currents.size() == inductances.size());
@@ -279,12 +595,22 @@ void Model_converter::stepWithZeroCrossingDetection(double dt) {
         return;
     }
 
-    if (!switches.S_a_p && !switches.S_a_n && outputs.I_L_a > 0) switches.S_D_a_n.forceOutput(true);
-    if (!switches.S_a_p && !switches.S_a_n && outputs.I_L_a < 0) switches.S_D_a_p.forceOutput(true);
-    if (!switches.S_b_p && !switches.S_b_n && outputs.I_L_b > 0) switches.S_D_b_n.forceOutput(true);
-    if (!switches.S_b_p && !switches.S_b_n && outputs.I_L_b < 0) switches.S_D_b_p.forceOutput(true);
-    if (!switches.S_c_p && !switches.S_c_n && outputs.I_L_c > 0) switches.S_D_c_n.forceOutput(true);
-    if (!switches.S_c_p && !switches.S_c_n && outputs.I_L_c < 0) switches.S_D_c_p.forceOutput(true);
+    uint64_t continuity_switch_mask = controlledSwitchMask();
+    if (continuity_switch_mask != m_last_continuity_switch_mask) {
+        bool first_continuity_step = m_last_continuity_switch_mask == ~uint64_t{0};
+        bool controlled_switch_opened = (m_last_continuity_switch_mask & ~continuity_switch_mask) != 0;
+
+        // Opening a controlled switch can remove the only path for an inductor
+        // current, so it may need a diode mask search. Closing a switch only
+        // adds a path; diode turn-off remains a complementarity/zero-crossing
+        // problem and does not need the expensive continuity resolver.
+        if (first_continuity_step || controlled_switch_opened) {
+            resolveDiodeContinuity();
+        } else {
+            releaseReverseCurrentDiodes();
+        }
+        m_last_continuity_switch_mask = continuity_switch_mask;
+    }
 
     // Copy previous state and outputs if step needs to be redone
     Model_converter::States prev_state;
@@ -346,7 +672,7 @@ void Model_converter::stepModel(double dt) {
         assert(components.R_p_s != -1);
         _M_components_DO_NOT_TOUCH = components;
         _M_switches_DO_NOT_TOUCH = switches;
-        updateStateSpaceMatrices();
+        m_ss = calcStateSpaceMatrices(switches.all());
         m_solver.updateJacobian(m_ss.A);
         // Solve one step with backward euler to reduce numerical oscillations
         m_Bu = m_ss.B * inputs.data;
@@ -406,20 +732,18 @@ void Model_converter::stepModel(double dt) {
     states.V_C_p = outputs.V_C_p;
 }
 
-void Model_converter::updateStateSpaceMatrices() {
+Model_converter::StateSpaceMatrices Model_converter::calcStateSpaceMatrices(uint64_t switch_combination) {
     static std::mutex            cache_mutex;
     std::scoped_lock<std::mutex> lock(cache_mutex);
 
     using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_converter::StateSpaceMatrices>>;
     static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
-    uint64_t switch_combination = switches.all();
     uint64_t component_hash = components.hash();
     if (state_space_cache.contains(switch_combination)) {
         std::unordered_map<uint64_t, std::unique_ptr<Model_converter::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
         auto it = cache.find(component_hash);
         if (it != cache.end()) {
-            m_ss = *it->second;
-            return;
+            return *it->second;
         }
     }
     std::string netlist = "R_p_p 0 N_dc_p 1E3 \nR_n_p N_dc_n 0 1E3 \nV_dc _net0 N_dc_n DC 1 \nD_a_p N_c_a N_dc_p \nD_b_p N_c_b N_dc_p \nS_a_p N_c_a N_dc_p _net1 _net2 \nS_c_p N_c_c N_dc_p _net3 _net4 \nD_c_p N_c_c N_dc_p \nS_b_p N_c_b N_dc_p _net5 _net6 \nS_a_n N_dc_n N_c_a _net7 _net8 \nD_a_n N_dc_n N_c_a \nS_b_n N_dc_n N_c_b _net9 _net10 \nD_b_n N_dc_n N_c_b \nS_c_n N_dc_n N_c_c _net11 _net12 \nD_c_n N_dc_n N_c_c \nL_b _net13 _net14 1M \nL_a _net15 _net16 1M \nL_c _net17 _net18 1M \nC_p 0 _net19 10E-3;I; \nC_n _net20 0 10E-3;I; \nR_n_s N_dc_n _net20 10E-3 \nR_p_s _net19 N_dc_p 10E-3 \nR_a N_c_a _net15 10E-3 \nR_b N_c_b _net13 10E-3 \nR_c N_c_c _net17 10E-3 \nR_dc _net0 N_dc_p 1;I; \nV_a _net21 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_c _net23 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_b _net24 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nL_g_b _net25 _net24 1M \nL_g_a _net26 _net21 1M \nL_g_c _net27 _net23 1M \nR_g_a _net16 _net26 10E-3 \nR_g_b _net14 _net25 10E-3 \nR_g_c _net18 _net27 10E-3 \nC_a _net28 _net16 10E-3;I; \nC_b _net28 _net14 10E-3;I; \nC_c _net28 _net18 10E-3;I; ";
@@ -470,7 +794,7 @@ void Model_converter::updateStateSpaceMatrices() {
     Eigen::MatrixXd D1 = rlc2ss::evaluate(symbolic_ss.D1, values);
 
     state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
-    m_ss = *state_space_cache[switch_combination][component_hash];
+    return *state_space_cache[switch_combination][component_hash];
 }
 
 bool Model_converter::Components::operator==(Components const& other) const {

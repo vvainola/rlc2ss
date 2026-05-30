@@ -18,6 +18,7 @@
 #include "nlohmann/json.hpp"
 
 #include <assert.h>
+#include <unordered_map>
 
 class Model_converter {
   public:
@@ -149,29 +150,29 @@ class Model_converter {
         double C_c = 0.01;
         double C_n = 0.01;
         double C_p = 0.01;
-        double L_a = 0.001;
-        double L_b = 0.001;
-        double L_c = 0.001;
-        double L_g_a = 0.001;
-        double L_g_b = 0.001;
-        double L_g_c = 0.001;
+        double L_a = -1.0;
+        double L_b = -1.0;
+        double L_c = -1.0;
+        double L_g_a = -1.0;
+        double L_g_b = -1.0;
+        double L_g_c = -1.0;
         double R_D_a_n = -1.0;
         double R_D_a_p = -1.0;
         double R_D_b_n = -1.0;
         double R_D_b_p = -1.0;
         double R_D_c_n = -1.0;
         double R_D_c_p = -1.0;
-        double R_a = 0.01;
-        double R_b = 0.01;
-        double R_c = 0.01;
+        double R_a = -1.0;
+        double R_b = -1.0;
+        double R_c = -1.0;
         double R_dc = 1.0;
-        double R_g_a = 0.01;
-        double R_g_b = 0.01;
-        double R_g_c = 0.01;
-        double R_n_p = 1000.0;
-        double R_n_s = 0.01;
-        double R_p_p = 1000.0;
-        double R_p_s = 0.01;
+        double R_g_a = -1.0;
+        double R_g_b = -1.0;
+        double R_g_c = -1.0;
+        double R_n_p = -1.0;
+        double R_n_s = -1.0;
+        double R_p_p = -1.0;
+        double R_p_s = -1.0;
 
         uint64_t hash() const;
         bool operator==(Components const& other) const;
@@ -222,9 +223,21 @@ class Model_converter {
 
   private:
     std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
+    void resolveDiodeContinuity();
+    Outputs calcInstantaneousOutputs(uint64_t switch_combination);
+    StateSpaceMatrices calcStateSpaceMatrices(uint64_t switch_combination);
+    uint64_t controlledSwitchMask() const;
+    uint64_t closedDiodeMask() const;
+    uint64_t inductorCurrentSignMask() const;
+    uint64_t switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t closed_diode_mask) const;
+    bool diodeClosed(size_t diode_idx) const;
+    double diodeCurrent(size_t diode_idx, Outputs const& outputs_) const;
+    double diodeForwardOverdrive(size_t diode_idx, Outputs const& outputs_) const;
+    double inductorCurrentDiscontinuity(Outputs const& outputs_) const;
+    void forceClosedDiodeMask(uint64_t closed_diode_mask);
+    void releaseReverseCurrentDiodes();
     void stepWithZeroCrossingDetection(double dt);
     void stepModel(double dt);
-    void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
@@ -236,6 +249,9 @@ class Model_converter {
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    uint64_t m_last_continuity_switch_mask = ~uint64_t{0};
+    uint64_t m_last_switch_mask = 0;
+    std::unordered_map<uint64_t, uint64_t> m_diode_continuity_cache;
     using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
     std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
     // The json file with symbolic intermediate matrices
