@@ -53,7 +53,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
             }
         });
     }
-    if (outputs.I_R_D_a_n < 0 && switches.S_D_a_n.outputForced()) {
+    if (outputs.I_R_D_a_n < -rlc2ss::DIODE_CONTINUITY_TOLERANCE && switches.S_D_a_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_n, outputs.I_R_D_a_n),
             .event_callback = [this]() {
@@ -73,7 +73,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
             }
         });
     }
-    if (outputs.I_R_D_a_p < 0 && switches.S_D_a_p.outputForced()) {
+    if (outputs.I_R_D_a_p < -rlc2ss::DIODE_CONTINUITY_TOLERANCE && switches.S_D_a_p.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_a_p, outputs.I_R_D_a_p),
             .event_callback = [this]() {
@@ -93,7 +93,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
             }
         });
     }
-    if (outputs.I_R_D_b_n < 0 && switches.S_D_b_n.outputForced()) {
+    if (outputs.I_R_D_b_n < -rlc2ss::DIODE_CONTINUITY_TOLERANCE && switches.S_D_b_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_n, outputs.I_R_D_b_n),
             .event_callback = [this]() {
@@ -113,7 +113,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
             }
         });
     }
-    if (outputs.I_R_D_b_p < 0 && switches.S_D_b_p.outputForced()) {
+    if (outputs.I_R_D_b_p < -rlc2ss::DIODE_CONTINUITY_TOLERANCE && switches.S_D_b_p.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_b_p, outputs.I_R_D_b_p),
             .event_callback = [this]() {
@@ -133,7 +133,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
             }
         });
     }
-    if (outputs.I_R_D_c_n < 0 && switches.S_D_c_n.outputForced()) {
+    if (outputs.I_R_D_c_n < -rlc2ss::DIODE_CONTINUITY_TOLERANCE && switches.S_D_c_n.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_n, outputs.I_R_D_c_n),
             .event_callback = [this]() {
@@ -153,7 +153,7 @@ std::optional<rlc2ss::ZeroCrossingEvent> Model_converter::checkZeroCrossingEvent
             }
         });
     }
-    if (outputs.I_R_D_c_p < 0 && switches.S_D_c_p.outputForced()) {
+    if (outputs.I_R_D_c_p < -rlc2ss::DIODE_CONTINUITY_TOLERANCE && switches.S_D_c_p.outputForced()) {
         events.push(rlc2ss::ZeroCrossingEvent{
             .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D_c_p, outputs.I_R_D_c_p),
             .event_callback = [this]() {
@@ -376,7 +376,6 @@ void Model_converter::forceClosedDiodeMask(uint64_t closed_diode_mask) {
 }
 
 void Model_converter::releaseReverseCurrentDiodes() {
-    constexpr double DIODE_CONTINUITY_TOLERANCE = 1e-9;
     uint64_t current_switch_mask = switches.all();
     uint64_t closed_diode_mask = closedDiodeMask();
     if (closed_diode_mask == 0) {
@@ -395,7 +394,7 @@ void Model_converter::releaseReverseCurrentDiodes() {
     for (size_t diode_idx = 0; diode_idx < 6; ++diode_idx) {
         uint64_t diode_bit = uint64_t{1} << diode_idx;
         if ((closed_diode_mask & diode_bit) != 0 &&
-            diodeCurrent(diode_idx, instantaneous_outputs) < -DIODE_CONTINUITY_TOLERANCE) {
+            diodeCurrent(diode_idx, instantaneous_outputs) < -rlc2ss::DIODE_CONTINUITY_TOLERANCE) {
             updated_closed_diode_mask &= ~diode_bit;
         }
     }
@@ -407,7 +406,6 @@ void Model_converter::releaseReverseCurrentDiodes() {
 }
 
 void Model_converter::resolveDiodeContinuity() {
-    constexpr double DIODE_CONTINUITY_TOLERANCE = 1e-9;
     uint64_t current_switch_mask = switches.all();
     uint64_t initial_closed_diode_mask = closedDiodeMask();
 
@@ -456,7 +454,7 @@ void Model_converter::resolveDiodeContinuity() {
 
     if (auto cached = m_diode_continuity_cache.find(cache_key); cached != m_diode_continuity_cache.end()) {
         rlc2ss::DiodeContinuityMetrics cached_metrics = evaluate_mask(cached->second);
-        if (rlc2ss::diodeContinuityValid(cached_metrics, DIODE_CONTINUITY_TOLERANCE)) {
+        if (rlc2ss::diodeContinuityValid(cached_metrics, rlc2ss::DIODE_CONTINUITY_TOLERANCE)) {
             uint64_t cached_switch_mask = switchMaskWithClosedDiodes(current_switch_mask, cached->second);
             forceClosedDiodeMask(cached->second);
             m_last_switch_mask = cached_switch_mask;
@@ -471,7 +469,7 @@ void Model_converter::resolveDiodeContinuity() {
     rlc2ss::DiodeContinuitySelection selection = rlc2ss::selectDiodeContinuityMask(
         6,
         initial_closed_diode_mask,
-        DIODE_CONTINUITY_TOLERANCE,
+        rlc2ss::DIODE_CONTINUITY_TOLERANCE,
         evaluate_mask);
 
     if (selection.found) {

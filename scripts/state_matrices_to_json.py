@@ -298,7 +298,6 @@ def render_diode_continuity_methods(
         }}
 
         void {class_name}::releaseReverseCurrentDiodes() {{
-            constexpr double DIODE_CONTINUITY_TOLERANCE = 1e-9;
             uint64_t current_switch_mask = switches.all();
             uint64_t closed_diode_mask = closedDiodeMask();
             if (closed_diode_mask == 0) {{
@@ -317,7 +316,7 @@ def render_diode_continuity_methods(
             for (size_t diode_idx = 0; diode_idx < {diode_count}; ++diode_idx) {{
                 uint64_t diode_bit = uint64_t{{1}} << diode_idx;
                 if ((closed_diode_mask & diode_bit) != 0 &&
-                    diodeCurrent(diode_idx, instantaneous_outputs) < -DIODE_CONTINUITY_TOLERANCE) {{
+                    diodeCurrent(diode_idx, instantaneous_outputs) < -rlc2ss::DIODE_CONTINUITY_TOLERANCE) {{
                     updated_closed_diode_mask &= ~diode_bit;
                 }}
             }}
@@ -329,7 +328,6 @@ def render_diode_continuity_methods(
         }}
 
         void {class_name}::resolveDiodeContinuity() {{
-            constexpr double DIODE_CONTINUITY_TOLERANCE = 1e-9;
             uint64_t current_switch_mask = switches.all();
             uint64_t initial_closed_diode_mask = closedDiodeMask();
 
@@ -378,7 +376,7 @@ def render_diode_continuity_methods(
 
             if (auto cached = m_diode_continuity_cache.find(cache_key); cached != m_diode_continuity_cache.end()) {{
                 rlc2ss::DiodeContinuityMetrics cached_metrics = evaluate_mask(cached->second);
-                if (rlc2ss::diodeContinuityValid(cached_metrics, DIODE_CONTINUITY_TOLERANCE)) {{
+                if (rlc2ss::diodeContinuityValid(cached_metrics, rlc2ss::DIODE_CONTINUITY_TOLERANCE)) {{
                     uint64_t cached_switch_mask = switchMaskWithClosedDiodes(current_switch_mask, cached->second);
                     forceClosedDiodeMask(cached->second);
                     m_last_switch_mask = cached_switch_mask;
@@ -393,7 +391,7 @@ def render_diode_continuity_methods(
             rlc2ss::DiodeContinuitySelection selection = rlc2ss::selectDiodeContinuityMask(
                 {diode_count},
                 initial_closed_diode_mask,
-                DIODE_CONTINUITY_TOLERANCE,
+                rlc2ss::DIODE_CONTINUITY_TOLERANCE,
                 evaluate_mask);
 
             if (selection.found) {{
@@ -486,7 +484,7 @@ def write_cpp_files(
                     }}
                 }});
             }}
-            if (outputs.{diode.current} < 0 && switches.{diode.switch}.outputForced()) {{
+            if (outputs.{diode.current} < -rlc2ss::DIODE_CONTINUITY_TOLERANCE && switches.{diode.switch}.outputForced()) {{
                 events.push(rlc2ss::ZeroCrossingEvent{{
                     .time = rlc2ss::calcZeroCrossingTime(prev_outputs.{diode.current}, outputs.{diode.current}),
                     .event_callback = [this]() {{

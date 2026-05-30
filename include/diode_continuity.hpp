@@ -8,6 +8,8 @@
 
 namespace rlc2ss {
 
+inline constexpr double DIODE_CONTINUITY_TOLERANCE = 1e-9;
+
 struct DiodeContinuityMetrics {
     // Max mismatch between instantaneous inductor output currents and the
     // stored inductor states for one candidate diode mask.
