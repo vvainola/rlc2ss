@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -23,15 +24,6 @@ struct DiodeContinuitySelection {
     double discontinuity = std::numeric_limits<double>::infinity();
     double complementarity_violation = std::numeric_limits<double>::infinity();
 };
-
-inline uint64_t countSetBits(uint64_t value) {
-    uint64_t count = 0;
-    while (value != 0) {
-        count += value & uint64_t{1};
-        value >>= 1;
-    }
-    return count;
-}
 
 inline bool diodeContinuityValid(DiodeContinuityMetrics const& metrics, double tolerance) {
     return metrics.discontinuity <= tolerance && metrics.complementarity_violation <= tolerance;
@@ -58,7 +50,7 @@ DiodeContinuitySelection selectDiodeContinuityMask(size_t diode_count,
         // deterministic minimal solution: fewer closed diodes, then smaller
         // residual discontinuity, then lower numeric mask.
         for (uint64_t mask = 0; mask < mask_count; ++mask) {
-            if (countSetBits(mask ^ initial_closed_diode_mask) != changes) {
+            if (std::popcount(mask ^ initial_closed_diode_mask) != static_cast<int>(changes)) {
                 continue;
             }
 
@@ -67,8 +59,8 @@ DiodeContinuitySelection selectDiodeContinuityMask(size_t diode_count,
                 continue;
             }
 
-            uint64_t const closed = countSetBits(mask);
-            uint64_t const best_closed = countSetBits(best.mask);
+            int const closed = std::popcount(mask);
+            int const best_closed = std::popcount(best.mask);
             bool const better =
                 !best.found ||
                 closed < best_closed ||
