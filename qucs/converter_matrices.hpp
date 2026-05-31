@@ -35,7 +35,7 @@ class Model_converter {
     static inline constexpr size_t NUM_INPUTS = 10;
     static inline constexpr size_t NUM_OUTPUTS = 28;
     static inline constexpr size_t NUM_STATES = 11;
-    static inline constexpr size_t NUM_SWITCHES = 12;
+    static inline constexpr size_t NUM_SWITCHES = 6;
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
@@ -132,12 +132,6 @@ class Model_converter {
         rlc2ss::OnOffDelay S_D_b_p;
         rlc2ss::OnOffDelay S_D_c_n;
         rlc2ss::OnOffDelay S_D_c_p;
-        rlc2ss::OnOffDelay S_a_n;
-        rlc2ss::OnOffDelay S_a_p;
-        rlc2ss::OnOffDelay S_b_n;
-        rlc2ss::OnOffDelay S_b_p;
-        rlc2ss::OnOffDelay S_c_n;
-        rlc2ss::OnOffDelay S_c_p;
 
         uint64_t all() const;
         double smallestDelay();
@@ -231,6 +225,7 @@ class Model_converter {
     uint64_t inductorCurrentSignMask() const;
     uint64_t switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t closed_diode_mask) const;
     bool diodeClosed(size_t diode_idx) const;
+    bool diodeControlledClosed(size_t diode_idx, uint64_t controlled_switch_mask) const;
     double diodeCurrent(size_t diode_idx, Outputs const& outputs_) const;
     double diodeForwardOverdrive(size_t diode_idx, Outputs const& outputs_) const;
     double inductorCurrentDiscontinuity(Outputs const& outputs_) const;

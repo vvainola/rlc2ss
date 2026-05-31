@@ -83,9 +83,9 @@ def check_for_invalid_names(component_names: list[str]):
                 sys.exit(f"[ERROR]: Component name \"{name}\" cannot be a substring of \"{name2}\".")
 
 
-def render_switch_mask_expr(switches: list[str], prefix: str = "") -> str:
+def render_switch_mask_expr(switches: list[str], prefix: str = "", suffix: str = "") -> str:
     if len(switches) > 0:
-        return "0 |" + " |".join(f"\n{TAB*2}({prefix}{switch} << {i})" for i, switch in enumerate(switches))
+        return "0 |" + " |".join(f"\n{TAB*2}(uint64_t{{{prefix}{switch}{suffix}}} << {i})" for i, switch in enumerate(switches))
     return "0"
 
 
@@ -95,9 +95,7 @@ def render_diode_continuity_methods(
     switches: list[str],
     diodes: list[Diode],
 ) -> str:
-    diode_output_names = {diode.switch for diode in diodes}
-    controlled_switches = [switch for switch in switches if switch not in diode_output_names]
-    controlled_switches_to_int = render_switch_mask_expr(controlled_switches, prefix="switches.")
+    controlled_switches_to_int = render_switch_mask_expr(switches, prefix="switches.", suffix=".output()")
     diode_count = len(diodes)
 
     if diode_count == 0:
@@ -114,6 +112,10 @@ def render_diode_continuity_methods(
             }}
 
             uint64_t {class_name}::controlledSwitchMask() const {{
+                // Track each switch's delayed control output, not its possibly
+                // diode-forced actual value. This keeps diode zero-crossing
+                // force/release events out of controlled topology detection,
+                // while still detecting explicit control of a diode switch.
                 return [[controlled_switches_to_int]];
             }}
 
@@ -130,6 +132,10 @@ def render_diode_continuity_methods(
             }}
 
             bool {class_name}::diodeClosed(size_t) const {{
+                return false;
+            }}
+
+            bool {class_name}::diodeControlledClosed(size_t, uint64_t) const {{
                 return false;
             }}
 
@@ -154,13 +160,18 @@ def render_diode_continuity_methods(
         """, indent="", controlled_switches_to_int=controlled_switches_to_int)
 
     diode_closed_cases = ""
+    diode_controlled_closed_cases = ""
     diode_current_cases = ""
     diode_forward_overdrive_cases = ""
     diode_mask_body = ""
     diode_force_cases = ""
     for i, diode in enumerate(diodes):
+        switch_idx = switches.index(diode.switch)
         diode_closed_cases += render_cxx_snippet(f"""
-            case {i}: return switches.{diode.switch};
+            case {i}: return switches.{diode.switch}.forcedOutput().value_or(false);
+        """, indent=TAB*2)
+        diode_controlled_closed_cases += render_cxx_snippet(f"""
+            case {i}: return (controlled_switch_mask & (uint64_t{{1}} << {switch_idx})) != 0;
         """, indent=TAB*2)
         diode_current_cases += render_cxx_snippet(f"""
             case {i}: return outputs_.{diode.current};
@@ -170,12 +181,9 @@ def render_diode_continuity_methods(
         diode_forward_overdrive_cases += render_cxx_snippet(f"""
             case {i}: return {pos_node} - {neg_node} - inputs.{diode.forward_voltage};
         """, indent=TAB*2)
-        switch_idx = switches.index(diode.switch)
         diode_mask_body += render_cxx_snippet(f"""
             if ((closed_diode_mask & (uint64_t{{1}} << {i})) != 0) {{
                 switch_mask |= uint64_t{{1}} << {switch_idx};
-            }} else {{
-                switch_mask &= ~(uint64_t{{1}} << {switch_idx});
             }}
         """, indent=TAB)
         diode_force_cases += render_cxx_snippet(f"""
@@ -223,6 +231,10 @@ def render_diode_continuity_methods(
         }}
 
         uint64_t {class_name}::controlledSwitchMask() const {{
+            // Track each switch's delayed control output, not its possibly
+            // diode-forced actual value. This keeps diode zero-crossing
+            // force/release events out of controlled topology detection,
+            // while still detecting explicit control of a diode switch.
             return [[controlled_switches_to_int]];
         }}
 
@@ -244,13 +256,27 @@ def render_diode_continuity_methods(
 
         uint64_t {class_name}::switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t closed_diode_mask) const {{
             uint64_t switch_mask = base_switch_mask;
+            // The base mask is the controlled-switch topology. Diode forces
+            // can add closed diode switches, but they must not clear a switch
+            // that is closed by its controlled output.
         [[diode_mask_body]]
             return switch_mask;
         }}
 
         bool {class_name}::diodeClosed(size_t diode_idx) const {{
+            // This is the diode-forced state only. A diode switch can also be
+            // closed by its controlled output; that base topology is tracked
+            // separately by controlledSwitchMask().
             switch (diode_idx) {{
         [[diode_closed_cases]]
+            default:
+                return false;
+            }}
+        }}
+
+        bool {class_name}::diodeControlledClosed(size_t diode_idx, uint64_t controlled_switch_mask) const {{
+            switch (diode_idx) {{
+        [[diode_controlled_closed_cases]]
             default:
                 return false;
             }}
@@ -298,7 +324,7 @@ def render_diode_continuity_methods(
         }}
 
         void {class_name}::releaseReverseCurrentDiodes() {{
-            uint64_t current_switch_mask = switches.all();
+            uint64_t current_switch_mask = controlledSwitchMask();
             uint64_t closed_diode_mask = closedDiodeMask();
             if (closed_diode_mask == 0) {{
                 m_last_switch_mask = current_switch_mask;
@@ -328,18 +354,18 @@ def render_diode_continuity_methods(
         }}
 
         void {class_name}::resolveDiodeContinuity() {{
-            uint64_t current_switch_mask = switches.all();
+            uint64_t current_switch_mask = controlledSwitchMask();
             uint64_t initial_closed_diode_mask = closedDiodeMask();
 
             // Check the diode complementarity part of the candidate solution.
             // Closed diodes may conduct zero or positive current. Open diodes
             // must not be forward-biased.
-            auto diode_complementarity_violation = [this](uint64_t closed_diode_mask, Outputs const& outputs_) {{
+            auto diode_complementarity_violation = [this, current_switch_mask](uint64_t closed_diode_mask, Outputs const& outputs_) {{
                 double violation = 0.0;
                 for (size_t diode_idx = 0; diode_idx < {diode_count}; ++diode_idx) {{
                     if ((closed_diode_mask & (uint64_t{{1}} << diode_idx)) != 0) {{
                         violation = std::max(violation, -diodeCurrent(diode_idx, outputs_));
-                    }} else {{
+                    }} else if (!diodeControlledClosed(diode_idx, current_switch_mask)) {{
                         violation = std::max(violation, diodeForwardOverdrive(diode_idx, outputs_));
                     }}
                 }}
@@ -417,6 +443,7 @@ def render_diode_continuity_methods(
         inductor_discontinuity_body=inductor_discontinuity_body.rstrip(),
         diode_mask_body=diode_mask_body.rstrip(),
         diode_closed_cases=diode_closed_cases.rstrip(),
+        diode_controlled_closed_cases=diode_controlled_closed_cases.rstrip(),
         diode_current_cases=diode_current_cases.rstrip(),
         diode_forward_overdrive_cases=diode_forward_overdrive_cases.rstrip(),
         diode_force_cases=diode_force_cases.rstrip())

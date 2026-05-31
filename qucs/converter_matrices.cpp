@@ -200,13 +200,17 @@ Model_converter::Outputs Model_converter::calcInstantaneousOutputs(uint64_t swit
 }
 
 uint64_t Model_converter::controlledSwitchMask() const {
+    // Track each switch's delayed control output, not its possibly
+    // diode-forced actual value. This keeps diode zero-crossing
+    // force/release events out of controlled topology detection,
+    // while still detecting explicit control of a diode switch.
     return 0 |
-        (switches.S_a_n << 0) |
-        (switches.S_a_p << 1) |
-        (switches.S_b_n << 2) |
-        (switches.S_b_p << 3) |
-        (switches.S_c_n << 4) |
-        (switches.S_c_p << 5);
+        (uint64_t{switches.S_D_a_n.output()} << 0) |
+        (uint64_t{switches.S_D_a_p.output()} << 1) |
+        (uint64_t{switches.S_D_b_n.output()} << 2) |
+        (uint64_t{switches.S_D_b_p.output()} << 3) |
+        (uint64_t{switches.S_D_c_n.output()} << 4) |
+        (uint64_t{switches.S_D_c_p.output()} << 5);
 }
 
 uint64_t Model_converter::closedDiodeMask() const {
@@ -256,47 +260,54 @@ uint64_t Model_converter::inductorCurrentSignMask() const {
 
 uint64_t Model_converter::switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t closed_diode_mask) const {
     uint64_t switch_mask = base_switch_mask;
+    // The base mask is the controlled-switch topology. Diode forces
+    // can add closed diode switches, but they must not clear a switch
+    // that is closed by its controlled output.
     if ((closed_diode_mask & (uint64_t{1} << 0)) != 0) {
         switch_mask |= uint64_t{1} << 0;
-    } else {
-        switch_mask &= ~(uint64_t{1} << 0);
     }
     if ((closed_diode_mask & (uint64_t{1} << 1)) != 0) {
         switch_mask |= uint64_t{1} << 1;
-    } else {
-        switch_mask &= ~(uint64_t{1} << 1);
     }
     if ((closed_diode_mask & (uint64_t{1} << 2)) != 0) {
         switch_mask |= uint64_t{1} << 2;
-    } else {
-        switch_mask &= ~(uint64_t{1} << 2);
     }
     if ((closed_diode_mask & (uint64_t{1} << 3)) != 0) {
         switch_mask |= uint64_t{1} << 3;
-    } else {
-        switch_mask &= ~(uint64_t{1} << 3);
     }
     if ((closed_diode_mask & (uint64_t{1} << 4)) != 0) {
         switch_mask |= uint64_t{1} << 4;
-    } else {
-        switch_mask &= ~(uint64_t{1} << 4);
     }
     if ((closed_diode_mask & (uint64_t{1} << 5)) != 0) {
         switch_mask |= uint64_t{1} << 5;
-    } else {
-        switch_mask &= ~(uint64_t{1} << 5);
     }
     return switch_mask;
 }
 
 bool Model_converter::diodeClosed(size_t diode_idx) const {
+    // This is the diode-forced state only. A diode switch can also be
+    // closed by its controlled output; that base topology is tracked
+    // separately by controlledSwitchMask().
     switch (diode_idx) {
-        case 0: return switches.S_D_a_n;
-        case 1: return switches.S_D_a_p;
-        case 2: return switches.S_D_b_n;
-        case 3: return switches.S_D_b_p;
-        case 4: return switches.S_D_c_n;
-        case 5: return switches.S_D_c_p;
+        case 0: return switches.S_D_a_n.forcedOutput().value_or(false);
+        case 1: return switches.S_D_a_p.forcedOutput().value_or(false);
+        case 2: return switches.S_D_b_n.forcedOutput().value_or(false);
+        case 3: return switches.S_D_b_p.forcedOutput().value_or(false);
+        case 4: return switches.S_D_c_n.forcedOutput().value_or(false);
+        case 5: return switches.S_D_c_p.forcedOutput().value_or(false);
+    default:
+        return false;
+    }
+}
+
+bool Model_converter::diodeControlledClosed(size_t diode_idx, uint64_t controlled_switch_mask) const {
+    switch (diode_idx) {
+        case 0: return (controlled_switch_mask & (uint64_t{1} << 0)) != 0;
+        case 1: return (controlled_switch_mask & (uint64_t{1} << 1)) != 0;
+        case 2: return (controlled_switch_mask & (uint64_t{1} << 2)) != 0;
+        case 3: return (controlled_switch_mask & (uint64_t{1} << 3)) != 0;
+        case 4: return (controlled_switch_mask & (uint64_t{1} << 4)) != 0;
+        case 5: return (controlled_switch_mask & (uint64_t{1} << 5)) != 0;
     default:
         return false;
     }
@@ -376,7 +387,7 @@ void Model_converter::forceClosedDiodeMask(uint64_t closed_diode_mask) {
 }
 
 void Model_converter::releaseReverseCurrentDiodes() {
-    uint64_t current_switch_mask = switches.all();
+    uint64_t current_switch_mask = controlledSwitchMask();
     uint64_t closed_diode_mask = closedDiodeMask();
     if (closed_diode_mask == 0) {
         m_last_switch_mask = current_switch_mask;
@@ -406,18 +417,18 @@ void Model_converter::releaseReverseCurrentDiodes() {
 }
 
 void Model_converter::resolveDiodeContinuity() {
-    uint64_t current_switch_mask = switches.all();
+    uint64_t current_switch_mask = controlledSwitchMask();
     uint64_t initial_closed_diode_mask = closedDiodeMask();
 
     // Check the diode complementarity part of the candidate solution.
     // Closed diodes may conduct zero or positive current. Open diodes
     // must not be forward-biased.
-    auto diode_complementarity_violation = [this](uint64_t closed_diode_mask, Outputs const& outputs_) {
+    auto diode_complementarity_violation = [this, current_switch_mask](uint64_t closed_diode_mask, Outputs const& outputs_) {
         double violation = 0.0;
         for (size_t diode_idx = 0; diode_idx < 6; ++diode_idx) {
             if ((closed_diode_mask & (uint64_t{1} << diode_idx)) != 0) {
                 violation = std::max(violation, -diodeCurrent(diode_idx, outputs_));
-            } else {
+            } else if (!diodeControlledClosed(diode_idx, current_switch_mask)) {
                 violation = std::max(violation, diodeForwardOverdrive(diode_idx, outputs_));
             }
         }
@@ -744,7 +755,7 @@ Model_converter::StateSpaceMatrices const& Model_converter::calcStateSpaceMatric
             return *it->second;
         }
     }
-    std::string netlist = "R_p_p 0 N_dc_p 1E3 \nR_n_p N_dc_n 0 1E3 \nV_dc _net0 N_dc_n DC 1 \nD_a_p N_c_a N_dc_p \nD_b_p N_c_b N_dc_p \nS_a_p N_c_a N_dc_p _net1 _net2 \nS_c_p N_c_c N_dc_p _net3 _net4 \nD_c_p N_c_c N_dc_p \nS_b_p N_c_b N_dc_p _net5 _net6 \nS_a_n N_dc_n N_c_a _net7 _net8 \nD_a_n N_dc_n N_c_a \nS_b_n N_dc_n N_c_b _net9 _net10 \nD_b_n N_dc_n N_c_b \nS_c_n N_dc_n N_c_c _net11 _net12 \nD_c_n N_dc_n N_c_c \nL_b _net13 _net14 1M \nL_a _net15 _net16 1M \nL_c _net17 _net18 1M \nC_p 0 _net19 10E-3;I; \nC_n _net20 0 10E-3;I; \nR_n_s N_dc_n _net20 10E-3 \nR_p_s _net19 N_dc_p 10E-3 \nR_a N_c_a _net15 10E-3 \nR_b N_c_b _net13 10E-3 \nR_c N_c_c _net17 10E-3 \nR_dc _net0 N_dc_p 1;I; \nV_a _net21 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_c _net23 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_b _net24 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nL_g_b _net25 _net24 1M \nL_g_a _net26 _net21 1M \nL_g_c _net27 _net23 1M \nR_g_a _net16 _net26 10E-3 \nR_g_b _net14 _net25 10E-3 \nR_g_c _net18 _net27 10E-3 \nC_a _net28 _net16 10E-3;I; \nC_b _net28 _net14 10E-3;I; \nC_c _net28 _net18 10E-3;I; ";
+    std::string netlist = "R_p_p 0 N_dc_p 1E3 \nR_n_p N_dc_n 0 1E3 \nV_dc _net0 N_dc_n DC 1 \nL_b _net1 _net2 1M \nL_a _net3 _net4 1M \nL_c _net5 _net6 1M \nC_p 0 _net7 10E-3;I; \nC_n _net8 0 10E-3;I; \nR_n_s N_dc_n _net8 10E-3 \nR_p_s _net7 N_dc_p 10E-3 \nR_a N_c_a _net3 10E-3 \nR_b N_c_b _net1 10E-3 \nR_c N_c_c _net5 10E-3 \nR_dc _net0 N_dc_p 1;I; \nV_a _net9 _net10 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_c _net11 _net10 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nV_b _net12 _net10 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0 \nL_g_b _net13 _net12 1M \nL_g_a _net14 _net9 1M \nL_g_c _net15 _net11 1M \nR_g_a _net4 _net14 10E-3 \nR_g_b _net2 _net13 10E-3 \nR_g_c _net6 _net15 10E-3 \nC_a _net16 _net4 10E-3;I; \nC_b _net16 _net2 10E-3;I; \nC_c _net16 _net6 10E-3;I; \nD_a_n N_dc_n N_c_a \nD_a_p N_c_a N_dc_p \nD_b_p N_c_b N_dc_p \nD_c_p N_c_c N_dc_p \nD_c_n N_dc_n N_c_c \nD_b_n N_dc_n N_c_b ";
 
     // Cache symbolic intermediate matrices per switch combination
     static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
@@ -862,18 +873,12 @@ uint64_t Model_converter::Components::hash() const {
 
 uint64_t Model_converter::Switches::all() const {
     return 0 |
-        (S_D_a_n << 0) |
-        (S_D_a_p << 1) |
-        (S_D_b_n << 2) |
-        (S_D_b_p << 3) |
-        (S_D_c_n << 4) |
-        (S_D_c_p << 5) |
-        (S_a_n << 6) |
-        (S_a_p << 7) |
-        (S_b_n << 8) |
-        (S_b_p << 9) |
-        (S_c_n << 10) |
-        (S_c_p << 11);
+        (uint64_t{S_D_a_n} << 0) |
+        (uint64_t{S_D_a_p} << 1) |
+        (uint64_t{S_D_b_n} << 2) |
+        (uint64_t{S_D_b_p} << 3) |
+        (uint64_t{S_D_c_n} << 4) |
+        (uint64_t{S_D_c_p} << 5);
 }
 
 double Model_converter::Switches::smallestDelay() {
@@ -883,13 +888,7 @@ double Model_converter::Switches::smallestDelay() {
                     S_D_b_n.pendingTime(),
                     S_D_b_p.pendingTime(),
                     S_D_c_n.pendingTime(),
-                    S_D_c_p.pendingTime(),
-                    S_a_n.pendingTime(),
-                    S_a_p.pendingTime(),
-                    S_b_n.pendingTime(),
-                    S_b_p.pendingTime(),
-                    S_c_n.pendingTime(),
-                    S_c_p.pendingTime()});
+                    S_D_c_p.pendingTime()});
 }
 
 void Model_converter::Switches::step(double dt) {
@@ -899,10 +898,4 @@ void Model_converter::Switches::step(double dt) {
     S_D_b_p.step(dt);
     S_D_c_n.step(dt);
     S_D_c_p.step(dt);
-    S_a_n.step(dt);
-    S_a_p.step(dt);
-    S_b_n.step(dt);
-    S_b_p.step(dt);
-    S_c_n.step(dt);
-    S_c_p.step(dt);
 }

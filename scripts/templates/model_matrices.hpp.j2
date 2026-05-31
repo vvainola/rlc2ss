@@ -147,6 +147,7 @@ class [[ class_name ]] {
     uint64_t inductorCurrentSignMask() const;
     uint64_t switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t closed_diode_mask) const;
     bool diodeClosed(size_t diode_idx) const;
+    bool diodeControlledClosed(size_t diode_idx, uint64_t controlled_switch_mask) const;
     double diodeCurrent(size_t diode_idx, Outputs const& outputs_) const;
     double diodeForwardOverdrive(size_t diode_idx, Outputs const& outputs_) const;
     double inductorCurrentDiscontinuity(Outputs const& outputs_) const;

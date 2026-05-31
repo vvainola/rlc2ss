@@ -186,19 +186,19 @@ extern "C" __declspec(dllexport) void DLL_update(double current_time, double dt)
     circuit.switches.S1 = temp & 1;
 #elif defined CONVERTER
     double on_delay = 15e-6;
-    circuit.switches.S_a_n.setOnOffDelays(on_delay, 0);
-    circuit.switches.S_a_p.setOnOffDelays(on_delay, 0);
-    circuit.switches.S_b_n.setOnOffDelays(on_delay, 0);
-    circuit.switches.S_b_p.setOnOffDelays(on_delay, 0);
-    circuit.switches.S_c_n.setOnOffDelays(on_delay, 0);
-    circuit.switches.S_c_p.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_D_a_n.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_D_a_p.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_D_b_n.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_D_b_p.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_D_c_n.setOnOffDelays(on_delay, 0);
+    circuit.switches.S_D_c_p.setOnOffDelays(on_delay, 0);
 
-    circuit.switches.S_a_n = temp & 1 << 6;
-    circuit.switches.S_a_p = temp & 1 << 7;
-    circuit.switches.S_b_n = temp & 1 << 8;
-    circuit.switches.S_b_p = temp & 1 << 9;
-    circuit.switches.S_c_n = temp & 1 << 10;
-    circuit.switches.S_c_p = temp & 1 << 11;
+    circuit.switches.S_D_a_n = temp & 1 << 0;
+    circuit.switches.S_D_a_p = temp & 1 << 1;
+    circuit.switches.S_D_b_n = temp & 1 << 2;
+    circuit.switches.S_D_b_p = temp & 1 << 3;
+    circuit.switches.S_D_c_n = temp & 1 << 4;
+    circuit.switches.S_D_c_p = temp & 1 << 5;
 #endif
     circuit.step(dt, circuit.inputs);
     DbgGui_sampleWithTimestamp(current_time);
