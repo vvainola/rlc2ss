@@ -212,13 +212,6 @@ def render_diode_continuity_methods(
             sign_bit_idx += 2
 
     return render_cxx_block(f"""
-        namespace {{
-        uint64_t mixContinuityCacheKey(uint64_t seed, uint64_t value) {{
-            seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
-            return seed;
-        }}
-        }} // namespace
-
         {class_name}::Outputs {class_name}::calcInstantaneousOutputs(uint64_t switch_combination) {{
             Outputs instantaneous_outputs;
             // Evaluate the algebraic outputs for an explicit switch mask at t+0.
@@ -395,10 +388,10 @@ def render_diode_continuity_methods(
             // so the key includes the inductor-current sign pattern. A cached mask
             // is still fully revalidated before use.
             uint64_t cache_key = 0;
-            cache_key = mixContinuityCacheKey(cache_key, m_last_switch_mask);
-            cache_key = mixContinuityCacheKey(cache_key, current_switch_mask);
-            cache_key = mixContinuityCacheKey(cache_key, initial_closed_diode_mask);
-            cache_key = mixContinuityCacheKey(cache_key, inductorCurrentSignMask());
+            rlc2ss::hash_combine(cache_key, m_last_switch_mask);
+            rlc2ss::hash_combine(cache_key, current_switch_mask);
+            rlc2ss::hash_combine(cache_key, initial_closed_diode_mask);
+            rlc2ss::hash_combine(cache_key, inductorCurrentSignMask());
 
             if (auto cached = m_diode_continuity_cache.find(cache_key); cached != m_diode_continuity_cache.end()) {{
                 rlc2ss::DiodeContinuityMetrics cached_metrics = evaluate_mask(cached->second);

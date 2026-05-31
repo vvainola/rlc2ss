@@ -92,6 +92,14 @@ SymbolicStateSpace formStateSpaceMatrices(std::string const& netlist,
 Eigen::MatrixXd evaluate(SymbolicMatrix const& m,
                          std::unordered_map<std::string, double> const& values);
 
+inline void hash_combine_bits(uint64_t& seed, uint64_t bits) {
+    seed ^= bits + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+}
+
+inline void hash_combine(uint64_t& seed, uint64_t v) {
+    hash_combine_bits(seed, v);
+}
+
 inline void hash_combine(uint64_t& seed, double v) {
     // Treat the double as its raw 64-bit representation
     // This avoids issues where the compiler might try to "help" with floating point logic
@@ -102,7 +110,7 @@ inline void hash_combine(uint64_t& seed, double v) {
         bits = std::bit_cast<uint64_t>(0.0);
     }
 
-    seed ^= bits + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    hash_combine_bits(seed, bits);
 }
 
 } // namespace rlc2ss
