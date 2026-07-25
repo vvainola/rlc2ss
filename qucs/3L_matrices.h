@@ -283,8 +283,9 @@ class Model_3L {
 
   private:
     Inputs m_inputs;
-    Integrator<Eigen::Vector<double, NUM_STATES>, 
-               Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
+    Integrator<Eigen::Vector<double, NUM_STATES>,
+               Eigen::Matrix<double, NUM_STATES, NUM_STATES>,
+               Eigen::Matrix<double, NUM_STATES, NUM_INPUTS>>
         m_solver;
     StateSpaceMatrices m_ss;
     Components m_components_DO_NOT_TOUCH;
@@ -12685,4 +12686,3 @@ Model_3L::StateSpaceMatrices calculateStateSpace_448(Model_3L::Components const&
     ss.D = (D1 + K2 * ss.B);
     return ss;
 }
-

@@ -44,12 +44,7 @@ class Model_mutual_inductor {
         // Round the used timestep to closest multiple of resolution and store the error to accumulator
         // so that the timestep length error will be corrected when accumulator becomes a multiple of the
         // timestep resolution.
-        ACCUMULATE,
-        // The timestep length that is not a multiple of timestep resolution will be integrated with
-        // adaptive step size runge-kutta-fehlberg. E.g. If resolution 1us and timestep is 12.1us,
-        // 12 us will be solved with Tustin and remaining 0.1us with RKF to avoid calculating jacobian
-        // inverse for very small timesteps
-        INTEGRATE_ADAPTIVE
+        ACCUMULATE
     };
 
     void setTimestepResolution(double dt, TimestepErrorCorrectionMode mode) {
@@ -152,10 +147,6 @@ class Model_mutual_inductor {
         Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D;
     };
 
-    Eigen::Vector<double, NUM_STATES> dxdt(Eigen::Vector<double, NUM_STATES> const& state, double /*t*/) const {
-        return m_ss.A * state + m_Bu;
-    }
-
     Components components;
     Inputs inputs;
     States states;
@@ -169,12 +160,12 @@ class Model_mutual_inductor {
     void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
-               Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
+               Eigen::Matrix<double, NUM_STATES, NUM_STATES>,
+               Eigen::Matrix<double, NUM_STATES, NUM_INPUTS>>
         m_solver;
     StateSpaceMatrices m_ss;
     Components _M_components_DO_NOT_TOUCH;
     Switches _M_switches_DO_NOT_TOUCH;
-    Eigen::Vector<double, NUM_STATES> m_Bu; // Bu term in "dxdt = Ax + Bu"
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
