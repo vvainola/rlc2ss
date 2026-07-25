@@ -250,7 +250,6 @@ template <class vector_t,
           class matrix_t>
 template <class System>
 inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system, vector_t const& x0, double t, double dt) {
-    t += dt;
     if (dt != m_dt_prev) {
         m_dt_prev = dt;
         if (!m_caching_enabled) {
@@ -269,6 +268,7 @@ inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system,
     vector_t dxdt0 = system.dxdt(x0, t);
     vector_t diff = *m_jacobian_coeff_inv * (-0.5 * dt * dxdt0);
     vector_t x = x0 - diff;
+    t += dt;
 
     // iterate Newton until some precision is reached
     size_t iterations = 0;

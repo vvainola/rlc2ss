@@ -164,6 +164,7 @@ executable('tests',
     sources : [
         'tests/diode_continuity_test.cpp',
         'tests/expression_eval_test.cpp',
+        'tests/integrator_test.cpp',
         'tests/state_matrices_test.cpp',
     ],
     cpp_args : [
