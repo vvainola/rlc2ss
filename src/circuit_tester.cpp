@@ -23,12 +23,18 @@
 #include "integrator.hpp"
 
 #include <complex>
-#include "qucs\diode_matrices.hpp"
-#include "qucs\saturating_inductor_matrices.hpp"
-#include "qucs\mutual_inductor_matrices.hpp"
-#include "qucs\controlled_sources_matrices.hpp"
-#include "qucs\converter_matrices.hpp"
+#include <memory>
+#include "qucs/diode_matrices.hpp"
+#include "qucs/saturating_inductor_matrices.hpp"
+#include "qucs/mutual_inductor_matrices.hpp"
+#include "qucs/controlled_sources_matrices.hpp"
+#include "qucs/converter_matrices.hpp"
 #include "DbgGui/dbg_gui_wrapper.h"
+#ifdef _WIN32
+#define RLC2SS_EXPORT __declspec(dllexport)
+#else
+#define RLC2SS_EXPORT __attribute__((visibility("default")))
+#endif
 
 // #define DIODE_TEST
 // #define RL3
@@ -123,15 +129,15 @@ Model_converter circuit(Model_converter::Components{
 double debug[20];
 uint32_t temp;
 
-extern "C" __declspec(dllexport) int DLL_input_count = circuit.NUM_INPUTS;
-extern "C" __declspec(dllexport) int DLL_output_count = circuit.NUM_OUTPUTS;
-extern "C" __declspec(dllexport) int DLL_switch_count = circuit.NUM_SWITCHES;
-extern "C" __declspec(dllexport) double* DLL_inputs = (double*)&circuit.inputs;
-extern "C" __declspec(dllexport) uint32_t* DLL_switches = (uint32_t*)&temp; //(uint32_t*)&circuit.switches2;
-extern "C" __declspec(dllexport) double* DLL_outputs = (double*)&circuit.outputs;
-extern "C" __declspec(dllexport) double* DLL_debug = debug;
+extern "C" RLC2SS_EXPORT int DLL_input_count = circuit.NUM_INPUTS;
+extern "C" RLC2SS_EXPORT int DLL_output_count = circuit.NUM_OUTPUTS;
+extern "C" RLC2SS_EXPORT int DLL_switch_count = circuit.NUM_SWITCHES;
+extern "C" RLC2SS_EXPORT double* DLL_inputs = (double*)&circuit.inputs;
+extern "C" RLC2SS_EXPORT uint32_t* DLL_switches = (uint32_t*)&temp; //(uint32_t*)&circuit.switches2;
+extern "C" RLC2SS_EXPORT double* DLL_outputs = (double*)&circuit.outputs;
+extern "C" RLC2SS_EXPORT double* DLL_debug = debug;
 
-extern "C" __declspec(dllexport) void DLL_init(double dt) {
+extern "C" RLC2SS_EXPORT void DLL_init(double dt) {
     // DbgGui_create(dt);
     DbgGui_startUpdateLoop();
 #if defined SATURATING_INDUCTOR
@@ -178,7 +184,7 @@ extern "C" __declspec(dllexport) void DLL_init(double dt) {
 #endif
 }
 
-extern "C" __declspec(dllexport) void DLL_update(double current_time, double dt) {
+extern "C" RLC2SS_EXPORT void DLL_update(double current_time, double dt) {
 #if defined DIODE_TEST
     circuit.inputs.V_D2 = 0.1;
     circuit.inputs.V_D3 = 0.1;
@@ -204,6 +210,6 @@ extern "C" __declspec(dllexport) void DLL_update(double current_time, double dt)
     DbgGui_sampleWithTimestamp(current_time);
 }
 
-extern "C" __declspec(dllexport) void DLL_terminate() {
+extern "C" RLC2SS_EXPORT void DLL_terminate() {
     DbgGui_close();
 }

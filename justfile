@@ -15,7 +15,7 @@ setup build *opts:
     uv venv --allow-existing
     .venv/scripts/activate
     $Env:PKG_CONFIG_PATH="{{build}}\\conan"
-    uv run conan install conanfile.txt --build missing --output-folder {{build}}\conan --conf tools.env.virtualenv:powershell=powershell.exe
+    uv run conan install conanfile-windows.txt --build missing --output-folder {{build}}\conan --conf tools.env.virtualenv:powershell=powershell.exe
     # Call conanbuild.ps1 to set the environment variables
     .\\{{build}}\\conan\\conanbuild.ps1
     uv run meson setup -Dcpp_std=c++latest {{build}} {{opts}}
@@ -28,10 +28,10 @@ setup build *opts:
     export UV_LINK_MODE=copy
     uv venv --allow-existing
     source .venv/bin/activate
-    export PKG_CONFIG_PATH="{{build}}/conan"
-    uv run conan install conanfile.txt --build missing --output-folder {{build}}/conan
+    export PKG_CONFIG_PATH="$(pwd)/{{build}}/conan:$(pkg-config --variable pc_path pkg-config)"
+    uv run conan install conanfile-linux.txt --build missing --output-folder {{build}}/conan
     source ./{{build}}/conan/conanbuild.sh
-    uv run meson setup {{build}} {{opts}}
+    uv run meson setup {{build}} {{opts}} -Dcpp_std=c++23
 
 [no-cd]
 [windows]
@@ -45,6 +45,7 @@ build build_folder="build" *opts="":
 build build_folder="build" *opts="":
     #!/usr/bin/env bash
     source .venv/bin/activate
+    export PKG_CONFIG_PATH="$(pwd)/{{build_folder}}/conan:$(pkg-config --variable pc_path pkg-config)"
     ninja -C {{build_folder}}
 
 [no-cd]
@@ -60,5 +61,6 @@ test build_folder="build" *opts="":
 test build_folder="build" *opts="":
     #!/usr/bin/env bash
     source .venv/bin/activate
+    export PKG_CONFIG_PATH="$(pwd)/{{build_folder}}/conan:$(pkg-config --variable pc_path pkg-config)"
     ninja -C {{build_folder}} tests
     ./{{build_folder}}/tests {{opts}}

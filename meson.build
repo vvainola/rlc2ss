@@ -8,6 +8,12 @@ project('rlc2ss',
     ])
 WINDOWS = (host_machine.system() == 'windows')
 LINUX = (host_machine.system() == 'linux')
+if LINUX
+    # GNU-unique C++ symbols cause glibc to implicitly mark a dlopen()ed
+    # library as NODELETE. The libraries must be able to unload to
+    # reset the state of the simulation between runs.
+    add_global_arguments('-fno-gnu-unique', language : 'cpp')
+endif
 deps = [
     dependency('eigen3'),
     dependency('nlohmann_json')
@@ -61,12 +67,12 @@ if meson.is_subproject()
     subdir_done()
 endif
 
-if WINDOWS
-    gui = [subproject('gui').get_variable('lib_gui_dep')]
-else
-    # GUI is not available on non-Windows platforms
-    gui = []
+fs = import('fs')
+dbg_gui_subproject = meson.project_source_root() / 'subprojects' / 'DbgGui'
+if not fs.exists(dbg_gui_subproject)
+    error('DbgGui subproject not found. Create subprojects/DbgGui as a symlink to the DbgGui source directory.')
 endif
+gui = [subproject('DbgGui').get_variable('lib_gui_dep')]
 
 
 # Embed the JSON file as a C array
@@ -105,10 +111,6 @@ diode_bridge = executable('diode_bridge',
     dependencies : deps + [gui]
 )
 
-if LINUX
-    subdir_done()
-endif
-
 shared_library('circuit_tester',
     sources : [
         'qucs/controlled_sources_matrices.cpp',
@@ -124,7 +126,12 @@ shared_library('circuit_tester',
         'include'
     ],
     link_with : [lib_rlc2ss],
-    dependencies : deps + gui
+    dependencies : deps + gui,
+    gnu_symbol_visibility : 'hidden',
+    link_args : LINUX ? [
+        '-Wl,--exclude-libs,ALL',
+        '-Wl,--version-script=' + (meson.current_source_dir() / 'circuit_tester.exports'),
+    ] : [],
 )
 
 diode_bridge_3L = executable('diode_bridge_3L',
