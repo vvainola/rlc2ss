@@ -35,6 +35,7 @@ class Model_diode_bridge {
     static inline constexpr size_t NUM_OUTPUTS = 15;
     static inline constexpr size_t NUM_STATES = 4;
     static inline constexpr size_t NUM_SWITCHES = 6;
+    static inline constexpr size_t NUM_DIODES = 6;
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if

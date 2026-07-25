@@ -144,6 +144,13 @@ void Model_controlled_sources::stepWithZeroCrossingDetection(double dt) {
         return;
     }
 
+    // Inductor saturation registers zero-crossing callbacks, so the fast path
+    // is used only when neither diodes nor saturation need checking.
+    if (m_zero_crossing_callbacks.empty()) {
+        stepModel(dt);
+        return;
+    }
+
     // Copy previous state and outputs if step needs to be redone
     Model_controlled_sources::States prev_state;
     Model_controlled_sources::Outputs prev_outputs;

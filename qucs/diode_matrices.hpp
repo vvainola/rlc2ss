@@ -36,6 +36,7 @@ class Model_diode {
     static inline constexpr size_t NUM_OUTPUTS = 11;
     static inline constexpr size_t NUM_STATES = 3;
     static inline constexpr size_t NUM_SWITCHES = 4;
+    static inline constexpr size_t NUM_DIODES = 3;
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if

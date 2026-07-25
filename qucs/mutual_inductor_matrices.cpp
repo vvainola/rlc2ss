@@ -150,6 +150,13 @@ void Model_mutual_inductor::stepWithZeroCrossingDetection(double dt) {
         return;
     }
 
+    // Inductor saturation registers zero-crossing callbacks, so the fast path
+    // is used only when neither diodes nor saturation need checking.
+    if (m_zero_crossing_callbacks.empty()) {
+        stepModel(dt);
+        return;
+    }
+
     // Copy previous state and outputs if step needs to be redone
     Model_mutual_inductor::States prev_state;
     Model_mutual_inductor::Outputs prev_outputs;

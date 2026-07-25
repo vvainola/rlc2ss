@@ -595,6 +595,7 @@ def write_cpp_files(
         num_outputs=len(ss.outputs),
         num_states=len(ss.states),
         num_switches=len(switches),
+        num_diodes=len(diodes),
         components_list=components_list,
         components_compare=components_compare,
         components_hash=components_hash,

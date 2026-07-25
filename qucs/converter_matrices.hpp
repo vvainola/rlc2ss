@@ -36,6 +36,7 @@ class Model_converter {
     static inline constexpr size_t NUM_OUTPUTS = 28;
     static inline constexpr size_t NUM_STATES = 11;
     static inline constexpr size_t NUM_SWITCHES = 6;
+    static inline constexpr size_t NUM_DIODES = 6;
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if

@@ -147,21 +147,32 @@ void [[ class_name ]]::stepWithZeroCrossingDetection(double dt) {
         return;
     }
 
-    uint64_t continuity_switch_mask = controlledSwitchMask();
-    if (continuity_switch_mask != m_last_continuity_switch_mask) {
-        bool first_continuity_step = m_last_continuity_switch_mask == ~uint64_t{0};
-        bool controlled_switch_opened = (m_last_continuity_switch_mask & ~continuity_switch_mask) != 0;
-
-        // Opening a controlled switch can remove the only path for an inductor
-        // current, so it may need a diode mask search. Closing a switch only
-        // adds a path; diode turn-off remains a complementarity/zero-crossing
-        // problem and does not need the expensive continuity resolver.
-        if (first_continuity_step || controlled_switch_opened) {
-            resolveDiodeContinuity();
-        } else {
-            releaseReverseCurrentDiodes();
+    if constexpr (NUM_DIODES == 0) {
+        // Inductor saturation registers zero-crossing callbacks, so the fast
+        // path is used only when neither diodes nor saturation need checking.
+        if (m_zero_crossing_callbacks.empty()) {
+            stepModel(dt);
+            return;
         }
-        m_last_continuity_switch_mask = continuity_switch_mask;
+    }
+
+    if constexpr (NUM_DIODES > 0) {
+        uint64_t continuity_switch_mask = controlledSwitchMask();
+        if (continuity_switch_mask != m_last_continuity_switch_mask) {
+            bool first_continuity_step = m_last_continuity_switch_mask == ~uint64_t{0};
+            bool controlled_switch_opened = (m_last_continuity_switch_mask & ~continuity_switch_mask) != 0;
+
+            // Opening a controlled switch can remove the only path for an inductor
+            // current, so it may need a diode mask search. Closing a switch only
+            // adds a path; diode turn-off remains a complementarity/zero-crossing
+            // problem and does not need the expensive continuity resolver.
+            if (first_continuity_step || controlled_switch_opened) {
+                resolveDiodeContinuity();
+            } else {
+                releaseReverseCurrentDiodes();
+            }
+            m_last_continuity_switch_mask = continuity_switch_mask;
+        }
     }
 
     // Copy previous state and outputs if step needs to be redone

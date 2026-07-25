@@ -35,6 +35,7 @@ class Model_mutual_inductor {
     static inline constexpr size_t NUM_OUTPUTS = 10;
     static inline constexpr size_t NUM_STATES = 4;
     static inline constexpr size_t NUM_SWITCHES = 0;
+    static inline constexpr size_t NUM_DIODES = 0;
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
