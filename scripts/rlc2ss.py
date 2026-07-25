@@ -128,11 +128,6 @@ class Component:
         if self.name[0] == 'C':
             self._der = sy.sympify(str(new_voltage).replace('V_', 'dV_'))
 
-    def update_der(self, new_der):
-        if self.name[0] != 'C' or self.name[0] != 'L':
-            assert False, f"Tried to set derivative term for {self.name}"
-        self._der = new_der
-
     def update_src(self, pos, neg = None):
         self.pos_src = pos
         self.neg_src = neg
