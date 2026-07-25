@@ -212,6 +212,16 @@ K12 L1 L2 0.5
     CHECK(K2(5, 1) == 4.0);
 }
 
+TEST_CASE("Circuits without requested outputs are accepted") {
+    rlc2ss::SymbolicStateSpace ss = rlc2ss::formStateSpaceMatrices(
+        "V1 in 0 DC 1\n"
+        "R1 in 0 1\n",
+        0);
+
+    CHECK(ss.C1.rows() == 0);
+    CHECK(ss.D1.rows() == 0);
+}
+
 TEST_CASE("Converter: C++ matches Python JSON") {
     Fixture fx{
         .cir_filename = "converter.cir",

@@ -374,7 +374,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     outputs = list(set(outputs))
     outputs.sort()
     outputs = [Symbol(output) for output in outputs]
-    if outputs[0] == Symbol('0'):
+    if outputs and outputs[0] == Symbol('0'):
         outputs = outputs[1:]
 
     temp_tree = nx.Graph()

@@ -273,7 +273,7 @@ Netlist parseNetlist(std::string const& netlist_str,
     // Remove duplicate outputs and sort
     std::sort(netlist.outputs.begin(), netlist.outputs.end());
     netlist.outputs.erase(std::unique(netlist.outputs.begin(), netlist.outputs.end()), netlist.outputs.end());
-    if (netlist.outputs[0] == "0") {
+    if (!netlist.outputs.empty() && netlist.outputs[0] == "0") {
         netlist.outputs.erase(netlist.outputs.begin());
     }
 
