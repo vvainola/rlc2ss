@@ -18,6 +18,7 @@
 #include "nlohmann/json.hpp"
 
 #include <assert.h>
+#include <unordered_map>
 
 class Model_diode {
   public:
@@ -32,9 +33,9 @@ class Model_diode {
     Model_diode(Components const& c);
 
     static inline constexpr size_t NUM_INPUTS = 4;
-    static inline constexpr size_t NUM_OUTPUTS = 8;
-    static inline constexpr size_t NUM_STATES = 2;
-    static inline constexpr size_t NUM_SWITCHES = 3;
+    static inline constexpr size_t NUM_OUTPUTS = 11;
+    static inline constexpr size_t NUM_STATES = 3;
+    static inline constexpr size_t NUM_SWITCHES = 4;
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
@@ -75,9 +76,9 @@ class Model_diode {
         Inputs(const Inputs& other) { data = other.data; }
         struct {
             double V1;
+            double V_D1;
             double V_D2;
             double V_D3;
-            double V_internal;
         };
         Eigen::Vector<double, NUM_INPUTS> data;
     };
@@ -88,18 +89,22 @@ class Model_diode {
         struct {
             double I_L1;
             double I_L2;
+            double I_L3;
+            double I_R_D1;
             double I_R_D2;
             double I_R_D3;
-            double N_D2_neg;
-            double N_D2_pos;
-            double N_D3_neg;
-            double N_D3_pos;
+            double N_D2_P;
+            double N_D3_N;
+            double _net1;
+            double _net2;
+            double _net4;
         };
         Eigen::Vector<double, NUM_OUTPUTS> data;
     };
 
     struct Switches {
         rlc2ss::OnOffDelay S1;
+        rlc2ss::OnOffDelay S_D1;
         rlc2ss::OnOffDelay S_D2;
         rlc2ss::OnOffDelay S_D3;
 
@@ -109,12 +114,16 @@ class Model_diode {
     };
 
     struct Components {
-        double L1 = 0.001;
+        double K1 = 0.5;
+        double L1 = 0.02;
         double L2 = 0.01;
-        double R1 = -1.0;
-        double R2 = -1.0;
-        double R3 = -1.0;
+        double L3 = 0.02;
+        double R1 = 0.1;
+        double R2 = 1.0;
+        double R3 = 1.0;
         double R4 = 1.0;
+        double R5 = 0.001;
+        double R_D1 = -1.0;
         double R_D2 = -1.0;
         double R_D3 = -1.0;
 
@@ -135,6 +144,7 @@ class Model_diode {
         struct {
             double I_L1;
             double I_L2;
+            double I_L3;
         };
         Eigen::Vector<double, NUM_STATES> data;
     };
@@ -158,9 +168,22 @@ class Model_diode {
 
   private:
     std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
+    void resolveDiodeContinuity();
+    Outputs calcInstantaneousOutputs(uint64_t switch_combination);
+    StateSpaceMatrices const& calcStateSpaceMatrices(uint64_t switch_combination);
+    uint64_t controlledSwitchMask() const;
+    uint64_t closedDiodeMask() const;
+    uint64_t inductorCurrentSignMask() const;
+    uint64_t switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t closed_diode_mask) const;
+    bool diodeClosed(size_t diode_idx) const;
+    bool diodeControlledClosed(size_t diode_idx, uint64_t controlled_switch_mask) const;
+    double diodeCurrent(size_t diode_idx, Outputs const& outputs_) const;
+    double diodeForwardOverdrive(size_t diode_idx, Outputs const& outputs_) const;
+    double inductorCurrentDiscontinuity(Outputs const& outputs_) const;
+    void forceClosedDiodeMask(uint64_t closed_diode_mask);
+    void releaseReverseCurrentDiodes();
     void stepWithZeroCrossingDetection(double dt);
     void stepModel(double dt);
-    void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>>
@@ -172,6 +195,9 @@ class Model_diode {
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    uint64_t m_last_continuity_switch_mask = ~uint64_t{0};
+    uint64_t m_last_switch_mask = 0;
+    std::unordered_map<uint64_t, uint64_t> m_diode_continuity_cache;
     using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
     std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
     // The json file with symbolic intermediate matrices

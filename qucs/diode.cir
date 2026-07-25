@@ -1,22 +1,24 @@
-* Qucs 1.1.0 C:/Projects/rlc2ss/qucs/diode.sch
-.INCLUDE "C:/Programs/qucs_s_win64/share/qucs-s/xspice_cmlib/include/ngspice_mathfunc.inc"
-* Qucs 1.1.0  C:/Projects/rlc2ss/qucs/diode.sch
-L1 _net0 _net1  1M 
-R3 N_D2_neg _net0  1K
-V1 N_D3_neg 0 DC 1
-S1 N_D3_neg  N_D3_pos  _net2  _net3 
-D2 N_D2_pos  N_D2_neg 
-R2 0 N_D2_pos  1K
-D3 N_D3_pos  N_D3_neg 
-R1 N_D3_pos N_D2_neg  1K
-V_internal N_D2_pos _net1 DC 1
-R4 0 _net4  1
-L2 _net4 N_D3_neg  1E-2 
+* Qucs 25.2.0  /home/viliv/repos/rlc2ss/qucs/diode.sch
+L2 _net0 _net1  1E-2; 
+V1 _net1 0 DC 1
+R1 _net2 N_D2_P  0.1; tc1=0.0 tc2=0.0 
+R2 0 N_D3_N  1; tc1=0.0 tc2=0.0 
+R3 N_D2_P _net3  1; tc1=0.0 tc2=0.0 
+R4 0 _net0  1; tc1=0.0 tc2=0.0 
+D1 _net2 _net1 DMOD_D1 AREA=1.0
+.MODEL DMOD_D1 D (Is=1E-15 N=1 Cj0=10F M=0.5 Vj=0.7 Fc=0.5 Rs=0.0 Tt=0.0P Kf=0.0 Af=1.0 Bv=10 Ibv=1M Xti=3.0 Eg=1.11 Tcv=0.0 Trs=0.0 Ttt1=0.0 Ttt2=0.0 Tm1=0.0 Tm2=0.0 Tnom=26.85 )
+D2 _net4 N_D2_P DMOD_D2 AREA=1.0
+.MODEL DMOD_D2 D (Is=1E-15 N=1 Cj0=10F M=0.5 Vj=0.7 Fc=0.5 Rs=0.0 Tt=0.0P Kf=0.0 Af=1.0 Bv=10 Ibv=1M Xti=3.0 Eg=1.11 Tcv=0.0 Trs=0.0 Ttt1=0.0 Ttt2=0.0 Tm1=0.0 Tm2=0.0 Tnom=26.85 )
+D3 N_D3_N _net4 DMOD_D3 AREA=1.0
+.MODEL DMOD_D3 D (Is=1E-15 N=1 Cj0=10F M=0.5 Vj=0.7 Fc=0.5 Rs=0.0 Tt=0.0P Kf=0.0 Af=1.0 Bv=10 Ibv=1M Xti=3.0 Eg=1.11 Tcv=0.0 Trs=0.0 Ttt1=0.0 Ttt2=0.0 Tm1=0.0 Tm2=0.0 Tnom=26.85 )
+L3 _net5 _net6  2E-2; 
+L1 _net3 N_D3_N  2E-2; 
+R5 _net5 _net6  1E-3; tc1=0.0 tc2=0.0 
+K1 L1 L3 0.5; 
+S1 _net1  _net2  _net7  _net8 
+
 .control
-set filetype=ascii
-op
-print all > spice4qucs.cir.dc_op
-destroy all
-quit
+
+exit
 .endc
-.end
+.END

@@ -83,8 +83,6 @@ class CircuitInstance : public Circuit {
 template <>
 void CircuitInstance<Model_diode>::updateSwitches(uint32_t switches) {
     model.switches.S1 = switches & (1U << 0);
-    model.switches.S_D2 = switches & (1U << 1);
-    model.switches.S_D3 = switches & (1U << 2);
 }
 
 template <>
@@ -161,11 +159,7 @@ std::unique_ptr<Circuit> makeCircuit(int model) {
     case DIODE:
         return std::make_unique<CircuitInstance<Model_diode>>(
             Model_diode::Components{
-                .L1 = 1e-2,
-                .L2 = 1e-2,
-                .R1 = 0.1,
-                .R2 = 1.0,
-                .R3 = 1.0,
+                .R_D1 = 1e-3,
                 .R_D2 = 1e-3,
                 .R_D3 = 1e-3,
             });
