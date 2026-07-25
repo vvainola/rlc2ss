@@ -16,18 +16,18 @@ int main(int argc, char** argv) {
         ("h,help", "Show help and exit")
         ("v,verbose", "Enable verbose output")
         ("c,combination", "Solve only the given switch combination (default: sweep all)",
-            cxxopts::value<int>());
+            cxxopts::value<uint64_t>());
     // clang-format on
     cxxopts::ParseResult parsed_options;
     bool verbose = false;
-    std::optional<int> single_combination;
+    std::optional<uint64_t> single_combination;
     try {
         parsed_options = options.parse(argc, argv);
         if (parsed_options.count("verbose")) {
             verbose = true;
         }
         if (parsed_options.count("combination")) {
-            single_combination = parsed_options["combination"].as<int>();
+            single_combination = parsed_options["combination"].as<uint64_t>();
         }
     } catch (const cxxopts::OptionException& e) {
         std::cerr << "Error parsing options: " << e.what() << std::endl;
@@ -49,17 +49,17 @@ int main(int argc, char** argv) {
         std::vector<std::string> netlist_lines = rlc2ss::collectNetlistLines(*file_content);
         std::vector<std::string> switches = rlc2ss::extractSwitches(netlist_lines);
 
-        int begin = 0;
-        int end = 1 << switches.size();
+        uint64_t begin = 0;
+        uint64_t end = uint64_t{1} << switches.size();
         if (single_combination) {
-            if (*single_combination < 0 || *single_combination >= end) {
+            if (*single_combination >= end) {
                 throw std::runtime_error(std::format(
                     "--combination {} is out of range [0, {})", *single_combination, end));
             }
             begin = *single_combination;
             end = begin + 1;
         }
-        for (int combination = begin; combination < end; ++combination) {
+        for (uint64_t combination = begin; combination < end; ++combination) {
             std::cout << combination << " ";
             auto t_start = std::chrono::steady_clock::now();
             rlc2ss::SymbolicStateSpace output = rlc2ss::formStateSpaceMatrices(*file_content, combination, verbose);

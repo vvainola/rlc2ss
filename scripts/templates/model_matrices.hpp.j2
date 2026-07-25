@@ -36,6 +36,8 @@ class [[ class_name ]] {
     static inline constexpr size_t NUM_OUTPUTS = [[ num_outputs ]];
     static inline constexpr size_t NUM_STATES = [[ num_states ]];
     static inline constexpr size_t NUM_SWITCHES = [[ num_switches ]];
+    static_assert(NUM_SWITCHES < 64,
+                  "Generated models support at most 63 switches");
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if

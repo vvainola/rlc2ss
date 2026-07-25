@@ -56,6 +56,6 @@ struct Netlist {
     int getComponentIndex(std::string const& component_name) const;
 };
 
-Netlist parseNetlist(std::string const& netlist_str, int combination);
+Netlist parseNetlist(std::string const& netlist_str, uint64_t combination);
 
 } // namespace rlc2ss
