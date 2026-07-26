@@ -699,8 +699,8 @@ def int_to_combination(num : int, switch_count : int) -> tuple:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('netlist', type=str)
-    parser.add_argument('--dynamic', action='store_true', help='Solve only one combination with all switches open and the rest dynamically at runtime by calling this script')
-    parser.add_argument('--combination', type=int, default=-1, help='Solve the circuit only for given combination and update the json. This option is only used by generated code from dynamic option.')
+    parser.add_argument('--dynamic', action='store_true', help='Construct and cache switch topologies on demand in the generated C++ model')
+    parser.add_argument('--combination', type=int, default=-1, help='Solve one switch combination and update an existing static JSON file')
     args = parser.parse_args()
 
     filename = os.path.splitext(args.netlist)[0]
