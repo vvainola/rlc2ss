@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -16,6 +17,23 @@ auto mapEvaluator(std::unordered_map<uint64_t, DiodeContinuityMetrics> const& me
 }
 
 } // namespace
+
+TEST_CASE("Reverse-current diode release converges after a topology cascade") {
+    std::vector<uint64_t> evaluated_masks;
+    auto reverse_mask = [&evaluated_masks](uint64_t closed_mask) {
+        evaluated_masks.push_back(closed_mask);
+        switch (closed_mask) {
+            case 0b11: return uint64_t{0b01};
+            case 0b10: return uint64_t{0b10};
+            default: return uint64_t{0};
+        }
+    };
+
+    uint64_t closed_mask = rlc2ss::releaseReverseCurrentDiodeMask(0b11, reverse_mask);
+
+    CHECK(closed_mask == 0b00);
+    CHECK(evaluated_masks == std::vector<uint64_t>{0b11, 0b10});
+}
 
 TEST_CASE("Diode continuity selector can choose a multi-diode continuity path") {
     std::unordered_map<uint64_t, DiodeContinuityMetrics> metrics{

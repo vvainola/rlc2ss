@@ -31,6 +31,25 @@ inline bool diodeContinuityValid(DiodeContinuityMetrics const& metrics, double t
     return metrics.discontinuity <= tolerance && metrics.complementarity_violation <= tolerance;
 }
 
+// Re-evaluate the instantaneous topology after every diode release. Opening one
+// diode can redirect an algebraic capacitor/resistor current and make another
+// diode reverse-biased at the same simulation time.
+// evaluate_reverse_mask receives the current closed-diode mask and returns
+// the subset carrying reverse current in that instantaneous topology.
+template <typename EvaluateReverseMask>
+uint64_t releaseReverseCurrentDiodeMask(uint64_t initial_closed_diode_mask,
+                                        EvaluateReverseMask&& evaluate_reverse_mask) {
+    uint64_t closed_diode_mask = initial_closed_diode_mask;
+    while (closed_diode_mask != 0) {
+        uint64_t reverse_current_mask = evaluate_reverse_mask(closed_diode_mask) & closed_diode_mask;
+        if (reverse_current_mask == 0) {
+            break;
+        }
+        closed_diode_mask &= ~reverse_current_mask;
+    }
+    return closed_diode_mask;
+}
+
 // Search diode masks by increasing distance from the current diode state. This
 // keeps normal freewheel transitions fast: if one extra diode fixes continuity,
 // only masks with zero or one changed bit are evaluated. The search is still

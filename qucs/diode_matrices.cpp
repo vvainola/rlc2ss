@@ -239,18 +239,24 @@ Model_diode::Switches releaseReverseCurrentDiodes(Model_diode::Components const&
     // discontinuity by opening diodes; it only gives existing current
     // another path. The full continuity resolver is therefore reserved
     // for switch openings. On a closing-only transition, only release
-    // solver-closed diodes that are already carrying reverse current at t+0.
-    uint64_t switch_mask = completeTopologyMask(external_closed_switch_mask, solver_closed_diode_mask);
-    Model_diode::Outputs instantaneous_outputs =
-        calcInstantaneousOutputs(components, states, inputs, switch_mask);
-    uint64_t updated_solver_closed_diode_mask = solver_closed_diode_mask;
-    for (size_t diode_idx = 0; diode_idx < 3; ++diode_idx) {
-        uint64_t diode_bit = uint64_t{1} << diode_idx;
-        if ((solver_closed_diode_mask & diode_bit) != 0 &&
-            diodeCurrent(diode_idx, instantaneous_outputs) < -rlc2ss::DIODE_CONTINUITY_TOLERANCE) {
-            updated_solver_closed_diode_mask &= ~diode_bit;
-        }
-    }
+    // solver-closed diodes carrying reverse current at t+0. Re-evaluate
+    // after each release because it can make another diode reverse-biased.
+    uint64_t updated_solver_closed_diode_mask = rlc2ss::releaseReverseCurrentDiodeMask(
+        solver_closed_diode_mask,
+        [&](uint64_t closed_diode_mask) {
+            uint64_t switch_mask = completeTopologyMask(external_closed_switch_mask, closed_diode_mask);
+            Model_diode::Outputs instantaneous_outputs =
+                calcInstantaneousOutputs(components, states, inputs, switch_mask);
+            uint64_t reverse_current_mask = 0;
+            for (size_t diode_idx = 0; diode_idx < 3; ++diode_idx) {
+                uint64_t diode_bit = uint64_t{1} << diode_idx;
+                if ((closed_diode_mask & diode_bit) != 0 &&
+                    diodeCurrent(diode_idx, instantaneous_outputs) < -rlc2ss::DIODE_CONTINUITY_TOLERANCE) {
+                    reverse_current_mask |= diode_bit;
+                }
+            }
+            return reverse_current_mask;
+        });
 
     return updated_solver_closed_diode_mask != solver_closed_diode_mask
         ? applySolverDiodeMask(switches, updated_solver_closed_diode_mask)
