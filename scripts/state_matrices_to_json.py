@@ -582,12 +582,12 @@ def write_cpp_files(
                 .D1 = j["D1"],
             }};
             // Create eigen matrices
-            Eigen::Matrix<double, NUM_STATES, NUM_STATES{states_row_major}> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
-            Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
-            Eigen::Matrix<double, NUM_STATES, NUM_STATES{states_row_major}> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
-            Eigen::Matrix<double, NUM_STATES, NUM_INPUTS{inputs_row_major}> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
-            Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES{states_row_major}> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
-            Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS{inputs_row_major}> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
+            Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES{states_row_major}> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
+            Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES{states_row_major}> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
+            Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_STATES{states_row_major}> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
+            Eigen::Matrix<double, {class_name}::NUM_STATES, {class_name}::NUM_INPUTS{inputs_row_major}> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
+            Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_STATES{states_row_major}> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
+            Eigen::Matrix<double, {class_name}::NUM_OUTPUTS, {class_name}::NUM_INPUTS{inputs_row_major}> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
 
             state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
             return *state_space_cache[switch_combination][component_hash];""", replace_components=replace_components)

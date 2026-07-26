@@ -1,11 +1,15 @@
 
 #include "mutual_inductor_matrices.hpp"
+#include "diode_continuity.hpp"
 #include "rlc2ss.h"
+#include <algorithm>
+#include <limits>
 #include <optional>
 #include <mutex>
 #include <format>
 #include <memory>
-#include "mutual_inductor_matrices_json.h"
+#include <stdexcept>
+
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -15,13 +19,14 @@
 
 inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
 
-static std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calcStateSpace(
-    Eigen::MatrixXd const& K1,
-    Eigen::MatrixXd const& A1,
-    Eigen::MatrixXd const& B1,
-    Eigen::MatrixXd const& K2,
-    Eigen::MatrixXd const& C1,
-    Eigen::MatrixXd const& D1) {
+namespace {
+
+std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calcStateSpace(Eigen::MatrixXd const& K1,
+                                                                          Eigen::MatrixXd const& A1,
+                                                                          Eigen::MatrixXd const& B1,
+                                                                          Eigen::MatrixXd const& K2,
+                                                                          Eigen::MatrixXd const& C1,
+                                                                          Eigen::MatrixXd const& D1) {
     auto ss = std::make_unique<Model_mutual_inductor::StateSpaceMatrices>();
     auto lu = K1.partialPivLu();
     Eigen::MatrixXd A = lu.solve(A1);
@@ -32,6 +37,89 @@ static std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices> calcStateSpace
     ss->D = (D1 + K2 * B);
     return ss;
 }
+
+Model_mutual_inductor::StateSpaceMatrices const& calcStateSpaceMatrices(Model_mutual_inductor::Components const& components,
+                                                                        uint64_t switch_combination) {
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {
+        std::unordered_map<uint64_t, std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {
+            return *it->second;
+        }
+    }
+    std::string netlist = "V1 _net0 0 DC 1 \nV2 _net1 0 DC 1 \nL1 N1 _net2 1; \nL2 N2 _net2 1; \nL3 N3 _net2 1; \nK12 L1 L2 0.9; \nK21 L2 L3 0.9; \nK31 L3 L1 0.9; \nR2 _net1 N2 10; \nR1 _net0 N1 10; \nR3 _net3 N3 10E-3;I; \nV3 _net3 0 DC 1I; \nR4 _net4 _net5 10;I; \nFSRC1 _net4 0 VSRC1 10; \nVSRC1 _net2 0 DC 0 \nCf 0 _net5 100E-6; ";
+
+    // Cache symbolic intermediate matrices per switch combination
+    static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
+    if (!symbolic_cache.contains(switch_combination)) {
+        symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
+    }
+    rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
+
+    // Substitute component values into cached symbolic matrices
+    std::unordered_map<std::string, double> values{
+        {"Cf", components.Cf},
+        {"FSRC1", components.FSRC1},
+        {"K12", components.K12},
+        {"K21", components.K21},
+        {"K31", components.K31},
+        {"L1", components.L1},
+        {"L2", components.L2},
+        {"L3", components.L3},
+        {"R1", components.R1},
+        {"R2", components.R2},
+        {"R3", components.R3},
+        {"R4", components.R4},
+    };
+    Eigen::MatrixXd K1 = rlc2ss::evaluate(symbolic_ss.K1, values);
+    Eigen::MatrixXd K2 = rlc2ss::evaluate(symbolic_ss.K2, values);
+    Eigen::MatrixXd A1 = rlc2ss::evaluate(symbolic_ss.A1, values);
+    Eigen::MatrixXd B1 = rlc2ss::evaluate(symbolic_ss.B1, values);
+    Eigen::MatrixXd C1 = rlc2ss::evaluate(symbolic_ss.C1, values);
+    Eigen::MatrixXd D1 = rlc2ss::evaluate(symbolic_ss.D1, values);
+
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    return *state_space_cache[switch_combination][component_hash];
+}
+
+
+Model_mutual_inductor::Outputs calcInstantaneousOutputs(Model_mutual_inductor::Components const& components,
+                                                        Model_mutual_inductor::States const& states,
+                                                        Model_mutual_inductor::Inputs const& inputs,
+                                                        uint64_t switch_combination) {
+    Model_mutual_inductor::Outputs instantaneous_outputs;
+    auto const& ss = calcStateSpaceMatrices(components, switch_combination);
+    instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
+    return instantaneous_outputs;
+}
+
+uint64_t externalClosedSwitchMask(Model_mutual_inductor::Switches const& switches) {
+    return 0;
+}
+
+Model_mutual_inductor::Switches releaseReverseCurrentDiodes(Model_mutual_inductor::Components const&,
+                                                            Model_mutual_inductor::States const&,
+                                                            Model_mutual_inductor::Inputs const&,
+                                                            Model_mutual_inductor::Switches const& switches) {
+    return switches;
+}
+
+Model_mutual_inductor::Switches resolveDiodeContinuity(Model_mutual_inductor::Components const&,
+                                                       Model_mutual_inductor::States const&,
+                                                       Model_mutual_inductor::Inputs const&,
+                                                       Model_mutual_inductor::Switches const& switches,
+                                                       uint64_t) {
+    return switches;
+}
+
+
+} // namespace
 
 std::optional<rlc2ss::ZeroCrossingEvent> Model_mutual_inductor::checkZeroCrossingEvents(Model_mutual_inductor::Outputs const& prev_outputs) {
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
@@ -56,6 +144,8 @@ Model_mutual_inductor::Model_mutual_inductor(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
 }
+
+
 
 void Model_mutual_inductor::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
     // Check that the currents are ascending and inductances are descending
@@ -151,11 +241,34 @@ void Model_mutual_inductor::stepWithZeroCrossingDetection(double dt) {
         return;
     }
 
-    // Inductor saturation registers zero-crossing callbacks, so the fast path
-    // is used only when neither diodes nor saturation need checking.
-    if (m_zero_crossing_callbacks.empty()) {
-        stepModel(dt);
-        return;
+    if constexpr (NUM_DIODES == 0) {
+        // Inductor saturation registers zero-crossing callbacks, so the fast
+        // path is used only when neither diodes nor saturation need checking.
+        if (m_zero_crossing_callbacks.empty()) {
+            stepModel(dt);
+            return;
+        }
+    }
+
+    if constexpr (NUM_DIODES > 0) {
+        uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
+        if (external_closed_switch_mask != m_last_external_closed_switch_mask) {
+            bool first_continuity_step = m_last_external_closed_switch_mask == ~uint64_t{0};
+            bool external_switch_opened = (m_last_external_closed_switch_mask & ~external_closed_switch_mask) != 0;
+
+            // Opening a controlled switch can remove the only path for an inductor
+            // current, so it may need a diode mask search. Closing a switch only
+            // adds a path; diode turn-off remains a complementarity/zero-crossing
+            // problem and does not need the expensive continuity resolver.
+            if (first_continuity_step || external_switch_opened) {
+                switches = resolveDiodeContinuity(components, states, inputs, switches, m_last_switch_mask);
+                m_last_switch_mask = switches.all();
+            } else {
+                switches = releaseReverseCurrentDiodes(components, states, inputs, switches);
+                m_last_switch_mask = switches.all();
+            }
+            m_last_external_closed_switch_mask = external_closed_switch_mask;
+        }
     }
 
     // Copy previous state and outputs if step needs to be redone
@@ -202,7 +315,7 @@ void Model_mutual_inductor::stepModel(double dt) {
         assert(components.R4 != -1);
         _M_components_DO_NOT_TOUCH = components;
         _M_switches_DO_NOT_TOUCH = switches;
-        updateStateSpaceMatrices();
+        m_ss = calcStateSpaceMatrices(components, switches.all());
         m_solver.updateSystem(m_ss.A, m_ss.B);
         // Solve one step with backward euler to reduce numerical oscillations
         if (m_dt_resolution > 0) {
@@ -237,65 +350,6 @@ void Model_mutual_inductor::stepModel(double dt) {
     states.I_L2 = outputs.I_L2;
     states.I_L3 = outputs.I_L3;
     states.V_Cf = outputs.V_Cf;
-}
-
-void Model_mutual_inductor::updateStateSpaceMatrices() {
-    static std::mutex            cache_mutex;
-    std::scoped_lock<std::mutex> lock(cache_mutex);
-
-    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices>>;
-    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
-    uint64_t switch_combination = switches.all();
-    uint64_t component_hash = components.hash();
-    if (state_space_cache.contains(switch_combination)) {
-        std::unordered_map<uint64_t, std::unique_ptr<Model_mutual_inductor::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
-        auto it = cache.find(component_hash);
-        if (it != cache.end()) {
-            m_ss = *it->second;
-            return;
-        }
-    }
-
-    if (m_circuit_json.empty()) {
-        m_circuit_json = nlohmann::json::parse(std::string(mutual_inductor_matrices_json_hexdump, mutual_inductor_matrices_json_hexdump + mutual_inductor_matrices_json_hexdump_len));
-    }
-    assert(m_circuit_json.contains(std::to_string(switches.all())));
-
-    // Get the intermediate matrices as string for replacing symbolic components with their values
-    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
-    s = rlc2ss::replace(s, "Cf", std::format("({})", components.Cf));
-    s = rlc2ss::replace(s, "FSRC1", std::format("({})", components.FSRC1));
-    s = rlc2ss::replace(s, "K12", std::format("({})", components.K12));
-    s = rlc2ss::replace(s, "K21", std::format("({})", components.K21));
-    s = rlc2ss::replace(s, "K31", std::format("({})", components.K31));
-    s = rlc2ss::replace(s, "L1", std::format("({})", components.L1));
-    s = rlc2ss::replace(s, "L2", std::format("({})", components.L2));
-    s = rlc2ss::replace(s, "L3", std::format("({})", components.L3));
-    s = rlc2ss::replace(s, "R1", std::format("({})", components.R1));
-    s = rlc2ss::replace(s, "R2", std::format("({})", components.R2));
-    s = rlc2ss::replace(s, "R3", std::format("({})", components.R3));
-    s = rlc2ss::replace(s, "R4", std::format("({})", components.R4));
-
-    // Parse json for the intermediate matrices
-    nlohmann::json j = nlohmann::json::parse(s);
-    rlc2ss::StateSpaceMatrices ss = {
-        .K1 = j["K1"],
-        .K2 = j["K2"],
-        .A1 = j["A1"],
-        .B1 = j["B1"],
-        .C1 = j["C1"],
-        .D1 = j["D1"],
-    };
-    // Create eigen matrices
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
-
-    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
-    m_ss = *state_space_cache[switch_combination][component_hash];
 }
 
 bool Model_mutual_inductor::Components::operator==(Components const& other) const {

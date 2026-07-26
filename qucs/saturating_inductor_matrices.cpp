@@ -1,11 +1,15 @@
 
 #include "saturating_inductor_matrices.hpp"
+#include "diode_continuity.hpp"
 #include "rlc2ss.h"
+#include <algorithm>
+#include <limits>
 #include <optional>
 #include <mutex>
 #include <format>
 #include <memory>
-#include "saturating_inductor_matrices_json.h"
+#include <stdexcept>
+
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -15,13 +19,14 @@
 
 inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
 
-static std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calcStateSpace(
-    Eigen::MatrixXd const& K1,
-    Eigen::MatrixXd const& A1,
-    Eigen::MatrixXd const& B1,
-    Eigen::MatrixXd const& K2,
-    Eigen::MatrixXd const& C1,
-    Eigen::MatrixXd const& D1) {
+namespace {
+
+std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calcStateSpace(Eigen::MatrixXd const& K1,
+                                                                              Eigen::MatrixXd const& A1,
+                                                                              Eigen::MatrixXd const& B1,
+                                                                              Eigen::MatrixXd const& K2,
+                                                                              Eigen::MatrixXd const& C1,
+                                                                              Eigen::MatrixXd const& D1) {
     auto ss = std::make_unique<Model_saturating_inductor::StateSpaceMatrices>();
     auto lu = K1.partialPivLu();
     Eigen::MatrixXd A = lu.solve(A1);
@@ -32,6 +37,83 @@ static std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calcStateS
     ss->D = (D1 + K2 * B);
     return ss;
 }
+
+Model_saturating_inductor::StateSpaceMatrices const& calcStateSpaceMatrices(Model_saturating_inductor::Components const& components,
+                                                                            uint64_t switch_combination) {
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {
+        std::unordered_map<uint64_t, std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {
+            return *it->second;
+        }
+    }
+    std::string netlist = "V _net0 0 DC 1 \nS1 _net0 _net2 _net3 _net4 \nS2 _net2 _net5 _net6 _net7 \nR 0 _net1 0.1; \nL0 _net1 _net0 0.01; \nL1 _net1 _net2 0.009999999999999997; IC= \nL2 _net1 _net5 3.344481605351208E-5; IC=(0.0151-0.015)/(5-2) ";
+
+    // Cache symbolic intermediate matrices per switch combination
+    static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
+    if (!symbolic_cache.contains(switch_combination)) {
+        symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
+    }
+    rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
+
+    // Substitute component values into cached symbolic matrices
+    std::unordered_map<std::string, double> values{
+        {"L0", components.L0},
+        {"L1", components.L1},
+        {"L2", components.L2},
+        {"R", components.R},
+    };
+    Eigen::MatrixXd K1 = rlc2ss::evaluate(symbolic_ss.K1, values);
+    Eigen::MatrixXd K2 = rlc2ss::evaluate(symbolic_ss.K2, values);
+    Eigen::MatrixXd A1 = rlc2ss::evaluate(symbolic_ss.A1, values);
+    Eigen::MatrixXd B1 = rlc2ss::evaluate(symbolic_ss.B1, values);
+    Eigen::MatrixXd C1 = rlc2ss::evaluate(symbolic_ss.C1, values);
+    Eigen::MatrixXd D1 = rlc2ss::evaluate(symbolic_ss.D1, values);
+
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    return *state_space_cache[switch_combination][component_hash];
+}
+
+
+Model_saturating_inductor::Outputs calcInstantaneousOutputs(Model_saturating_inductor::Components const& components,
+                                                            Model_saturating_inductor::States const& states,
+                                                            Model_saturating_inductor::Inputs const& inputs,
+                                                            uint64_t switch_combination) {
+    Model_saturating_inductor::Outputs instantaneous_outputs;
+    auto const& ss = calcStateSpaceMatrices(components, switch_combination);
+    instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
+    return instantaneous_outputs;
+}
+
+uint64_t externalClosedSwitchMask(Model_saturating_inductor::Switches const& switches) {
+    return 0 |
+        (uint64_t{switches.S1.output()} << 0) |
+        (uint64_t{switches.S2.output()} << 1);
+}
+
+Model_saturating_inductor::Switches releaseReverseCurrentDiodes(Model_saturating_inductor::Components const&,
+                                                                Model_saturating_inductor::States const&,
+                                                                Model_saturating_inductor::Inputs const&,
+                                                                Model_saturating_inductor::Switches const& switches) {
+    return switches;
+}
+
+Model_saturating_inductor::Switches resolveDiodeContinuity(Model_saturating_inductor::Components const&,
+                                                           Model_saturating_inductor::States const&,
+                                                           Model_saturating_inductor::Inputs const&,
+                                                           Model_saturating_inductor::Switches const& switches,
+                                                           uint64_t) {
+    return switches;
+}
+
+
+} // namespace
 
 std::optional<rlc2ss::ZeroCrossingEvent> Model_saturating_inductor::checkZeroCrossingEvents(Model_saturating_inductor::Outputs const& prev_outputs) {
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
@@ -56,6 +138,8 @@ Model_saturating_inductor::Model_saturating_inductor(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
 }
+
+
 
 void Model_saturating_inductor::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
     // Check that the currents are ascending and inductances are descending
@@ -151,11 +235,34 @@ void Model_saturating_inductor::stepWithZeroCrossingDetection(double dt) {
         return;
     }
 
-    // Inductor saturation registers zero-crossing callbacks, so the fast path
-    // is used only when neither diodes nor saturation need checking.
-    if (m_zero_crossing_callbacks.empty()) {
-        stepModel(dt);
-        return;
+    if constexpr (NUM_DIODES == 0) {
+        // Inductor saturation registers zero-crossing callbacks, so the fast
+        // path is used only when neither diodes nor saturation need checking.
+        if (m_zero_crossing_callbacks.empty()) {
+            stepModel(dt);
+            return;
+        }
+    }
+
+    if constexpr (NUM_DIODES > 0) {
+        uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
+        if (external_closed_switch_mask != m_last_external_closed_switch_mask) {
+            bool first_continuity_step = m_last_external_closed_switch_mask == ~uint64_t{0};
+            bool external_switch_opened = (m_last_external_closed_switch_mask & ~external_closed_switch_mask) != 0;
+
+            // Opening a controlled switch can remove the only path for an inductor
+            // current, so it may need a diode mask search. Closing a switch only
+            // adds a path; diode turn-off remains a complementarity/zero-crossing
+            // problem and does not need the expensive continuity resolver.
+            if (first_continuity_step || external_switch_opened) {
+                switches = resolveDiodeContinuity(components, states, inputs, switches, m_last_switch_mask);
+                m_last_switch_mask = switches.all();
+            } else {
+                switches = releaseReverseCurrentDiodes(components, states, inputs, switches);
+                m_last_switch_mask = switches.all();
+            }
+            m_last_external_closed_switch_mask = external_closed_switch_mask;
+        }
     }
 
     // Copy previous state and outputs if step needs to be redone
@@ -194,7 +301,7 @@ void Model_saturating_inductor::stepModel(double dt) {
         assert(components.R != -1);
         _M_components_DO_NOT_TOUCH = components;
         _M_switches_DO_NOT_TOUCH = switches;
-        updateStateSpaceMatrices();
+        m_ss = calcStateSpaceMatrices(components, switches.all());
         m_solver.updateSystem(m_ss.A, m_ss.B);
         // Solve one step with backward euler to reduce numerical oscillations
         if (m_dt_resolution > 0) {
@@ -230,57 +337,6 @@ void Model_saturating_inductor::stepModel(double dt) {
     states.I_L2 = outputs.I_L2;
 }
 
-void Model_saturating_inductor::updateStateSpaceMatrices() {
-    static std::mutex            cache_mutex;
-    std::scoped_lock<std::mutex> lock(cache_mutex);
-
-    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices>>;
-    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
-    uint64_t switch_combination = switches.all();
-    uint64_t component_hash = components.hash();
-    if (state_space_cache.contains(switch_combination)) {
-        std::unordered_map<uint64_t, std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
-        auto it = cache.find(component_hash);
-        if (it != cache.end()) {
-            m_ss = *it->second;
-            return;
-        }
-    }
-
-    if (m_circuit_json.empty()) {
-        m_circuit_json = nlohmann::json::parse(std::string(saturating_inductor_matrices_json_hexdump, saturating_inductor_matrices_json_hexdump + saturating_inductor_matrices_json_hexdump_len));
-    }
-    assert(m_circuit_json.contains(std::to_string(switches.all())));
-
-    // Get the intermediate matrices as string for replacing symbolic components with their values
-    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
-    s = rlc2ss::replace(s, "L0", std::format("({})", components.L0));
-    s = rlc2ss::replace(s, "L1", std::format("({})", components.L1));
-    s = rlc2ss::replace(s, "L2", std::format("({})", components.L2));
-    s = rlc2ss::replace(s, "R", std::format("({})", components.R));
-
-    // Parse json for the intermediate matrices
-    nlohmann::json j = nlohmann::json::parse(s);
-    rlc2ss::StateSpaceMatrices ss = {
-        .K1 = j["K1"],
-        .K2 = j["K2"],
-        .A1 = j["A1"],
-        .B1 = j["B1"],
-        .C1 = j["C1"],
-        .D1 = j["D1"],
-    };
-    // Create eigen matrices
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
-
-    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
-    m_ss = *state_space_cache[switch_combination][component_hash];
-}
-
 bool Model_saturating_inductor::Components::operator==(Components const& other) const {
     return
         L0 == other.L0 &&
@@ -300,8 +356,8 @@ uint64_t Model_saturating_inductor::Components::hash() const {
 
 uint64_t Model_saturating_inductor::Switches::all() const {
     return 0 |
-        (S1 << 0) |
-        (S2 << 1);
+        (uint64_t{S1} << 0) |
+        (uint64_t{S2} << 1);
 }
 
 double Model_saturating_inductor::Switches::smallestDelay() {

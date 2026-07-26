@@ -1,11 +1,15 @@
 
 #include "controlled_sources_matrices.hpp"
+#include "diode_continuity.hpp"
 #include "rlc2ss.h"
+#include <algorithm>
+#include <limits>
 #include <optional>
 #include <mutex>
 #include <format>
 #include <memory>
-#include "controlled_sources_matrices_json.h"
+#include <stdexcept>
+
 
 #pragma warning(disable : 4127) // conditional expression is constant
 #pragma warning(disable : 4189) // local variable is initialized but not referenced
@@ -15,13 +19,14 @@
 
 inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
 
-static std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> calcStateSpace(
-    Eigen::MatrixXd const& K1,
-    Eigen::MatrixXd const& A1,
-    Eigen::MatrixXd const& B1,
-    Eigen::MatrixXd const& K2,
-    Eigen::MatrixXd const& C1,
-    Eigen::MatrixXd const& D1) {
+namespace {
+
+std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> calcStateSpace(Eigen::MatrixXd const& K1,
+                                                                             Eigen::MatrixXd const& A1,
+                                                                             Eigen::MatrixXd const& B1,
+                                                                             Eigen::MatrixXd const& K2,
+                                                                             Eigen::MatrixXd const& C1,
+                                                                             Eigen::MatrixXd const& D1) {
     auto ss = std::make_unique<Model_controlled_sources::StateSpaceMatrices>();
     auto lu = K1.partialPivLu();
     Eigen::MatrixXd A = lu.solve(A1);
@@ -32,6 +37,91 @@ static std::unique_ptr<Model_controlled_sources::StateSpaceMatrices> calcStateSp
     ss->D = (D1 + K2 * B);
     return ss;
 }
+
+Model_controlled_sources::StateSpaceMatrices const& calcStateSpaceMatrices(Model_controlled_sources::Components const& components,
+                                                                           uint64_t switch_combination) {
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_controlled_sources::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {
+        std::unordered_map<uint64_t, std::unique_ptr<Model_controlled_sources::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {
+            return *it->second;
+        }
+    }
+    std::string netlist = "L1 _net0 _net1 1e-3; \nR2 _net2 0 1; \nC_1 _net3 _net2 100e-6; \nGSRC1 _net3 _net4 _net0 _net1 1 \nR3 _net5 _net1 1; \nR4 _net6 _net7 1; \nV1 _net8 _net9 DC 1 \nR1 _net8 _net10 1; \nESRC3 _net10 _net0 _net2 _net3 1 \nR5 _net11 _net9 1; \nFSRC5 _net7 _net1 VSRC5 1 \nVSRC5 0 _net4 DC 0 \nHSRC4 0 _net5 VSRC4 1 \nVSRC4 0 _net11 DC 0 \nR7 _net6 _net5 1E3; \nR6 _net6 _net5 1E3; \nC_2 _net6 _net5 100E-6;I; ";
+
+    // Cache symbolic intermediate matrices per switch combination
+    static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
+    if (!symbolic_cache.contains(switch_combination)) {
+        symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
+    }
+    rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
+
+    // Substitute component values into cached symbolic matrices
+    std::unordered_map<std::string, double> values{
+        {"C_1", components.C_1},
+        {"C_2", components.C_2},
+        {"ESRC3", components.ESRC3},
+        {"FSRC5", components.FSRC5},
+        {"GSRC1", components.GSRC1},
+        {"HSRC4", components.HSRC4},
+        {"L1", components.L1},
+        {"R1", components.R1},
+        {"R2", components.R2},
+        {"R3", components.R3},
+        {"R4", components.R4},
+        {"R5", components.R5},
+        {"R6", components.R6},
+        {"R7", components.R7},
+    };
+    Eigen::MatrixXd K1 = rlc2ss::evaluate(symbolic_ss.K1, values);
+    Eigen::MatrixXd K2 = rlc2ss::evaluate(symbolic_ss.K2, values);
+    Eigen::MatrixXd A1 = rlc2ss::evaluate(symbolic_ss.A1, values);
+    Eigen::MatrixXd B1 = rlc2ss::evaluate(symbolic_ss.B1, values);
+    Eigen::MatrixXd C1 = rlc2ss::evaluate(symbolic_ss.C1, values);
+    Eigen::MatrixXd D1 = rlc2ss::evaluate(symbolic_ss.D1, values);
+
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    return *state_space_cache[switch_combination][component_hash];
+}
+
+
+Model_controlled_sources::Outputs calcInstantaneousOutputs(Model_controlled_sources::Components const& components,
+                                                           Model_controlled_sources::States const& states,
+                                                           Model_controlled_sources::Inputs const& inputs,
+                                                           uint64_t switch_combination) {
+    Model_controlled_sources::Outputs instantaneous_outputs;
+    auto const& ss = calcStateSpaceMatrices(components, switch_combination);
+    instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
+    return instantaneous_outputs;
+}
+
+uint64_t externalClosedSwitchMask(Model_controlled_sources::Switches const& switches) {
+    return 0;
+}
+
+Model_controlled_sources::Switches releaseReverseCurrentDiodes(Model_controlled_sources::Components const&,
+                                                               Model_controlled_sources::States const&,
+                                                               Model_controlled_sources::Inputs const&,
+                                                               Model_controlled_sources::Switches const& switches) {
+    return switches;
+}
+
+Model_controlled_sources::Switches resolveDiodeContinuity(Model_controlled_sources::Components const&,
+                                                          Model_controlled_sources::States const&,
+                                                          Model_controlled_sources::Inputs const&,
+                                                          Model_controlled_sources::Switches const& switches,
+                                                          uint64_t) {
+    return switches;
+}
+
+
+} // namespace
 
 std::optional<rlc2ss::ZeroCrossingEvent> Model_controlled_sources::checkZeroCrossingEvents(Model_controlled_sources::Outputs const& prev_outputs) {
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
@@ -56,6 +146,8 @@ Model_controlled_sources::Model_controlled_sources(Components const& c)
     : components(c),
       _M_components_DO_NOT_TOUCH(c) {
 }
+
+
 
 void Model_controlled_sources::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
     // Check that the currents are ascending and inductances are descending
@@ -145,11 +237,34 @@ void Model_controlled_sources::stepWithZeroCrossingDetection(double dt) {
         return;
     }
 
-    // Inductor saturation registers zero-crossing callbacks, so the fast path
-    // is used only when neither diodes nor saturation need checking.
-    if (m_zero_crossing_callbacks.empty()) {
-        stepModel(dt);
-        return;
+    if constexpr (NUM_DIODES == 0) {
+        // Inductor saturation registers zero-crossing callbacks, so the fast
+        // path is used only when neither diodes nor saturation need checking.
+        if (m_zero_crossing_callbacks.empty()) {
+            stepModel(dt);
+            return;
+        }
+    }
+
+    if constexpr (NUM_DIODES > 0) {
+        uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
+        if (external_closed_switch_mask != m_last_external_closed_switch_mask) {
+            bool first_continuity_step = m_last_external_closed_switch_mask == ~uint64_t{0};
+            bool external_switch_opened = (m_last_external_closed_switch_mask & ~external_closed_switch_mask) != 0;
+
+            // Opening a controlled switch can remove the only path for an inductor
+            // current, so it may need a diode mask search. Closing a switch only
+            // adds a path; diode turn-off remains a complementarity/zero-crossing
+            // problem and does not need the expensive continuity resolver.
+            if (first_continuity_step || external_switch_opened) {
+                switches = resolveDiodeContinuity(components, states, inputs, switches, m_last_switch_mask);
+                m_last_switch_mask = switches.all();
+            } else {
+                switches = releaseReverseCurrentDiodes(components, states, inputs, switches);
+                m_last_switch_mask = switches.all();
+            }
+            m_last_external_closed_switch_mask = external_closed_switch_mask;
+        }
     }
 
     // Copy previous state and outputs if step needs to be redone
@@ -198,7 +313,7 @@ void Model_controlled_sources::stepModel(double dt) {
         assert(components.R7 != -1);
         _M_components_DO_NOT_TOUCH = components;
         _M_switches_DO_NOT_TOUCH = switches;
-        updateStateSpaceMatrices();
+        m_ss = calcStateSpaceMatrices(components, switches.all());
         m_solver.updateSystem(m_ss.A, m_ss.B);
         // Solve one step with backward euler to reduce numerical oscillations
         if (m_dt_resolution > 0) {
@@ -232,67 +347,6 @@ void Model_controlled_sources::stepModel(double dt) {
     states.I_L1 = outputs.I_L1;
     states.V_C_1 = outputs.V_C_1;
     states.V_C_2 = outputs.V_C_2;
-}
-
-void Model_controlled_sources::updateStateSpaceMatrices() {
-    static std::mutex            cache_mutex;
-    std::scoped_lock<std::mutex> lock(cache_mutex);
-
-    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_controlled_sources::StateSpaceMatrices>>;
-    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
-    uint64_t switch_combination = switches.all();
-    uint64_t component_hash = components.hash();
-    if (state_space_cache.contains(switch_combination)) {
-        std::unordered_map<uint64_t, std::unique_ptr<Model_controlled_sources::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
-        auto it = cache.find(component_hash);
-        if (it != cache.end()) {
-            m_ss = *it->second;
-            return;
-        }
-    }
-
-    if (m_circuit_json.empty()) {
-        m_circuit_json = nlohmann::json::parse(std::string(controlled_sources_matrices_json_hexdump, controlled_sources_matrices_json_hexdump + controlled_sources_matrices_json_hexdump_len));
-    }
-    assert(m_circuit_json.contains(std::to_string(switches.all())));
-
-    // Get the intermediate matrices as string for replacing symbolic components with their values
-    std::string s = m_circuit_json[std::to_string(switches.all())].dump();
-    s = rlc2ss::replace(s, "C_1", std::format("({})", components.C_1));
-    s = rlc2ss::replace(s, "C_2", std::format("({})", components.C_2));
-    s = rlc2ss::replace(s, "ESRC3", std::format("({})", components.ESRC3));
-    s = rlc2ss::replace(s, "FSRC5", std::format("({})", components.FSRC5));
-    s = rlc2ss::replace(s, "GSRC1", std::format("({})", components.GSRC1));
-    s = rlc2ss::replace(s, "HSRC4", std::format("({})", components.HSRC4));
-    s = rlc2ss::replace(s, "L1", std::format("({})", components.L1));
-    s = rlc2ss::replace(s, "R1", std::format("({})", components.R1));
-    s = rlc2ss::replace(s, "R2", std::format("({})", components.R2));
-    s = rlc2ss::replace(s, "R3", std::format("({})", components.R3));
-    s = rlc2ss::replace(s, "R4", std::format("({})", components.R4));
-    s = rlc2ss::replace(s, "R5", std::format("({})", components.R5));
-    s = rlc2ss::replace(s, "R6", std::format("({})", components.R6));
-    s = rlc2ss::replace(s, "R7", std::format("({})", components.R7));
-
-    // Parse json for the intermediate matrices
-    nlohmann::json j = nlohmann::json::parse(s);
-    rlc2ss::StateSpaceMatrices ss = {
-        .K1 = j["K1"],
-        .K2 = j["K2"],
-        .A1 = j["A1"],
-        .B1 = j["B1"],
-        .C1 = j["C1"],
-        .D1 = j["D1"],
-    };
-    // Create eigen matrices
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> K1(rlc2ss::getCommaDelimitedValues(ss.K1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> K2(rlc2ss::getCommaDelimitedValues(ss.K2).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_STATES, Eigen::RowMajor> A1(rlc2ss::getCommaDelimitedValues(ss.A1).data());
-    Eigen::Matrix<double, NUM_STATES, NUM_INPUTS, Eigen::RowMajor> B1(rlc2ss::getCommaDelimitedValues(ss.B1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_STATES, Eigen::RowMajor> C1(rlc2ss::getCommaDelimitedValues(ss.C1).data());
-    Eigen::Matrix<double, NUM_OUTPUTS, NUM_INPUTS, Eigen::RowMajor> D1(rlc2ss::getCommaDelimitedValues(ss.D1).data());
-
-    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
-    m_ss = *state_space_cache[switch_combination][component_hash];
 }
 
 bool Model_controlled_sources::Components::operator==(Components const& other) const {

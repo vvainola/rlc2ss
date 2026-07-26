@@ -18,6 +18,7 @@
 #include "nlohmann/json.hpp"
 
 #include <assert.h>
+#include <unordered_map>
 
 class Model_mutual_inductor {
   public:
@@ -36,6 +37,8 @@ class Model_mutual_inductor {
     static inline constexpr size_t NUM_STATES = 4;
     static inline constexpr size_t NUM_SWITCHES = 0;
     static inline constexpr size_t NUM_DIODES = 0;
+    static_assert(NUM_SWITCHES < 64,
+                  "Generated models support at most 63 switches");
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
@@ -106,10 +109,10 @@ class Model_mutual_inductor {
 
     struct Components {
         double Cf = 0.0001;
-        double FSRC1 = -1.0;
-        double K12 = -1;
-        double K21 = -1;
-        double K31 = -1;
+        double FSRC1 = 10.0;
+        double K12 = 0.9;
+        double K21 = 0.9;
+        double K31 = 0.9;
         double L1 = 1.0;
         double L2 = 1.0;
         double L3 = 1.0;
@@ -158,7 +161,6 @@ class Model_mutual_inductor {
     std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
     void stepWithZeroCrossingDetection(double dt);
     void stepModel(double dt);
-    void updateStateSpaceMatrices();
 
     Integrator<Eigen::Vector<double, NUM_STATES>,
                Eigen::Matrix<double, NUM_STATES, NUM_STATES>,
@@ -170,11 +172,10 @@ class Model_mutual_inductor {
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    uint64_t m_last_external_closed_switch_mask = ~uint64_t{0};
+    uint64_t m_last_switch_mask = 0;
     using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
     std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
-    // The json file with symbolic intermediate matrices
-    nlohmann::json m_circuit_json;
-
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));
     static_assert(sizeof(double) * NUM_OUTPUTS == sizeof(Outputs));

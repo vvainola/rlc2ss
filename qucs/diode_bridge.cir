@@ -10,15 +10,15 @@ D_n_c N_dc_n  _net2
 V_a _net3 0 DC 1
 V_b _net4 0 DC 1
 V_c _net5 0 DC 1
-R_a _net0 _net6  50
-R_b _net1 _net7  50
-R_c _net2 _net8  50
-R_load N_dc_p N_dc_n  50
-R_dc N_dc_p _net9  50
+R_a _net0 _net6  50;
+R_b _net1 _net7  50;
+R_c _net2 _net8  50;
+R_load N_dc_p N_dc_n  50;
+R_dc N_dc_p _net9  50;
 C_dc _net9 N_dc_n  1P 
-L_a _net3 _net6  1N 
-L_b _net4 _net7  1N 
-L_c _net5 _net8  1N 
+L_a _net3 _net6  1e-9;
+L_b _net4 _net7  1e-9;
+L_c _net5 _net8  1e-9;
 .control
 set filetype=ascii
 op
