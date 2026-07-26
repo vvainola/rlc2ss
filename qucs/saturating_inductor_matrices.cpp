@@ -23,8 +23,9 @@ static std::unique_ptr<Model_saturating_inductor::StateSpaceMatrices> calcStateS
     Eigen::MatrixXd const& C1,
     Eigen::MatrixXd const& D1) {
     auto ss = std::make_unique<Model_saturating_inductor::StateSpaceMatrices>();
-    Eigen::MatrixXd A = K1.partialPivLu().solve(A1);
-    Eigen::MatrixXd B = K1.partialPivLu().solve(B1);
+    auto lu = K1.partialPivLu();
+    Eigen::MatrixXd A = lu.solve(A1);
+    Eigen::MatrixXd B = lu.solve(B1);
     ss->A = A;
     ss->B = B;
     ss->C = (C1 + K2 * A);
