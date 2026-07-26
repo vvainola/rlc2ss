@@ -128,7 +128,7 @@ shared_library('circuit_tester',
     gnu_symbol_visibility : 'hidden',
     link_args : LINUX ? [
         '-Wl,--exclude-libs,ALL',
-        '-Wl,--version-script=' + (meson.current_source_dir() / 'circuit_tester.exports'),
+        '-Wl,--version-script=' + (meson.current_source_dir() / 'src/circuit_tester.exports'),
     ] : [],
 )
 
