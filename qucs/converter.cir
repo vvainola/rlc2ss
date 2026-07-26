@@ -4,41 +4,35 @@
 R_p_p 0 N_dc_p  1E3
 R_n_p N_dc_n 0  1E3
 V_dc _net0 N_dc_n DC 1
+L_b _net1 _net2  1M 
+L_a _net3 _net4  1M 
+L_c _net5 _net6  1M 
+C_p 0 _net7  10E-3;I; 
+C_n _net8 0  10E-3;I; 
+R_n_s N_dc_n _net8  10E-3
+R_p_s _net7 N_dc_p  10E-3
+R_a N_c_a _net3  10E-3
+R_b N_c_b _net1  10E-3
+R_c N_c_c _net5  10E-3
+R_dc _net0 N_dc_p  1;I;
+V_a _net9 _net10 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
+V_c _net11 _net10 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
+V_b _net12 _net10 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
+L_g_b _net13 _net12  1M 
+L_g_a _net14 _net9  1M 
+L_g_c _net15 _net11  1M 
+R_g_a _net4 _net14  10E-3
+R_g_b _net2 _net13  10E-3
+R_g_c _net6 _net15  10E-3
+C_a _net16 _net4  10E-3;I; 
+C_b _net16 _net2  10E-3;I; 
+C_c _net16 _net6  10E-3;I; 
+D_a_n N_dc_n  N_c_a 
 D_a_p N_c_a  N_dc_p 
 D_b_p N_c_b  N_dc_p 
-S_a_p N_c_a  N_dc_p  _net1  _net2 
-S_c_p N_c_c  N_dc_p  _net3  _net4 
 D_c_p N_c_c  N_dc_p 
-S_b_p N_c_b  N_dc_p  _net5  _net6 
-S_a_n N_dc_n  N_c_a  _net7  _net8 
-D_a_n N_dc_n  N_c_a 
-S_b_n N_dc_n  N_c_b  _net9  _net10 
-D_b_n N_dc_n  N_c_b 
-S_c_n N_dc_n  N_c_c  _net11  _net12 
 D_c_n N_dc_n  N_c_c 
-L_b _net13 _net14  1M 
-L_a _net15 _net16  1M 
-L_c _net17 _net18  1M 
-C_p 0 _net19  10E-3;I; 
-C_n _net20 0  10E-3;I; 
-R_n_s N_dc_n _net20  10E-3
-R_p_s _net19 N_dc_p  10E-3
-R_a N_c_a _net15  10E-3
-R_b N_c_b _net13  10E-3
-R_c N_c_c _net17  10E-3
-R_dc _net0 N_dc_p  1;I;
-V_a _net21 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
-V_c _net23 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
-V_b _net24 _net22 DC 0 SIN(0 1 1K 0 0 0) AC 1 ACPHASE 0
-L_g_b _net25 _net24  1M 
-L_g_a _net26 _net21  1M 
-L_g_c _net27 _net23  1M 
-R_g_a _net16 _net26  10E-3
-R_g_b _net14 _net25  10E-3
-R_g_c _net18 _net27  10E-3
-C_a _net28 _net16  10E-3;I; 
-C_b _net28 _net14  10E-3;I; 
-C_c _net28 _net18  10E-3;I; 
+D_b_n N_dc_n  N_c_b 
 .control
 set filetype=ascii
 op

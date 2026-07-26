@@ -573,12 +573,26 @@ SymbolicStateSpace formStateSpaceMatrices(std::string const& netlist_str,
     }
     auto [D1, empty2] = linearEqsToMatrix(C4, inputs);
 
-    // K2 = C3 * H where H is diagonal matrix containing symbolic L and C values
-    // H[i,i] = component value (symbolic name like "L1", "C1")
+    // K2 = C3 * H, where states2 = H * d(states)/dt.  H is diagonal for
+    // capacitors and uncoupled inductors, but a coupled inductor voltage also
+    // contains M * dI_other/dt.  Keeping those off-diagonal terms is required
+    // when an output (or a dependent-source control voltage) contains V_L.
     SymbolicMatrix H1 = SymbolicMatrix::Zero((int)states.size(), (int)states.size());
+    std::unordered_map<Component*, int> inductor_state_indices;
     for (int i = 0; i < states.size(); ++i) {
         Component* component = netlist.getComponent(states[i].substr(2));
         H1(i, i) = component->value();
+        if (component->name()[0] == 'L') {
+            inductor_state_indices.emplace(component, i);
+        }
+    }
+    for (auto const& mut : netlist.mutual_inductors) {
+        std::string const& k_name = std::get<0>(mut);
+        Component* L1 = std::get<1>(mut);
+        Component* L2 = std::get<2>(mut);
+        SymScalar m = SymScalar(k_name) * SymScalar::sqrt(L1->value() * L2->value());
+        H1(inductor_state_indices.at(L1), inductor_state_indices.at(L2)) += m;
+        H1(inductor_state_indices.at(L2), inductor_state_indices.at(L1)) += m;
     }
     // K2 = C3 * H1 (symbolic matrix multiplication)
     SymbolicMatrix K2 = SymbolicMatrix::Zero(C3.rows(), H1.cols());

@@ -181,6 +181,47 @@ TEST_CASE("Mutual inductor: C++ matches Python JSON") {
     compareCombination(fx, "0", 0);
 }
 
+TEST_CASE("Mutual inductance contributes to inductor-voltage outputs") {
+    std::string const netlist = R"(
+V1 P1 0 DC 1
+R1 P1 N1 1
+L1 N1 0 1;VC;
+V2 P2 0 DC 1
+R2 P2 N2 1
+L2 N2 0 4;VC;
+K12 L1 L2 0.5
+)";
+
+    rlc2ss::SymbolicStateSpace ss = rlc2ss::formStateSpaceMatrices(netlist, 0);
+    Eigen::MatrixXd K2 = rlc2ss::evaluate(ss.K2, {
+        {"L1", 1.0},
+        {"L2", 4.0},
+        {"K12", 0.5},
+        {"R1", 1.0},
+        {"R2", 1.0},
+    });
+
+    // Outputs are sorted as I_L1, I_L2, N1, N2, V_L1, V_L2.  With
+    // M = K12 * sqrt(L1 * L2) = 1, the two inductor-voltage rows must be
+    // [L1, M] and [M, L2], not merely the diagonal self-inductance terms.
+    REQUIRE(K2.rows() == 6);
+    REQUIRE(K2.cols() == 2);
+    CHECK(K2(4, 0) == 1.0);
+    CHECK(K2(4, 1) == 1.0);
+    CHECK(K2(5, 0) == 1.0);
+    CHECK(K2(5, 1) == 4.0);
+}
+
+TEST_CASE("Circuits without requested outputs are accepted") {
+    rlc2ss::SymbolicStateSpace ss = rlc2ss::formStateSpaceMatrices(
+        "V1 in 0 DC 1\n"
+        "R1 in 0 1\n",
+        0);
+
+    CHECK(ss.C1.rows() == 0);
+    CHECK(ss.D1.rows() == 0);
+}
+
 TEST_CASE("Converter: C++ matches Python JSON") {
     Fixture fx{
         .cir_filename = "converter.cir",
@@ -207,11 +248,10 @@ TEST_CASE("Converter: C++ matches Python JSON") {
     SECTION("combination 0")    { compareCombination(fx, "0",    0); }
     SECTION("combination 1")    { compareCombination(fx, "1",    1); }
     SECTION("combination 7")    { compareCombination(fx, "7",    7); }
-    SECTION("combination 4095") { compareCombination(fx, "4095", 4095); }
-    // Slowest 5 combinations across the full sweep [0, 4095]
-    SECTION("combination 315")  { compareCombination(fx, "315",  315); }
-    SECTION("combination 319")  { compareCombination(fx, "319",  319); }
+    SECTION("combination 15")   { compareCombination(fx, "15",   15); }
+    SECTION("combination 31")   { compareCombination(fx, "31",   31); }
+    SECTION("combination 47")   { compareCombination(fx, "47",   47); }
+    SECTION("combination 55")   { compareCombination(fx, "55",   55); }
+    SECTION("combination 62")   { compareCombination(fx, "62",   62); }
     SECTION("combination 63")   { compareCombination(fx, "63",   63); }
-    SECTION("combination 2079") { compareCombination(fx, "2079", 2079); }
-    SECTION("combination 1134") { compareCombination(fx, "1134", 1134); }
 }

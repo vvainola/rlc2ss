@@ -128,11 +128,6 @@ class Component:
         if self.name[0] == 'C':
             self._der = sy.sympify(str(new_voltage).replace('V_', 'dV_'))
 
-    def update_der(self, new_der):
-        if self.name[0] != 'C' or self.name[0] != 'L':
-            assert False, f"Tried to set derivative term for {self.name}"
-        self._der = new_der
-
     def update_src(self, pos, neg = None):
         self.pos_src = pos
         self.neg_src = neg
@@ -379,7 +374,7 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     outputs = list(set(outputs))
     outputs.sort()
     outputs = [Symbol(output) for output in outputs]
-    if outputs[0] == Symbol('0'):
+    if outputs and outputs[0] == Symbol('0'):
         outputs = outputs[1:]
 
     temp_tree = nx.Graph()
@@ -659,10 +654,18 @@ def form_state_space_matrices(parsed_netlist) -> StateSpaceMatrices:
     C2, D1 = sy.linear_eq_to_matrix(-C2, states2)
     D1, _ = sy.linear_eq_to_matrix(-D1, inputs)
 
-    # H is diagonal matrix containing L and C values
+    # states2 = H * d(states)/dt. H is diagonal for capacitors and uncoupled
+    # inductors, but coupled inductor voltages include M * dI_other/dt.
     H1 = sy.zeros(len(states))
+    inductor_state_indices = {}
     for i, state in enumerate(states):
         H1[i, i] = Symbol(str(state)[2:])
+        if str(state).startswith('I_L'):
+            inductor_state_indices[str(state)[2:]] = i
+    for k_name, L1, L2, _ in mutual_inductors:
+        m = Symbol(k_name) * sy.sqrt(Symbol(L1.name) * Symbol(L2.name))
+        H1[inductor_state_indices[L1.name], inductor_state_indices[L2.name]] += m
+        H1[inductor_state_indices[L2.name], inductor_state_indices[L1.name]] += m
     K2 = C2*H1
 
     component_names = [c.name for c in inductors + capacitors + resistors + vv_sources + iv_sources + vi_sources + ii_sources]

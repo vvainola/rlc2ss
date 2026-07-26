@@ -93,7 +93,8 @@ std::vector<std::string> extractSwitches(std::vector<std::string> const& netlist
     return switches;
 }
 
-std::vector<std::string> replaceSwitches(std::vector<std::string> const& netlist_lines, int combination) {
+std::vector<std::string> replaceSwitches(std::vector<std::string> const& netlist_lines,
+                                         uint64_t combination) {
     std::vector<std::string> switches = extractSwitches(netlist_lines);
 
     // Replace switch lines according to combination
@@ -105,7 +106,7 @@ std::vector<std::string> replaceSwitches(std::vector<std::string> const& netlist
             continue;
         }
         for (size_t i = 0; i < switches.size(); ++i) {
-            bool switch_on = (combination & (1 << i)) != 0;
+            bool switch_on = (combination & (uint64_t{1} << i)) != 0;
             std::string switch_name = switches[i];
             // The space after switch name ensures we don't match similar names
             if (line.starts_with(switch_name + " ")&& switch_on) {
@@ -129,7 +130,7 @@ Node& getOrCreateNode(std::vector<std::unique_ptr<Node>>& nodes, const std::stri
 }
 
 Netlist parseNetlist(std::string const& netlist_str,
-                     int combination) {
+                     uint64_t combination) {
     std::vector<std::string> netlist_lines = collectNetlistLines(netlist_str);
     netlist_lines = rlc2ss::replaceSwitches(netlist_lines, combination);
 
@@ -272,7 +273,7 @@ Netlist parseNetlist(std::string const& netlist_str,
     // Remove duplicate outputs and sort
     std::sort(netlist.outputs.begin(), netlist.outputs.end());
     netlist.outputs.erase(std::unique(netlist.outputs.begin(), netlist.outputs.end()), netlist.outputs.end());
-    if (netlist.outputs[0] == "0") {
+    if (!netlist.outputs.empty() && netlist.outputs[0] == "0") {
         netlist.outputs.erase(netlist.outputs.begin());
     }
 

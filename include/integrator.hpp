@@ -30,8 +30,9 @@
 #include <queue>
 #include <unordered_map>
 
-template <class vector_t,
-          class matrix_t>
+template <class state_vector_t,
+          class jacobian_matrix_t,
+          class input_matrix_t>
 class Integrator {
   public:
     Integrator()
@@ -43,15 +44,6 @@ class Integrator {
         m_abstol = abstol;
         m_reltol = reltol;
     }
-
-    // <summary>
-    /// Adaptive integration using Runge-Kutta-Fehlberg method https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta%E2%80%93Fehlberg_method
-    /// <param name="system">System with dxdt and jacobian functions</param>
-    /// <param name="x0">Initial state</param>
-    /// <param name="t">Current time</param>
-    /// <returns>New state</returns>
-    template <class System>
-    vector_t stepRungeKuttaFehlberg(System const& system, vector_t const& x0, double t, double dt);
 
     /// <summary>
     /// Do a step with backward euler integration. The next step is solved with
@@ -65,16 +57,31 @@ class Integrator {
     /// <param name="t">Current time</param>
     /// <returns>New state</returns>
     template <class System>
-    vector_t stepBackwardEuler(System const& system, vector_t const& x0, double t, double dt);
-    vector_t stepLinearBackwardEuler(vector_t const& x0, vector_t const& Bu, double dt);
+    state_vector_t stepBackwardEuler(System const& system, state_vector_t const& x0, double t, double dt);
+    template <class InputVector>
+    state_vector_t stepLinearBackwardEuler(state_vector_t const& x0, InputVector const& u, double dt);
     template <class System>
-    vector_t stepTustin(System const& system, vector_t const& x0, double t, double dt);
-    vector_t stepLinearTustin(vector_t const& x0, vector_t const& Bu, double dt);
+    state_vector_t stepTustin(System const& system, state_vector_t const& x0, double t, double dt);
+    template <class InputVector>
+    state_vector_t stepLinearTustin(state_vector_t const& x0, InputVector const& u, double dt);
 
-    void updateJacobian(matrix_t const& jacobian) {
+    void updateJacobian(jacobian_matrix_t const& jacobian) {
         m_dt_prev = -1;
         m_jacobian = jacobian;
         uint64_t hash = matrixHash(jacobian);
+        m_used_euler_cache = &m_euler_caches[hash];
+        m_used_tustin_cache = &m_tustin_caches[hash];
+        m_used_linear_euler_cache = &m_linear_euler_caches[hash];
+        m_used_linear_tustin_cache = &m_linear_tustin_caches[hash];
+    }
+
+    void updateSystem(jacobian_matrix_t const& jacobian, input_matrix_t const& B) {
+        m_dt_prev = -1;
+        m_jacobian = jacobian;
+        m_input_matrix = B;
+        uint64_t hash = matrixHash(jacobian);
+        uint64_t input_hash = matrixHash(B);
+        hash ^= input_hash + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
         m_used_euler_cache = &m_euler_caches[hash];
         m_used_tustin_cache = &m_tustin_caches[hash];
         m_used_linear_euler_cache = &m_linear_euler_caches[hash];
@@ -92,14 +99,16 @@ class Integrator {
   private:
     using MatrixHash = uint64_t;
     struct LinearStepCoefficients {
-        matrix_t state;
-        matrix_t input;
+        jacobian_matrix_t state;
+        input_matrix_t input;
     };
 
-    MatrixHash matrixHash(matrix_t const& matrix);
+    template <class Matrix>
+    MatrixHash matrixHash(Matrix const& matrix);
 
-    matrix_t m_jacobian;
-    matrix_t* m_jacobian_coeff_inv; // 1 / (1 - 0.5 * dt * J)
+    jacobian_matrix_t m_jacobian;
+    input_matrix_t m_input_matrix;
+    jacobian_matrix_t* m_jacobian_coeff_inv; // 1 / (1 - 0.5 * dt * J)
     double m_dt_prev = -1;
     double m_epsilon = 1e-8;
     double m_abstol = 1e-6;
@@ -107,17 +116,17 @@ class Integrator {
     size_t m_max_iterations = 10;
 
     // Matrx inverse caches
-    std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_euler_caches;
-    std::unordered_map<MatrixHash, std::unordered_map<double, matrix_t>> m_tustin_caches;
+    std::unordered_map<MatrixHash, std::unordered_map<double, jacobian_matrix_t>> m_euler_caches;
+    std::unordered_map<MatrixHash, std::unordered_map<double, jacobian_matrix_t>> m_tustin_caches;
     std::unordered_map<MatrixHash, std::unordered_map<double, LinearStepCoefficients>> m_linear_euler_caches;
     std::unordered_map<MatrixHash, std::unordered_map<double, LinearStepCoefficients>> m_linear_tustin_caches;
-    std::unordered_map<double, matrix_t>* m_used_euler_cache = nullptr;
-    std::unordered_map<double, matrix_t>* m_used_tustin_cache = nullptr;
+    std::unordered_map<double, jacobian_matrix_t>* m_used_euler_cache = nullptr;
+    std::unordered_map<double, jacobian_matrix_t>* m_used_tustin_cache = nullptr;
     std::unordered_map<double, LinearStepCoefficients>* m_used_linear_euler_cache = nullptr;
     std::unordered_map<double, LinearStepCoefficients>* m_used_linear_tustin_cache = nullptr;
     bool m_caching_enabled = false;
 
-    bool withinTolerances(vector_t const& x, vector_t const& err) {
+    bool withinTolerances(state_vector_t const& x, state_vector_t const& err) {
         for (int i = 0; i < x.size(); ++i) {
             if (abs(err[i]) > std::max(m_reltol * abs(x[i]), m_abstol)) {
                 return false;
@@ -127,66 +136,27 @@ class Integrator {
     }
 };
 
-template <class vector_t,
-          class matrix_t>
+template <class state_vector_t,
+          class jacobian_matrix_t,
+          class input_matrix_t>
 template <class System>
-inline vector_t Integrator<vector_t, matrix_t>::stepRungeKuttaFehlberg(System const& system, vector_t const& x0, double t, double dt) {
-    vector_t x = x0;
-    int steps_remaining = 1;
-    while (steps_remaining > 0) {
-        // clang-format off
-        vector_t k1 = dt  * system.dxdt(x                                                                                                           , t);
-        vector_t k2 = dt  * system.dxdt(x + 1. / 4.        * k1                                                                                     , t + 1. / 4.    * dt);
-        vector_t k3 = dt  * system.dxdt(x + 3. / 32.       * k1 + 9. / 32.       * k2                                                               , t + 3. / 8.    * dt);
-        vector_t k4 = dt  * system.dxdt(x + 1932. / 2197.  * k1 - 7200. / 2197.  * k2 + 7296. / 2197.  * k3                                         , t + 12. / 13.  * dt);
-        vector_t k5 = dt  * system.dxdt(x + 439. / 216.    * k1 - 8.             * k2 + 3680. / 513.   * k3 - 845. / 4104.   * k4                   , t + dt);
-        vector_t k6 = dt  * system.dxdt(x + -8. / 27.      * k1 + 2.             * k2 - 3544. / 2565.  * k3 + 1859. / 4104.  * k4 - 11. / 40.  * k5 , t + 1. / 2.  * dt);
-        // clang-format on
-        vector_t b5_1 = 16. / 135. * k1;
-        vector_t b5_3 = 6656. / 12825. * k3;
-        vector_t b5_4 = 28561. / 56430. * k4;
-        vector_t b5_5 = -9. / 50. * k5;
-        vector_t b5_6 = 2. / 55. * k6;
-
-        vector_t b4_1 = 25. / 216. * k1;
-        vector_t b4_3 = 1408. / 2565. * k3;
-        vector_t b4_4 = 2197. / 4104. * k4;
-        vector_t b4_5 = -1. / 5. * k5;
-
-        vector_t err = ((b5_1 - b4_1) + (b5_3 - b4_3) + (b5_4 - b4_4) + (b5_5 - b4_5) + (b5_6));
-        vector_t order_5 = x + b5_1 + b5_3 + b5_4 + b5_5 + b5_6;
-        if (withinTolerances(order_5, err)) {
-            t += dt;
-            x = order_5;
-            --steps_remaining;
-        } else {
-            steps_remaining *= 2;
-            dt = dt / 2.;
-        }
-    }
-    return x;
-}
-
-template <class vector_t,
-          class matrix_t>
-template <class System>
-inline vector_t Integrator<vector_t, matrix_t>::stepBackwardEuler(System const& system, vector_t const& x0, double t, double dt) {
+inline state_vector_t Integrator<state_vector_t, jacobian_matrix_t, input_matrix_t>::stepBackwardEuler(System const& system, state_vector_t const& x0, double t, double dt) {
     t += dt;
-    matrix_t* jacobian_coeff_inv;
+    jacobian_matrix_t* jacobian_coeff_inv;
     if (!m_caching_enabled) {
         m_used_euler_cache->clear();
     }
     auto it = m_used_euler_cache->find(dt);
     if (it == m_used_euler_cache->end()) {
-        jacobian_coeff_inv = &m_used_euler_cache->emplace(dt, (matrix_t::Identity() - dt * m_jacobian).inverse()).first->second;
+        jacobian_coeff_inv = &m_used_euler_cache->emplace(dt, (jacobian_matrix_t::Identity() - dt * m_jacobian).inverse()).first->second;
     } else {
         jacobian_coeff_inv = &it->second;
     }
 
     // apply first Newton step
-    vector_t dxdt = system.dxdt(x0, t);
-    vector_t diff = *jacobian_coeff_inv * (-dt * dxdt);
-    vector_t x = x0 - diff;
+    state_vector_t dxdt = system.dxdt(x0, t);
+    state_vector_t diff = *jacobian_coeff_inv * (-dt * dxdt);
+    state_vector_t x = x0 - diff;
 
     // iterate Newton until some precision is reached
     size_t iterations = 0;
@@ -199,58 +169,40 @@ inline vector_t Integrator<vector_t, matrix_t>::stepBackwardEuler(System const& 
     return x;
 }
 
-template <class vector_t,
-          class matrix_t>
-inline vector_t Integrator<vector_t, matrix_t>::stepLinearBackwardEuler(vector_t const& x0, vector_t const& Bu, double dt) {
-    // Fast path for linear systems: dx/dt = A*x + Bu, where m_jacobian == A and
-    // Bu is constant over this step. Backward Euler solves
+template <class state_vector_t,
+          class jacobian_matrix_t,
+          class input_matrix_t>
+template <class InputVector>
+inline state_vector_t Integrator<state_vector_t, jacobian_matrix_t, input_matrix_t>::stepLinearBackwardEuler(
+    state_vector_t const& x0, InputVector const& u, double dt) {
+    // Cache the complete discrete input matrix
     //
-    //     x1 = x0 + dt*f(x1)
+    //     Bd = inv(I - dt*A) * dt * B
     //
-    // Substituting f(x) = A*x + Bu gives
-    //
-    //     (I - dt*A) * x1 = x0 + dt*Bu
-    //
-    // so the exact implicit solution for this linear step is
-    //
-    //     x1 = F*x0 + G*Bu
-    //     F = inv(I - dt*A)
-    //     G = inv(I - dt*A) * dt
-    //
-    // This is mathematically the same fixed point that stepBackwardEuler's
-    // Newton loop converges to, but avoids repeated dxdt calls and
-    // inverse-vector products.
-    //
-    // Do not use this fast path for nonlinear systems or systems whose A/Bu
-    // changes within the integration step. Examples where the generic
-    // stepBackwardEuler() path is required include state-dependent Jacobians,
-    // input callbacks that change during the step, component saturation modeled
-    // continuously rather than as piecewise-constant matrix updates, or any
-    // System::dxdt implementation that is not exactly A*x + constant Bu for the
-    // current cached Jacobian.
+    // so each step only evaluates Ad*x + Bd*u.
     if (!m_caching_enabled) {
         m_used_linear_euler_cache->clear();
     }
 
     auto it = m_used_linear_euler_cache->find(dt);
     if (it == m_used_linear_euler_cache->end()) {
-        matrix_t lhs_inv = (matrix_t::Identity() - dt * m_jacobian).inverse();
+        jacobian_matrix_t lhs_inv = (jacobian_matrix_t::Identity() - dt * m_jacobian).inverse();
         LinearStepCoefficients coeffs{
             .state = lhs_inv,
-            .input = lhs_inv * dt,
+            .input = lhs_inv * (dt * m_input_matrix),
         };
         it = m_used_linear_euler_cache->emplace(dt, std::move(coeffs)).first;
     }
 
     LinearStepCoefficients const& coeffs = it->second;
-    return coeffs.state * x0 + coeffs.input * Bu;
+    return coeffs.state * x0 + coeffs.input * u;
 }
 
-template <class vector_t,
-          class matrix_t>
+template <class state_vector_t,
+          class jacobian_matrix_t,
+          class input_matrix_t>
 template <class System>
-inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system, vector_t const& x0, double t, double dt) {
-    t += dt;
+inline state_vector_t Integrator<state_vector_t, jacobian_matrix_t, input_matrix_t>::stepTustin(System const& system, state_vector_t const& x0, double t, double dt) {
     if (dt != m_dt_prev) {
         m_dt_prev = dt;
         if (!m_caching_enabled) {
@@ -259,21 +211,22 @@ inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system,
         // Update 1 / (1 - 0.5 * dt * J) term
         auto it = m_used_tustin_cache->find(dt);
         if (it == m_used_tustin_cache->end()) {
-            m_jacobian_coeff_inv = &m_used_tustin_cache->emplace(dt, (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse()).first->second;
+            m_jacobian_coeff_inv = &m_used_tustin_cache->emplace(dt, (jacobian_matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse()).first->second;
         } else {
             m_jacobian_coeff_inv = &it->second;
         }
     }
 
     // apply first Newton step
-    vector_t dxdt0 = system.dxdt(x0, t);
-    vector_t diff = *m_jacobian_coeff_inv * (-0.5 * dt * dxdt0);
-    vector_t x = x0 - diff;
+    state_vector_t dxdt0 = system.dxdt(x0, t);
+    state_vector_t diff = *m_jacobian_coeff_inv * (-0.5 * dt * dxdt0);
+    state_vector_t x = x0 - diff;
+    t += dt;
 
     // iterate Newton until some precision is reached
     size_t iterations = 0;
     while (diff.norm() > m_epsilon && iterations < m_max_iterations) {
-        vector_t dxdt = system.dxdt(x, t);
+        state_vector_t dxdt = system.dxdt(x, t);
         diff = *m_jacobian_coeff_inv * (x - x0 - 0.5 * dt * (dxdt0 + dxdt));
         x -= diff;
         ++iterations;
@@ -281,54 +234,38 @@ inline vector_t Integrator<vector_t, matrix_t>::stepTustin(System const& system,
     return x;
 }
 
-template <class vector_t,
-          class matrix_t>
-inline vector_t Integrator<vector_t, matrix_t>::stepLinearTustin(vector_t const& x0, vector_t const& Bu, double dt) {
-    // Fast path for linear systems: dx/dt = A*x + Bu, where m_jacobian == A and
-    // Bu is constant over this step. The generic Tustin method solves
+template <class state_vector_t,
+          class jacobian_matrix_t,
+          class input_matrix_t>
+template <class InputVector>
+inline state_vector_t Integrator<state_vector_t, jacobian_matrix_t, input_matrix_t>::stepLinearTustin(
+    state_vector_t const& x0, InputVector const& u, double dt) {
+    // Cache the complete discrete input matrix
     //
-    //     x1 = x0 + 0.5*dt*(f(x0) + f(x1))
+    //     Bd = inv(I - 0.5*dt*A) * dt * B
     //
-    // Substituting f(x) = A*x + Bu gives
-    //
-    //     (I - 0.5*dt*A) * x1 = (I + 0.5*dt*A) * x0 + dt*Bu
-    //
-    // so the exact implicit solution for this linear step is
-    //
-    //     x1 = F*x0 + G*Bu
-    //     F = inv(I - 0.5*dt*A) * (I + 0.5*dt*A)
-    //     G = inv(I - 0.5*dt*A) * dt
-    //
-    // This is mathematically the same fixed point that stepTustin's Newton loop
-    // converges to, but avoids repeated dxdt calls and inverse-vector products.
-    //
-    // Do not use this fast path for nonlinear systems or systems whose A/Bu
-    // changes within the integration step. Examples where the generic
-    // stepTustin() path is required include state-dependent Jacobians, input
-    // callbacks that change during the step, component saturation modeled
-    // continuously rather than as piecewise-constant matrix updates, or any
-    // System::dxdt implementation that is not exactly A*x + constant Bu for the
-    // current cached Jacobian.
+    // so each step only evaluates Ad*x + Bd*u.
     if (!m_caching_enabled) {
         m_used_linear_tustin_cache->clear();
     }
 
     auto it = m_used_linear_tustin_cache->find(dt);
     if (it == m_used_linear_tustin_cache->end()) {
-        matrix_t lhs_inv = (matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse();
+        jacobian_matrix_t lhs_inv = (jacobian_matrix_t::Identity() - 0.5 * dt * m_jacobian).inverse();
         LinearStepCoefficients coeffs{
-            .state = lhs_inv * (matrix_t::Identity() + 0.5 * dt * m_jacobian),
-            .input = lhs_inv * dt,
+            .state = lhs_inv * (jacobian_matrix_t::Identity() + 0.5 * dt * m_jacobian),
+            .input = lhs_inv * (dt * m_input_matrix),
         };
         it = m_used_linear_tustin_cache->emplace(dt, std::move(coeffs)).first;
     }
 
     LinearStepCoefficients const& coeffs = it->second;
-    return coeffs.state * x0 + coeffs.input * Bu;
+    return coeffs.state * x0 + coeffs.input * u;
 }
 
-template <class vector_t, class matrix_t>
-inline uint64_t Integrator<vector_t, matrix_t>::matrixHash(matrix_t const& matrix) {
+template <class state_vector_t, class jacobian_matrix_t, class input_matrix_t>
+template <class Matrix>
+inline uint64_t Integrator<state_vector_t, jacobian_matrix_t, input_matrix_t>::matrixHash(Matrix const& matrix) {
     // Hash function for Eigen matrix and vector.
     // The code is from `hash_combine` function of the Boost library. See
     // http://www.boost.org/doc/libs/1_55_0/doc/html/hash/reference.html#boost.hash_combine .
@@ -339,7 +276,7 @@ inline uint64_t Integrator<vector_t, matrix_t>::matrixHash(matrix_t const& matri
     uint64_t seed = 0;
     for (int i = 0; i < matrix.size(); ++i) {
         auto elem = *(matrix.data() + i);
-        seed ^= std::hash<typename matrix_t::Scalar>()(elem) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<typename Matrix::Scalar>()(elem) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     }
     return seed;
 }
