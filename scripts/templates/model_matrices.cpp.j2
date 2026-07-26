@@ -19,13 +19,14 @@
 
 inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
 
-static std::unique_ptr<[[ class_name ]]::StateSpaceMatrices> calcStateSpace(
-    Eigen::MatrixXd const& K1,
-    Eigen::MatrixXd const& A1,
-    Eigen::MatrixXd const& B1,
-    Eigen::MatrixXd const& K2,
-    Eigen::MatrixXd const& C1,
-    Eigen::MatrixXd const& D1) {
+namespace {
+
+std::unique_ptr<[[ class_name ]]::StateSpaceMatrices> calcStateSpace(Eigen::MatrixXd const& K1,
+[[ calc_state_space_parameter_indent ]]Eigen::MatrixXd const& A1,
+[[ calc_state_space_parameter_indent ]]Eigen::MatrixXd const& B1,
+[[ calc_state_space_parameter_indent ]]Eigen::MatrixXd const& K2,
+[[ calc_state_space_parameter_indent ]]Eigen::MatrixXd const& C1,
+[[ calc_state_space_parameter_indent ]]Eigen::MatrixXd const& D1) {
     auto ss = std::make_unique<[[ class_name ]]::StateSpaceMatrices>();
     Eigen::MatrixXd A = K1.partialPivLu().solve(A1);
     Eigen::MatrixXd B = K1.partialPivLu().solve(B1);
@@ -35,6 +36,28 @@ static std::unique_ptr<[[ class_name ]]::StateSpaceMatrices> calcStateSpace(
     ss->D = (D1 + K2 * B);
     return ss;
 }
+
+[[ class_name ]]::StateSpaceMatrices const& calcStateSpaceMatrices([[ class_name ]]::Components const& components,
+[[ calc_state_space_matrices_parameter_indent ]]uint64_t switch_combination) {
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<[[ class_name ]]::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {
+        std::unordered_map<uint64_t, std::unique_ptr<[[ class_name ]]::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {
+            return *it->second;
+        }
+    }
+[[ update_state_space_matrices_body ]]
+}
+
+[[ diode_continuity_free_functions ]]
+
+} // namespace
 
 std::optional<rlc2ss::ZeroCrossingEvent> [[ class_name ]]::checkZeroCrossingEvents([[ class_name ]]::Outputs const& prev_outputs) {
     std::priority_queue<rlc2ss::ZeroCrossingEvent,
@@ -157,21 +180,23 @@ void [[ class_name ]]::stepWithZeroCrossingDetection(double dt) {
     }
 
     if constexpr (NUM_DIODES > 0) {
-        uint64_t continuity_switch_mask = controlledSwitchMask();
-        if (continuity_switch_mask != m_last_continuity_switch_mask) {
-            bool first_continuity_step = m_last_continuity_switch_mask == ~uint64_t{0};
-            bool controlled_switch_opened = (m_last_continuity_switch_mask & ~continuity_switch_mask) != 0;
+        uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
+        if (external_closed_switch_mask != m_last_external_closed_switch_mask) {
+            bool first_continuity_step = m_last_external_closed_switch_mask == ~uint64_t{0};
+            bool external_switch_opened = (m_last_external_closed_switch_mask & ~external_closed_switch_mask) != 0;
 
             // Opening a controlled switch can remove the only path for an inductor
             // current, so it may need a diode mask search. Closing a switch only
             // adds a path; diode turn-off remains a complementarity/zero-crossing
             // problem and does not need the expensive continuity resolver.
-            if (first_continuity_step || controlled_switch_opened) {
-                resolveDiodeContinuity();
+            if (first_continuity_step || external_switch_opened) {
+                switches = resolveDiodeContinuity(components, states, inputs, switches, m_last_switch_mask);
+                m_last_switch_mask = switches.all();
             } else {
-                releaseReverseCurrentDiodes();
+                switches = releaseReverseCurrentDiodes(components, states, inputs, switches);
+                m_last_switch_mask = switches.all();
             }
-            m_last_continuity_switch_mask = continuity_switch_mask;
+            m_last_external_closed_switch_mask = external_closed_switch_mask;
         }
     }
 
@@ -208,7 +233,7 @@ void [[ class_name ]]::stepModel(double dt) {
 [[ verify_components ]]
         _M_components_DO_NOT_TOUCH = components;
         _M_switches_DO_NOT_TOUCH = switches;
-        m_ss = calcStateSpaceMatrices(switches.all());
+        m_ss = calcStateSpaceMatrices(components, switches.all());
         m_solver.updateSystem(m_ss.A, m_ss.B);
         // Solve one step with backward euler to reduce numerical oscillations
         if (m_dt_resolution > 0) {
@@ -240,23 +265,6 @@ void [[ class_name ]]::stepModel(double dt) {
 
     // Update states from outputs to have correct values for dependent states
 [[ update_states ]]
-}
-
-[[ class_name ]]::StateSpaceMatrices const& [[ class_name ]]::calcStateSpaceMatrices(uint64_t switch_combination) {
-    static std::mutex            cache_mutex;
-    std::scoped_lock<std::mutex> lock(cache_mutex);
-
-    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<[[ class_name ]]::StateSpaceMatrices>>;
-    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
-    uint64_t component_hash = components.hash();
-    if (state_space_cache.contains(switch_combination)) {
-        std::unordered_map<uint64_t, std::unique_ptr<[[ class_name ]]::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
-        auto it = cache.find(component_hash);
-        if (it != cache.end()) {
-            return *it->second;
-        }
-    }
-[[ update_state_space_matrices_body ]]
 }
 
 bool [[ class_name ]]::Components::operator==(Components const& other) const {

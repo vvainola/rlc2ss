@@ -94,103 +94,81 @@ def render_diode_continuity_methods(
     ss: StateSpaceMatrices,
     switches: list[str],
     diodes: list[Diode],
-) -> str:
-    controlled_switches_to_int = render_switch_mask_expr(switches, prefix="switches.", suffix=".output()")
+) -> tuple[str, str]:
+    external_closed_switches_to_int = render_switch_mask_expr(switches, prefix="switches.", suffix=".output()")
     diode_count = len(diodes)
+    instantaneous_outputs_parameter_indent = " " * len(
+        f"{class_name}::Outputs calcInstantaneousOutputs("
+    )
+    release_diodes_parameter_indent = " " * len(
+        f"{class_name}::Switches releaseReverseCurrentDiodes("
+    )
+    resolve_diodes_parameter_indent = " " * len(
+        f"{class_name}::Switches resolveDiodeContinuity("
+    )
 
     if diode_count == 0:
-        return render_cxx_block(f"""
-            void {class_name}::resolveDiodeContinuity() {{
-                m_last_switch_mask = switches.all();
-            }}
-
-            {class_name}::Outputs {class_name}::calcInstantaneousOutputs(uint64_t switch_combination) {{
-                Outputs instantaneous_outputs;
-                StateSpaceMatrices const& ss = calcStateSpaceMatrices(switch_combination);
+        free_functions = render_cxx_block(f"""
+            {class_name}::Outputs calcInstantaneousOutputs({class_name}::Components const& components,
+            {instantaneous_outputs_parameter_indent}{class_name}::States const& states,
+            {instantaneous_outputs_parameter_indent}{class_name}::Inputs const& inputs,
+            {instantaneous_outputs_parameter_indent}uint64_t switch_combination) {{
+                {class_name}::Outputs instantaneous_outputs;
+                auto const& ss = calcStateSpaceMatrices(components, switch_combination);
                 instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
                 return instantaneous_outputs;
             }}
 
-            uint64_t {class_name}::controlledSwitchMask() const {{
-                // Track each switch's delayed control output, not its possibly
-                // diode-forced actual value. This keeps diode zero-crossing
-                // force/release events out of controlled topology detection,
-                // while still detecting explicit control of a diode switch.
-                return [[controlled_switches_to_int]];
+            uint64_t externalClosedSwitchMask({class_name}::Switches const& switches) {{
+                return [[external_closed_switches_to_int]];
             }}
 
-            uint64_t {class_name}::closedDiodeMask() const {{
-                return 0;
+            {class_name}::Switches releaseReverseCurrentDiodes({class_name}::Components const&,
+            {release_diodes_parameter_indent}{class_name}::States const&,
+            {release_diodes_parameter_indent}{class_name}::Inputs const&,
+            {release_diodes_parameter_indent}{class_name}::Switches const& switches) {{
+                return switches;
             }}
 
-            uint64_t {class_name}::inductorCurrentSignMask() const {{
-                return 0;
+            {class_name}::Switches resolveDiodeContinuity({class_name}::Components const&,
+            {resolve_diodes_parameter_indent}{class_name}::States const&,
+            {resolve_diodes_parameter_indent}{class_name}::Inputs const&,
+            {resolve_diodes_parameter_indent}{class_name}::Switches const& switches,
+            {resolve_diodes_parameter_indent}uint64_t) {{
+                return switches;
             }}
-
-            uint64_t {class_name}::switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t) const {{
-                return base_switch_mask;
-            }}
-
-            bool {class_name}::diodeClosed(size_t) const {{
-                return false;
-            }}
-
-            bool {class_name}::diodeControlledClosed(size_t, uint64_t) const {{
-                return false;
-            }}
-
-            double {class_name}::diodeCurrent(size_t, Outputs const&) const {{
-                return 0.0;
-            }}
-
-            double {class_name}::diodeForwardOverdrive(size_t, Outputs const&) const {{
-                return 0.0;
-            }}
-
-            double {class_name}::inductorCurrentDiscontinuity(Outputs const&) const {{
-                return 0.0;
-            }}
-
-            void {class_name}::forceClosedDiodeMask(uint64_t) {{
-            }}
-
-            void {class_name}::releaseReverseCurrentDiodes() {{
-                m_last_switch_mask = switches.all();
-            }}
-        """, indent="", controlled_switches_to_int=controlled_switches_to_int)
+        """, indent="", external_closed_switches_to_int=external_closed_switches_to_int)
+        methods = ""
+        return free_functions, methods
 
     diode_closed_cases = ""
     diode_controlled_closed_cases = ""
     diode_current_cases = ""
     diode_forward_overdrive_cases = ""
     diode_mask_body = ""
-    diode_force_cases = ""
-    for i, diode in enumerate(diodes):
+    diode_force_body = ""
+    for diode_idx, diode in enumerate(diodes):
         switch_idx = switches.index(diode.switch)
         diode_closed_cases += render_cxx_snippet(f"""
-            case {i}: return switches.{diode.switch}.forcedOutput().value_or(false);
+            case {diode_idx}: return switches.{diode.switch}.forcedOutput().value_or(false);
         """, indent=TAB*2)
         diode_controlled_closed_cases += render_cxx_snippet(f"""
-            case {i}: return (controlled_switch_mask & (uint64_t{{1}} << {switch_idx})) != 0;
+            case {diode_idx}: return (external_closed_switch_mask & (uint64_t{{1}} << {switch_idx})) != 0;
         """, indent=TAB*2)
         diode_current_cases += render_cxx_snippet(f"""
-            case {i}: return outputs_.{diode.current};
+            case {diode_idx}: return outputs.{diode.current};
         """, indent=TAB*2)
-        pos_node = f"outputs_.{diode.pos_node}" if diode.pos_node != "0" else "0.0"
-        neg_node = f"outputs_.{diode.neg_node}" if diode.neg_node != "0" else "0.0"
+        pos_node = f"outputs.{diode.pos_node}" if diode.pos_node != "0" else "0.0"
+        neg_node = f"outputs.{diode.neg_node}" if diode.neg_node != "0" else "0.0"
         diode_forward_overdrive_cases += render_cxx_snippet(f"""
-            case {i}: return {pos_node} - {neg_node} - inputs.{diode.forward_voltage};
+            case {diode_idx}: return {pos_node} - {neg_node} - inputs.{diode.forward_voltage};
         """, indent=TAB*2)
         diode_mask_body += render_cxx_snippet(f"""
-            if ((closed_diode_mask & (uint64_t{{1}} << {i})) != 0) {{
-                switch_mask |= uint64_t{{1}} << {switch_idx};
-            }}
+            switch_mask |= ((solver_closed_diode_mask >> {diode_idx}) & uint64_t{{1}}) << {switch_idx};
         """, indent=TAB)
-        diode_force_cases += render_cxx_snippet(f"""
-            case {i}:
-                switches.{diode.switch}.forceOutput((closed_diode_mask & (uint64_t{{1}} << {i})) != 0 ? std::optional<bool>{{true}} : std::nullopt);
-                break;
-        """, indent=TAB*2)
+        diode_force_body += render_cxx_snippet(f"""
+            switches.{diode.switch}.forceOutput((solver_closed_diode_mask & (uint64_t{{1}} << {diode_idx})) != 0 ? std::optional<bool>{{true}} : std::nullopt);
+        """, indent=TAB)
 
     inductor_sign_mask_body = ""
     inductor_discontinuity_body = ""
@@ -207,59 +185,37 @@ def render_diode_continuity_methods(
             """, indent=TAB)
             output_idx = ss.outputs.index(state)
             inductor_discontinuity_body += render_cxx_snippet(f"""
-                discontinuity = std::max(discontinuity, std::abs(outputs_.data[{output_idx}] - states.data[{i}]));
+                discontinuity = std::max(discontinuity, std::abs(outputs.data[{output_idx}] - states.data[{i}]));
             """, indent=TAB)
             sign_bit_idx += 2
 
-    return render_cxx_block(f"""
-        {class_name}::Outputs {class_name}::calcInstantaneousOutputs(uint64_t switch_combination) {{
-            Outputs instantaneous_outputs;
+    rendered = render_cxx_block(f"""
+        {class_name}::Outputs calcInstantaneousOutputs({class_name}::Components const& components,
+        {instantaneous_outputs_parameter_indent}{class_name}::States const& states,
+        {instantaneous_outputs_parameter_indent}{class_name}::Inputs const& inputs,
+        {instantaneous_outputs_parameter_indent}uint64_t switch_combination) {{
+            {class_name}::Outputs instantaneous_outputs;
             // Evaluate the algebraic outputs for an explicit switch mask at t+0.
             // The state vector is not advanced, so any mismatch between inductor
             // output currents and stored inductor states is a real switching
             // discontinuity.
-            StateSpaceMatrices const& ss = calcStateSpaceMatrices(switch_combination);
+            auto const& ss = calcStateSpaceMatrices(components, switch_combination);
             instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
             return instantaneous_outputs;
         }}
 
-        uint64_t {class_name}::controlledSwitchMask() const {{
+        uint64_t externalClosedSwitchMask({class_name}::Switches const& switches) {{
             // Track each switch's delayed control output, not its possibly
-            // diode-forced actual value. This keeps diode zero-crossing
-            // force/release events out of controlled topology detection,
-            // while still detecting explicit control of a diode switch.
-            return [[controlled_switches_to_int]];
+            // solver-closed actual value. This keeps diode zero-crossing
+            // force/release events out of external-closure detection while still
+            // detecting external closure of a diode switch.
+            return [[external_closed_switches_to_int]];
         }}
 
-        uint64_t {class_name}::closedDiodeMask() const {{
-            uint64_t mask = 0;
-            for (size_t diode_idx = 0; diode_idx < {diode_count}; ++diode_idx) {{
-                if (diodeClosed(diode_idx)) {{
-                    mask |= uint64_t{{1}} << diode_idx;
-                }}
-            }}
-            return mask;
-        }}
-
-        uint64_t {class_name}::inductorCurrentSignMask() const {{
-            uint64_t mask = 0;
-        [[inductor_sign_mask_body]]
-            return mask;
-        }}
-
-        uint64_t {class_name}::switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t closed_diode_mask) const {{
-            uint64_t switch_mask = base_switch_mask;
-            // The base mask is the controlled-switch topology. Diode forces
-            // can add closed diode switches, but they must not clear a switch
-            // that is closed by its controlled output.
-        [[diode_mask_body]]
-            return switch_mask;
-        }}
-
-        bool {class_name}::diodeClosed(size_t diode_idx) const {{
-            // This is the diode-forced state only. A diode switch can also be
-            // closed by its controlled output; that base topology is tracked
-            // separately by controlledSwitchMask().
+        bool diodeSolverClosed({class_name}::Switches const& switches, size_t diode_idx) {{
+            // True when diode continuity or zero-crossing logic has closed the
+            // diode. This excludes closure caused by the external switch control,
+            // which is tracked separately by externalClosedSwitchMask().
             switch (diode_idx) {{
         [[diode_closed_cases]]
             default:
@@ -267,7 +223,32 @@ def render_diode_continuity_methods(
             }}
         }}
 
-        bool {class_name}::diodeControlledClosed(size_t diode_idx, uint64_t controlled_switch_mask) const {{
+        uint64_t solverClosedDiodeMask({class_name}::Switches const& switches) {{
+            uint64_t mask = 0;
+            for (size_t diode_idx = 0; diode_idx < {diode_count}; ++diode_idx) {{
+                if (diodeSolverClosed(switches, diode_idx)) {{
+                    mask |= uint64_t{{1}} << diode_idx;
+                }}
+            }}
+            return mask;
+        }}
+
+        uint64_t inductorCurrentSignMask({class_name}::States const& states) {{
+            uint64_t mask = 0;
+        [[inductor_sign_mask_body]]
+            return mask;
+        }}
+
+        uint64_t completeTopologyMask(uint64_t external_closed_switch_mask, uint64_t solver_closed_diode_mask) {{
+            uint64_t switch_mask = external_closed_switch_mask;
+            // The base mask is the external-closed topology. Solver closure
+            // can close additional diode switches, but it must not open a diode
+            // switch that is already external-closed.
+        [[diode_mask_body]]
+            return switch_mask;
+        }}
+
+        bool diodeExternalClosed(size_t diode_idx, uint64_t external_closed_switch_mask) {{
             switch (diode_idx) {{
         [[diode_controlled_closed_cases]]
             default:
@@ -275,7 +256,7 @@ def render_diode_continuity_methods(
             }}
         }}
 
-        double {class_name}::diodeCurrent(size_t diode_idx, Outputs const& outputs_) const {{
+        double diodeCurrent(size_t diode_idx, {class_name}::Outputs const& outputs) {{
             switch (diode_idx) {{
         [[diode_current_cases]]
             default:
@@ -283,7 +264,9 @@ def render_diode_continuity_methods(
             }}
         }}
 
-        double {class_name}::diodeForwardOverdrive(size_t diode_idx, Outputs const& outputs_) const {{
+        double diodeForwardOverdrive(size_t diode_idx,
+                                     {class_name}::Outputs const& outputs,
+                                     {class_name}::Inputs const& inputs) {{
             // Positive overdrive means an open diode would be forward-biased
             // for this instantaneous solution.
             switch (diode_idx) {{
@@ -293,7 +276,8 @@ def render_diode_continuity_methods(
             }}
         }}
 
-        double {class_name}::inductorCurrentDiscontinuity(Outputs const& outputs_) const {{
+        double inductorCurrentDiscontinuity({class_name}::Outputs const& outputs,
+                                            {class_name}::States const& states) {{
             double discontinuity = 0.0;
             // Inductor current is continuous. The generated state vector stores
             // every inductor current, including dependent inductors, so continuity
@@ -302,64 +286,69 @@ def render_diode_continuity_methods(
             return discontinuity;
         }}
 
-        void {class_name}::forceClosedDiodeMask(uint64_t closed_diode_mask) {{
+        {class_name}::Switches applySolverDiodeMask({class_name}::Switches switches, uint64_t solver_closed_diode_mask) {{
             // Generated diodes are represented as switches in the state-space
-            // matrices. Setting a bit here forces that diode closed;
-            // clearing a bit releases the force, which leaves generated diode
-            // outputs open until diode zero-crossing logic forces them closed.
-            for (size_t diode_idx = 0; diode_idx < {diode_count}; ++diode_idx) {{
-                switch (diode_idx) {{
-        [[diode_force_cases]]
-                default:
-                    break;
-                }}
-            }}
+            // matrices. Set bits solver-close diodes and clear bits release
+            // solver closure. External switch closure remains unchanged.
+        [[diode_force_body]]
+            return switches;
         }}
 
-        void {class_name}::releaseReverseCurrentDiodes() {{
-            uint64_t current_switch_mask = controlledSwitchMask();
-            uint64_t closed_diode_mask = closedDiodeMask();
-            if (closed_diode_mask == 0) {{
-                m_last_switch_mask = current_switch_mask;
-                return;
+        {class_name}::Switches releaseReverseCurrentDiodes({class_name}::Components const& components,
+        {release_diodes_parameter_indent}{class_name}::States const& states,
+        {release_diodes_parameter_indent}{class_name}::Inputs const& inputs,
+        {release_diodes_parameter_indent}{class_name}::Switches const& switches) {{
+            uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
+            uint64_t solver_closed_diode_mask = solverClosedDiodeMask(switches);
+            if (solver_closed_diode_mask == 0) {{
+                return switches;
             }}
 
             // A controlled switch closing cannot fix an inductor-current
             // discontinuity by opening diodes; it only gives existing current
             // another path. The full continuity resolver is therefore reserved
             // for switch openings. On a closing-only transition, only release
-            // forced diodes that are already carrying reverse current at t+0.
-            uint64_t switch_mask = switchMaskWithClosedDiodes(current_switch_mask, closed_diode_mask);
-            Outputs instantaneous_outputs = calcInstantaneousOutputs(switch_mask);
-            uint64_t updated_closed_diode_mask = closed_diode_mask;
+            // solver-closed diodes that are already carrying reverse current at t+0.
+            uint64_t switch_mask = completeTopologyMask(external_closed_switch_mask, solver_closed_diode_mask);
+            {class_name}::Outputs instantaneous_outputs =
+                calcInstantaneousOutputs(components, states, inputs, switch_mask);
+            uint64_t updated_solver_closed_diode_mask = solver_closed_diode_mask;
             for (size_t diode_idx = 0; diode_idx < {diode_count}; ++diode_idx) {{
                 uint64_t diode_bit = uint64_t{{1}} << diode_idx;
-                if ((closed_diode_mask & diode_bit) != 0 &&
+                if ((solver_closed_diode_mask & diode_bit) != 0 &&
                     diodeCurrent(diode_idx, instantaneous_outputs) < -rlc2ss::DIODE_CONTINUITY_TOLERANCE) {{
-                    updated_closed_diode_mask &= ~diode_bit;
+                    updated_solver_closed_diode_mask &= ~diode_bit;
                 }}
             }}
 
-            if (updated_closed_diode_mask != closed_diode_mask) {{
-                forceClosedDiodeMask(updated_closed_diode_mask);
-            }}
-            m_last_switch_mask = switchMaskWithClosedDiodes(current_switch_mask, updated_closed_diode_mask);
+            return updated_solver_closed_diode_mask != solver_closed_diode_mask
+                ? applySolverDiodeMask(switches, updated_solver_closed_diode_mask)
+                : switches;
         }}
 
-        void {class_name}::resolveDiodeContinuity() {{
-            uint64_t current_switch_mask = controlledSwitchMask();
-            uint64_t initial_closed_diode_mask = closedDiodeMask();
+        {class_name}::Switches resolveDiodeContinuity({class_name}::Components const& components,
+        {resolve_diodes_parameter_indent}{class_name}::States const& states,
+        {resolve_diodes_parameter_indent}{class_name}::Inputs const& inputs,
+        {resolve_diodes_parameter_indent}{class_name}::Switches const& switches,
+        {resolve_diodes_parameter_indent}uint64_t previous_topology_mask) {{
+            static std::mutex cache_mutex;
+            static std::unordered_map<uint64_t, uint64_t> diode_continuity_cache;
+            uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
+            uint64_t initial_solver_closed_diode_mask = solverClosedDiodeMask(switches);
 
             // Check the diode complementarity part of the candidate solution.
-            // Closed diodes may conduct zero or positive current. Open diodes
-            // must not be forward-biased.
-            auto diode_complementarity_violation = [this, current_switch_mask](uint64_t closed_diode_mask, Outputs const& outputs_) {{
+            // Solver-closed diodes may conduct zero or positive current. A diode
+            // that is neither solver-closed nor external-closed must not be
+            // forward-biased.
+            auto diode_complementarity_violation = [&inputs, external_closed_switch_mask](
+                uint64_t solver_closed_diode_mask,
+                {class_name}::Outputs const& outputs) {{
                 double violation = 0.0;
                 for (size_t diode_idx = 0; diode_idx < {diode_count}; ++diode_idx) {{
-                    if ((closed_diode_mask & (uint64_t{{1}} << diode_idx)) != 0) {{
-                        violation = std::max(violation, -diodeCurrent(diode_idx, outputs_));
-                    }} else if (!diodeControlledClosed(diode_idx, current_switch_mask)) {{
-                        violation = std::max(violation, diodeForwardOverdrive(diode_idx, outputs_));
+                    if ((solver_closed_diode_mask & (uint64_t{{1}} << diode_idx)) != 0) {{
+                        violation = std::max(violation, -diodeCurrent(diode_idx, outputs));
+                    }} else if (!diodeExternalClosed(diode_idx, external_closed_switch_mask)) {{
+                        violation = std::max(violation, diodeForwardOverdrive(diode_idx, outputs, inputs));
                     }}
                 }}
                 return violation;
@@ -370,11 +359,12 @@ def render_diode_continuity_methods(
             // Evaluate one diode mask at t+0. The state vector is not advanced,
             // so any mismatch between inductor outputs and stored states is the
             // switching discontinuity caused by this topology.
-            auto evaluate_mask = [&](uint64_t closed_diode_mask) {{
-                uint64_t switch_mask = switchMaskWithClosedDiodes(current_switch_mask, closed_diode_mask);
-                Outputs instantaneous_outputs = calcInstantaneousOutputs(switch_mask);
-                double discontinuity = inductorCurrentDiscontinuity(instantaneous_outputs);
-                double complementarity_violation = diode_complementarity_violation(closed_diode_mask, instantaneous_outputs);
+            auto evaluate_mask = [&](uint64_t solver_closed_diode_mask) {{
+                uint64_t switch_mask = completeTopologyMask(external_closed_switch_mask, solver_closed_diode_mask);
+                {class_name}::Outputs instantaneous_outputs =
+                    calcInstantaneousOutputs(components, states, inputs, switch_mask);
+                double discontinuity = inductorCurrentDiscontinuity(instantaneous_outputs, states);
+                double complementarity_violation = diode_complementarity_violation(solver_closed_diode_mask, instantaneous_outputs);
                 best_attempt_discontinuity = std::min(best_attempt_discontinuity, discontinuity);
                 best_attempt_complementarity_violation = std::min(best_attempt_complementarity_violation, complementarity_violation);
                 return rlc2ss::DiodeContinuityMetrics{{
@@ -383,23 +373,27 @@ def render_diode_continuity_methods(
                 }};
             }};
 
-            // Cache only a warm-start set of closed diodes. The same switch
+            // Cache only a warm-start set of solver-closed diodes. The same switch
             // transition can need different diodes depending on current direction,
             // so the key includes the inductor-current sign pattern. A cached mask
             // is still fully revalidated before use.
             uint64_t cache_key = 0;
-            rlc2ss::hash_combine(cache_key, m_last_switch_mask);
-            rlc2ss::hash_combine(cache_key, current_switch_mask);
-            rlc2ss::hash_combine(cache_key, initial_closed_diode_mask);
-            rlc2ss::hash_combine(cache_key, inductorCurrentSignMask());
+            rlc2ss::hash_combine(cache_key, previous_topology_mask);
+            rlc2ss::hash_combine(cache_key, external_closed_switch_mask);
+            rlc2ss::hash_combine(cache_key, initial_solver_closed_diode_mask);
+            rlc2ss::hash_combine(cache_key, inductorCurrentSignMask(states));
 
-            if (auto cached = m_diode_continuity_cache.find(cache_key); cached != m_diode_continuity_cache.end()) {{
-                rlc2ss::DiodeContinuityMetrics cached_metrics = evaluate_mask(cached->second);
+            std::optional<uint64_t> cached_mask;
+            {{
+                std::scoped_lock<std::mutex> lock(cache_mutex);
+                if (auto cached = diode_continuity_cache.find(cache_key); cached != diode_continuity_cache.end()) {{
+                    cached_mask = cached->second;
+                }}
+            }}
+            if (cached_mask) {{
+                rlc2ss::DiodeContinuityMetrics cached_metrics = evaluate_mask(*cached_mask);
                 if (rlc2ss::diodeContinuityValid(cached_metrics, rlc2ss::DIODE_CONTINUITY_TOLERANCE)) {{
-                    uint64_t cached_switch_mask = switchMaskWithClosedDiodes(current_switch_mask, cached->second);
-                    forceClosedDiodeMask(cached->second);
-                    m_last_switch_mask = cached_switch_mask;
-                    return;
+                    return applySolverDiodeMask(switches, *cached_mask);
                 }}
             }}
 
@@ -409,29 +403,30 @@ def render_diode_continuity_methods(
             // are evaluated.
             rlc2ss::DiodeContinuitySelection selection = rlc2ss::selectDiodeContinuityMask(
                 {diode_count},
-                initial_closed_diode_mask,
+                initial_solver_closed_diode_mask,
                 rlc2ss::DIODE_CONTINUITY_TOLERANCE,
                 evaluate_mask);
 
             if (selection.found) {{
-                uint64_t final_switch_mask = switchMaskWithClosedDiodes(current_switch_mask, selection.mask);
-                forceClosedDiodeMask(selection.mask);
-                m_diode_continuity_cache[cache_key] = selection.mask;
-                m_last_switch_mask = final_switch_mask;
-                return;
+                {{
+                    std::scoped_lock<std::mutex> lock(cache_mutex);
+                    diode_continuity_cache[cache_key] = selection.mask;
+                }}
+                return applySolverDiodeMask(switches, selection.mask);
             }}
 
             throw std::runtime_error(std::format(
                 "Diode continuity resolver could not find a diode mask satisfying continuity and complementarity; "
                 "switch combination {{}} initial diode mask {{}} best residual {{}} best complementarity violation {{}}",
-                current_switch_mask,
-                initial_closed_diode_mask,
+                external_closed_switch_mask,
+                initial_solver_closed_diode_mask,
                 best_attempt_discontinuity,
                 best_attempt_complementarity_violation));
         }}
+
     """,
         indent="",
-        controlled_switches_to_int=controlled_switches_to_int,
+        external_closed_switches_to_int=external_closed_switches_to_int,
         inductor_sign_mask_body=inductor_sign_mask_body.rstrip(),
         inductor_discontinuity_body=inductor_discontinuity_body.rstrip(),
         diode_mask_body=diode_mask_body.rstrip(),
@@ -439,7 +434,8 @@ def render_diode_continuity_methods(
         diode_controlled_closed_cases=diode_controlled_closed_cases.rstrip(),
         diode_current_cases=diode_current_cases.rstrip(),
         diode_forward_overdrive_cases=diode_forward_overdrive_cases.rstrip(),
-        diode_force_cases=diode_force_cases.rstrip())
+        diode_force_body=diode_force_body.rstrip())
+    return rendered, ""
 
 
 def write_cpp_files(
@@ -514,7 +510,9 @@ def write_cpp_files(
             }}
         """)
 
-    diode_continuity_methods = render_diode_continuity_methods(class_name, ss, switches, diodes)
+    diode_continuity_free_functions, diode_continuity_methods = (
+        render_diode_continuity_methods(class_name, ss, switches, diodes)
+    )
 
     inductor_saturation_indices = ""
     for component in ss.component_names:
@@ -559,13 +557,13 @@ def write_cpp_files(
         states_row_major = f", Eigen::RowMajor" if len(ss.states) > 1 else ""
         inputs_row_major = f", Eigen::RowMajor" if len(ss.inputs) > 1 else ""
         update_state_space_matrices_body = render_cxx_block(f"""
-            if (m_circuit_json.empty()) {{
-                m_circuit_json = nlohmann::json::parse(std::string({model_basename}_matrices_json_hexdump, {model_basename}_matrices_json_hexdump + {model_basename}_matrices_json_hexdump_len));
-            }}
-            assert(m_circuit_json.contains(std::to_string(switch_combination)));
+            static nlohmann::json const circuit_json = nlohmann::json::parse(
+                std::string({model_basename}_matrices_json_hexdump,
+                            {model_basename}_matrices_json_hexdump + {model_basename}_matrices_json_hexdump_len));
+            assert(circuit_json.contains(std::to_string(switch_combination)));
 
             // Get the intermediate matrices as string for replacing symbolic components with their values
-            std::string s = m_circuit_json[std::to_string(switch_combination)].dump();
+            std::string s = circuit_json[std::to_string(switch_combination)].dump();
             [[replace_components]]
             // Parse json for the intermediate matrices
             nlohmann::json j = nlohmann::json::parse(s);
@@ -590,6 +588,12 @@ def write_cpp_files(
 
     template_context = dict(
         class_name=class_name,
+        calc_state_space_parameter_indent=" " * len(
+            f"std::unique_ptr<{class_name}::StateSpaceMatrices> calcStateSpace("
+        ),
+        calc_state_space_matrices_parameter_indent=" " * len(
+            f"{class_name}::StateSpaceMatrices const& calcStateSpaceMatrices("
+        ),
         model_basename=model_basename,
         num_inputs=len(ss.inputs),
         num_outputs=len(ss.outputs),
@@ -610,6 +614,7 @@ def write_cpp_files(
         switches_step=switches_step,
         include_json_header=include_json_header,
         diode_zero_crossing_events=diode_zero_crossing_events,
+        diode_continuity_free_functions=diode_continuity_free_functions,
         diode_continuity_methods=diode_continuity_methods,
         inductor_saturation_indices=inductor_saturation_indices,
         update_state_space_matrices_body=update_state_space_matrices_body,

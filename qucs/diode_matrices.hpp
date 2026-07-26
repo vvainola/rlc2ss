@@ -37,6 +37,8 @@ class Model_diode {
     static inline constexpr size_t NUM_STATES = 3;
     static inline constexpr size_t NUM_SWITCHES = 4;
     static inline constexpr size_t NUM_DIODES = 3;
+    static_assert(NUM_SWITCHES < 64,
+                  "Generated models support at most 63 switches");
 
     enum class TimestepErrorCorrectionMode {
         // Ignore error in timestep length that is not a multiple of timestep resolution. Use this if
@@ -160,20 +162,6 @@ class Model_diode {
 
   private:
     std::optional<rlc2ss::ZeroCrossingEvent> checkZeroCrossingEvents(Outputs const& prev_outputs);
-    void resolveDiodeContinuity();
-    Outputs calcInstantaneousOutputs(uint64_t switch_combination);
-    StateSpaceMatrices const& calcStateSpaceMatrices(uint64_t switch_combination);
-    uint64_t controlledSwitchMask() const;
-    uint64_t closedDiodeMask() const;
-    uint64_t inductorCurrentSignMask() const;
-    uint64_t switchMaskWithClosedDiodes(uint64_t base_switch_mask, uint64_t closed_diode_mask) const;
-    bool diodeClosed(size_t diode_idx) const;
-    bool diodeControlledClosed(size_t diode_idx, uint64_t controlled_switch_mask) const;
-    double diodeCurrent(size_t diode_idx, Outputs const& outputs_) const;
-    double diodeForwardOverdrive(size_t diode_idx, Outputs const& outputs_) const;
-    double inductorCurrentDiscontinuity(Outputs const& outputs_) const;
-    void forceClosedDiodeMask(uint64_t closed_diode_mask);
-    void releaseReverseCurrentDiodes();
     void stepWithZeroCrossingDetection(double dt);
     void stepModel(double dt);
 
@@ -187,14 +175,10 @@ class Model_diode {
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
-    uint64_t m_last_continuity_switch_mask = ~uint64_t{0};
+    uint64_t m_last_external_closed_switch_mask = ~uint64_t{0};
     uint64_t m_last_switch_mask = 0;
-    std::unordered_map<uint64_t, uint64_t> m_diode_continuity_cache;
     using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;
     std::vector<ZeroCrossCallback> m_zero_crossing_callbacks;
-    // The json file with symbolic intermediate matrices
-    nlohmann::json m_circuit_json;
-
     static_assert(sizeof(double) * NUM_STATES == sizeof(States));
     static_assert(sizeof(double) * NUM_INPUTS == sizeof(Inputs));
     static_assert(sizeof(double) * NUM_OUTPUTS == sizeof(Outputs));
