@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "DbgGui/dbg_gui_wrapper.h"
@@ -150,24 +151,75 @@ void CircuitInstance<Model_converter>::init() {
         &model.components.L_c, saturation_currents, saturation_inductances);
 }
 
-std::unique_ptr<Circuit> circuit;
+union CircuitStorage {
+    char empty;
+    CircuitInstance<Model_diode> diode;
+    CircuitInstance<Model_saturating_inductor> saturating_inductor;
+    CircuitInstance<Model_mutual_inductor> mutual_inductor;
+    CircuitInstance<Model_controlled_sources> controlled_sources;
+    CircuitInstance<Model_converter> converter;
+
+    CircuitStorage()
+        : empty{} {}
+    ~CircuitStorage() {}
+};
+
+CircuitStorage circuit;
+Circuit* active_circuit = nullptr;
+std::optional<CircuitModel> active_model;
 double debug[20]{};
 uint32_t switch_mask = 0;
 
-std::unique_ptr<Circuit> makeCircuit(int model) {
+void destroyCircuit() {
+    if (!active_model) {
+        return;
+    }
+
+    switch (*active_model) {
+    case DIODE:
+        std::destroy_at(&circuit.diode);
+        break;
+    case SATURATING_INDUCTOR:
+        std::destroy_at(&circuit.saturating_inductor);
+        break;
+    case MUTUAL_INDUCTOR:
+        std::destroy_at(&circuit.mutual_inductor);
+        break;
+    case CONTROLLED_SOURCES:
+        std::destroy_at(&circuit.controlled_sources);
+        break;
+    case CONVERTER:
+        std::destroy_at(&circuit.converter);
+        break;
+    }
+
+    active_circuit = nullptr;
+    active_model.reset();
+}
+
+Circuit* constructCircuit(int model) {
     switch (model) {
     case DIODE:
-        return std::make_unique<CircuitInstance<Model_diode>>(
+        destroyCircuit();
+        active_model = DIODE;
+        return std::construct_at(
+            &circuit.diode,
             Model_diode::Components{
                 .R_D1 = 1e-3,
                 .R_D2 = 1e-3,
                 .R_D3 = 1e-3,
             });
     case SATURATING_INDUCTOR:
-        return std::make_unique<CircuitInstance<Model_saturating_inductor>>(
+        destroyCircuit();
+        active_model = SATURATING_INDUCTOR;
+        return std::construct_at(
+            &circuit.saturating_inductor,
             Model_saturating_inductor::Components{});
     case MUTUAL_INDUCTOR:
-        return std::make_unique<CircuitInstance<Model_mutual_inductor>>(
+        destroyCircuit();
+        active_model = MUTUAL_INDUCTOR;
+        return std::construct_at(
+            &circuit.mutual_inductor,
             Model_mutual_inductor::Components{
                 .Cf = 100e-6,
                 .FSRC1 = -100.0,
@@ -183,7 +235,10 @@ std::unique_ptr<Circuit> makeCircuit(int model) {
                 .R4 = 10.0,
             });
     case CONTROLLED_SOURCES:
-        return std::make_unique<CircuitInstance<Model_controlled_sources>>(
+        destroyCircuit();
+        active_model = CONTROLLED_SOURCES;
+        return std::construct_at(
+            &circuit.controlled_sources,
             Model_controlled_sources::Components{
                 .C_1 = 100e-3,
                 .C_2 = 10e-3,
@@ -194,7 +249,10 @@ std::unique_ptr<Circuit> makeCircuit(int model) {
                 .L1 = 0.1,
             });
     case CONVERTER:
-        return std::make_unique<CircuitInstance<Model_converter>>(
+        destroyCircuit();
+        active_model = CONVERTER;
+        return std::construct_at(
+            &circuit.converter,
             Model_converter::Components{
                 .C_a = 10e-3,
                 .C_b = 10e-3,
@@ -241,17 +299,17 @@ extern "C" RLC2SS_EXPORT double* DLL_outputs = nullptr;
 extern "C" RLC2SS_EXPORT double* DLL_debug = debug;
 
 extern "C" RLC2SS_EXPORT int DLL_select_model(int model) {
-    auto selected = makeCircuit(model);
+    Circuit* selected = constructCircuit(model);
     if (!selected) {
         return 0;
     }
 
-    circuit = std::move(selected);
-    DLL_input_count = circuit->inputCount();
-    DLL_output_count = circuit->outputCount();
-    DLL_switch_count = circuit->switchCount();
-    DLL_inputs = circuit->inputs();
-    DLL_outputs = circuit->outputs();
+    active_circuit = selected;
+    DLL_input_count = active_circuit->inputCount();
+    DLL_output_count = active_circuit->outputCount();
+    DLL_switch_count = active_circuit->switchCount();
+    DLL_inputs = active_circuit->inputs();
+    DLL_outputs = active_circuit->outputs();
     switch_mask = 0;
     for (double& value : debug) {
         value = 0;
@@ -259,27 +317,27 @@ extern "C" RLC2SS_EXPORT int DLL_select_model(int model) {
     return 1;
 }
 
-extern "C" RLC2SS_EXPORT void DLL_init(double) {
-    if (!circuit) {
+extern "C" RLC2SS_EXPORT void DLL_init(double dt) {
+    if (!active_circuit) {
         return;
     }
-    circuit->init();
-    // DbgGui_create(dt);
+    active_circuit->init();
+    DbgGui_create(dt);
     DbgGui_startUpdateLoop();
 }
 
 extern "C" RLC2SS_EXPORT void DLL_update(double current_time, double dt) {
-    if (!circuit) {
+    if (!active_circuit) {
         return;
     }
-    circuit->updateSwitches(switch_mask);
-    circuit->step(dt);
+    active_circuit->updateSwitches(switch_mask);
+    active_circuit->step(dt);
     DbgGui_sampleWithTimestamp(current_time);
 }
 
 extern "C" RLC2SS_EXPORT void DLL_terminate() {
     DbgGui_close();
-    circuit.reset();
+    destroyCircuit();
     DLL_input_count = 0;
     DLL_output_count = 0;
     DLL_switch_count = 0;
