@@ -162,10 +162,12 @@ executable('rlc2ss',
 
 executable('tests',
     sources : [
+        'qucs/diode_matrices.cpp',
         'tests/diode_continuity_test.cpp',
         'tests/expression_eval_test.cpp',
         'tests/integrator_test.cpp',
         'tests/state_matrices_test.cpp',
+        'tests/switch_timing_test.cpp',
     ],
     cpp_args : [
         '-DRLC2SS_QUCS_DIR="' + meson.current_source_dir() / 'qucs' + '"',

@@ -146,6 +146,7 @@ class [[ class_name ]] {
     double m_dt_resolution = 0;
     TimestepErrorCorrectionMode m_dt_correction_mode = TimestepErrorCorrectionMode::NONE;
     double m_dt_error_accumulator = 0;
+    bool m_backward_euler_pending = false;
     uint64_t m_last_external_closed_switch_mask = ~uint64_t{0};
     uint64_t m_last_switch_mask = 0;
     using ZeroCrossCallback = std::function<std::optional<rlc2ss::ZeroCrossingEvent>(Outputs const& prev_outputs, Outputs const& new_outputs)>;

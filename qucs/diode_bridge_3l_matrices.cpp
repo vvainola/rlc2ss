@@ -730,35 +730,24 @@ void Model_diode_bridge_3l::addInductorSaturation(double* inductor, std::vector<
 void Model_diode_bridge_3l::step(double dt, Inputs const& inputs_) {
     inputs.data = inputs_.data;
 
-    // Step to the next switching event
+    // Integrate each interval using the topology active before its delayed
+    // switch event, then apply the event at the end of that interval.
     double smallest_dt = switches.smallestDelay();
-    while (smallest_dt < dt) {
-        switches.step(smallest_dt);
-        stepWithZeroCrossingDetection(smallest_dt);
-        dt -= smallest_dt;
+    // Match OnOffDelay::step() tolerance so a floating-point rounding at the
+    // timestep endpoint cannot make it apply an event that this loop misses.
+    while (smallest_dt <= dt + rlc2ss::EPSILON) {
+        double event_dt = std::min(smallest_dt, dt);
+        stepWithZeroCrossingDetection(event_dt);
+        switches.step(event_dt);
+        dt -= event_dt;
         smallest_dt = switches.smallestDelay();
     }
 
-    // Step remaining time
-    switches.step(dt);
     stepWithZeroCrossingDetection(dt);
+    switches.step(dt);
 }
 
 void Model_diode_bridge_3l::stepWithZeroCrossingDetection(double dt) {
-    // No need to do anything
-    if (dt < rlc2ss::MINIMUM_TIMESTEP) {
-        return;
-    }
-
-    if constexpr (NUM_DIODES == 0) {
-        // Inductor saturation registers zero-crossing callbacks, so the fast
-        // path is used only when neither diodes nor saturation need checking.
-        if (m_zero_crossing_callbacks.empty()) {
-            stepModel(dt);
-            return;
-        }
-    }
-
     if constexpr (NUM_DIODES > 0) {
         uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
         if (external_closed_switch_mask != m_last_external_closed_switch_mask) {
@@ -777,6 +766,22 @@ void Model_diode_bridge_3l::stepWithZeroCrossingDetection(double dt) {
                 m_last_switch_mask = switches.all();
             }
             m_last_external_closed_switch_mask = external_closed_switch_mask;
+        }
+    }
+
+    // A zero-size step applies the new topology and refreshes algebraic
+    // outputs at t+0 without integrating the state.
+    if (dt < rlc2ss::MINIMUM_TIMESTEP) {
+        stepModel(0.0);
+        return;
+    }
+
+    if constexpr (NUM_DIODES == 0) {
+        // Inductor saturation registers zero-crossing callbacks, so the fast
+        // path is used only when neither diodes nor saturation need checking.
+        if (m_zero_crossing_callbacks.empty()) {
+            stepModel(dt);
+            return;
         }
     }
 
@@ -807,7 +812,6 @@ void Model_diode_bridge_3l::stepWithZeroCrossingDetection(double dt) {
 }
 
 void Model_diode_bridge_3l::stepModel(double dt) {
-    dt = std::max(dt, m_dt_resolution);
     // Update state-space matrices if needed
     if (components != _M_components_DO_NOT_TOUCH || switches.all() != _M_switches_DO_NOT_TOUCH.all() || !m_solver.initialized()) {
         assert(components.C_dc_n1 != -1);
@@ -861,28 +865,37 @@ void Model_diode_bridge_3l::stepModel(double dt) {
         _M_switches_DO_NOT_TOUCH = switches;
         m_ss = calcStateSpaceMatrices(components, switches.all());
         m_solver.updateSystem(m_ss.A, m_ss.B);
-        // Solve one step with backward euler to reduce numerical oscillations
-        if (m_dt_resolution > 0) {
-            double multiple = std::round(dt / m_dt_resolution);
-            states.data = m_solver.stepLinearBackwardEuler(states.data, inputs.data, multiple * m_dt_resolution);
-        } else {
-            states.data = m_solver.stepLinearBackwardEuler(states.data, inputs.data, dt);
-        }
-    } else {
-        if (m_dt_resolution > 0) {
-            if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {
-                // Solve with tustin as multiples of resolution and ignore any error
+        m_backward_euler_pending = true;
+    }
+
+    if (dt >= rlc2ss::MINIMUM_TIMESTEP) {
+        dt = std::max(dt, m_dt_resolution);
+        // Solve the first nonzero step after a topology change with backward
+        // Euler to reduce numerical oscillations.
+        if (m_backward_euler_pending) {
+            m_backward_euler_pending = false;
+            if (m_dt_resolution > 0) {
                 double multiple = std::round(dt / m_dt_resolution);
-                states.data = m_solver.stepLinearTustin(states.data, inputs.data, multiple * m_dt_resolution);
-            } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {
-                // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
-                // on later steps
-                double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
-                m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
-                states.data = m_solver.stepLinearTustin(states.data, inputs.data, std::round(multiple) * m_dt_resolution);
+                states.data = m_solver.stepLinearBackwardEuler(states.data, inputs.data, multiple * m_dt_resolution);
+            } else {
+                states.data = m_solver.stepLinearBackwardEuler(states.data, inputs.data, dt);
             }
         } else {
-            states.data = m_solver.stepLinearTustin(states.data, inputs.data, dt);
+            if (m_dt_resolution > 0) {
+                if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {
+                    // Solve with tustin as multiples of resolution and ignore any error
+                    double multiple = std::round(dt / m_dt_resolution);
+                    states.data = m_solver.stepLinearTustin(states.data, inputs.data, multiple * m_dt_resolution);
+                } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {
+                    // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
+                    // on later steps
+                    double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
+                    m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
+                    states.data = m_solver.stepLinearTustin(states.data, inputs.data, std::round(multiple) * m_dt_resolution);
+                }
+            } else {
+                states.data = m_solver.stepLinearTustin(states.data, inputs.data, dt);
+            }
         }
     }
 
