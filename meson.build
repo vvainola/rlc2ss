@@ -8,7 +8,7 @@ project('rlc2ss',
     ])
 WINDOWS = (host_machine.system() == 'windows')
 LINUX = (host_machine.system() == 'linux')
-if LINUX
+if LINUX and not meson.is_subproject()
     # GNU-unique C++ symbols cause glibc to implicitly mark a dlopen()ed
     # library as NODELETE. The libraries must be able to unload to
     # reset the state of the simulation between runs.
