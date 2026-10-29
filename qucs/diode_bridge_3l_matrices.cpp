@@ -751,6 +751,29 @@ void Model_diode_bridge_3l::stepWithZeroCrossingDetection(double dt) {
     if constexpr (NUM_DIODES > 0) {
         uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
         if (external_closed_switch_mask != m_last_external_closed_switch_mask) {
+            // Inputs may have changed since the last step. Refresh dependent
+            // states using the previous topology before checking the
+            // requested topology for continuity.
+            outputs.data = calcInstantaneousOutputs(components, states, inputs, _M_switches_DO_NOT_TOUCH.all()).data;
+            states.I_L_conv_a = outputs.I_L_conv_a;
+            states.I_L_conv_b = outputs.I_L_conv_b;
+            states.I_L_conv_c = outputs.I_L_conv_c;
+            states.I_L_dc_n = outputs.I_L_dc_n;
+            states.I_L_dc_p = outputs.I_L_dc_p;
+            states.I_L_dc_src = outputs.I_L_dc_src;
+            states.I_L_grid_a = outputs.I_L_grid_a;
+            states.I_L_grid_b = outputs.I_L_grid_b;
+            states.I_L_grid_c = outputs.I_L_grid_c;
+            states.I_L_src_a = outputs.I_L_src_a;
+            states.I_L_src_b = outputs.I_L_src_b;
+            states.I_L_src_c = outputs.I_L_src_c;
+            states.V_C_dc_n1 = outputs.V_C_dc_n1;
+            states.V_C_dc_n2 = outputs.V_C_dc_n2;
+            states.V_C_dc_p1 = outputs.V_C_dc_p1;
+            states.V_C_dc_p2 = outputs.V_C_dc_p2;
+            states.V_C_f_a = outputs.V_C_f_a;
+            states.V_C_f_b = outputs.V_C_f_b;
+            states.V_C_f_c = outputs.V_C_f_c;
             bool first_continuity_step = m_last_external_closed_switch_mask == ~uint64_t{0};
             bool external_switch_opened = (m_last_external_closed_switch_mask & ~external_closed_switch_mask) != 0;
 

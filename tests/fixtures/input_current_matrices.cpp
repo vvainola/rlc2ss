@@ -1,0 +1,620 @@
+
+#include "input_current_matrices.hpp"
+#include "diode_continuity.hpp"
+#include "rlc2ss.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <optional>
+#include <mutex>
+#include <format>
+#include <memory>
+#include <stdexcept>
+
+
+#pragma warning(disable : 4127) // conditional expression is constant
+#pragma warning(disable : 4189) // local variable is initialized but not referenced
+#pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
+#pragma warning(disable : 4408) // anonymous struct did not declare any data members
+#pragma warning(disable : 5054) // operator '&': deprecated between enumerations of different types
+
+inline constexpr int MAX_ZERO_CROSS_EVENTS = 100;
+
+namespace {
+
+std::unique_ptr<Model_input_current::StateSpaceMatrices> calcStateSpace(Eigen::MatrixXd const& K1,
+                                                                        Eigen::MatrixXd const& A1,
+                                                                        Eigen::MatrixXd const& B1,
+                                                                        Eigen::MatrixXd const& K2,
+                                                                        Eigen::MatrixXd const& C1,
+                                                                        Eigen::MatrixXd const& D1) {
+    auto ss = std::make_unique<Model_input_current::StateSpaceMatrices>();
+    auto lu = K1.partialPivLu();
+    Eigen::MatrixXd A = lu.solve(A1);
+    Eigen::MatrixXd B = lu.solve(B1);
+    ss->A = A;
+    ss->B = B;
+    ss->C = (C1 + K2 * A);
+    ss->D = (D1 + K2 * B);
+    return ss;
+}
+
+Model_input_current::StateSpaceMatrices const& calcStateSpaceMatrices(Model_input_current::Components const& components,
+                                                                      uint64_t switch_combination) {
+    static std::mutex            cache_mutex;
+    std::scoped_lock<std::mutex> lock(cache_mutex);
+
+    using StateSpaceMap = std::unordered_map<uint64_t, std::unique_ptr<Model_input_current::StateSpaceMatrices>>;
+    static std::unordered_map<uint64_t, StateSpaceMap> state_space_cache;
+    uint64_t component_hash = components.hash();
+    if (state_space_cache.contains(switch_combination)) {
+        std::unordered_map<uint64_t, std::unique_ptr<Model_input_current::StateSpaceMatrices>>& cache = state_space_cache.at(switch_combination);
+        auto it = cache.find(component_hash);
+        if (it != cache.end()) {
+            return *it->second;
+        }
+    }
+    std::string netlist = "I1 0 n1 DC 1 \nL1 n1 n2 1 \nR1 n2 0 1 \nS1 n2 0 c1 c2 \nD1 0 n2 DMOD_D1 ";
+
+    // Cache symbolic intermediate matrices per switch combination
+    static std::unordered_map<uint64_t, rlc2ss::SymbolicStateSpace> symbolic_cache;
+    if (!symbolic_cache.contains(switch_combination)) {
+        symbolic_cache[switch_combination] = rlc2ss::formStateSpaceMatrices(netlist, switch_combination);
+    }
+    rlc2ss::SymbolicStateSpace const& symbolic_ss = symbolic_cache[switch_combination];
+
+    // Substitute component values into cached symbolic matrices
+    std::unordered_map<std::string, double> values{
+        {"L1", components.L1},
+        {"R1", components.R1},
+        {"R_D1", components.R_D1},
+    };
+    Eigen::MatrixXd K1 = rlc2ss::evaluate(symbolic_ss.K1, values);
+    Eigen::MatrixXd K2 = rlc2ss::evaluate(symbolic_ss.K2, values);
+    Eigen::MatrixXd A1 = rlc2ss::evaluate(symbolic_ss.A1, values);
+    Eigen::MatrixXd B1 = rlc2ss::evaluate(symbolic_ss.B1, values);
+    Eigen::MatrixXd C1 = rlc2ss::evaluate(symbolic_ss.C1, values);
+    Eigen::MatrixXd D1 = rlc2ss::evaluate(symbolic_ss.D1, values);
+
+    state_space_cache[switch_combination][component_hash] = calcStateSpace(K1, A1, B1, K2, C1, D1);
+    return *state_space_cache[switch_combination][component_hash];
+}
+
+
+Model_input_current::Outputs calcInstantaneousOutputs(Model_input_current::Components const& components,
+                                                      Model_input_current::States const& states,
+                                                      Model_input_current::Inputs const& inputs,
+                                                      uint64_t switch_combination) {
+    Model_input_current::Outputs instantaneous_outputs;
+    // Evaluate the algebraic outputs for an explicit switch mask at t+0.
+    // The state vector is not advanced, so any mismatch between inductor
+    // output currents and stored inductor states is a real switching
+    // discontinuity.
+    auto const& ss = calcStateSpaceMatrices(components, switch_combination);
+    instantaneous_outputs.data = ss.C * states.data + ss.D * inputs.data;
+    return instantaneous_outputs;
+}
+
+uint64_t externalClosedSwitchMask(Model_input_current::Switches const& switches) {
+    // Track each switch's delayed control output, not its possibly
+    // solver-closed actual value. This keeps diode zero-crossing
+    // force/release events out of external-closure detection while still
+    // detecting external closure of a diode switch.
+    return 0 |
+        (uint64_t{switches.S1.output()} << 0) |
+        (uint64_t{switches.S_D1.output()} << 1);
+}
+
+bool diodeSolverClosed(Model_input_current::Switches const& switches, size_t diode_idx) {
+    // True when diode continuity or zero-crossing logic has closed the
+    // diode. This excludes closure caused by the external switch control,
+    // which is tracked separately by externalClosedSwitchMask().
+    switch (diode_idx) {
+        case 0: return switches.S_D1.forcedOutput().value_or(false);
+    default:
+        return false;
+    }
+}
+
+uint64_t solverClosedDiodeMask(Model_input_current::Switches const& switches) {
+    uint64_t mask = 0;
+    for (size_t diode_idx = 0; diode_idx < 1; ++diode_idx) {
+        if (diodeSolverClosed(switches, diode_idx)) {
+            mask |= uint64_t{1} << diode_idx;
+        }
+    }
+    return mask;
+}
+
+uint64_t inductorCurrentSignMask(Model_input_current::States const& states) {
+    uint64_t mask = 0;
+    if (states.I_L1 > 0.0) {
+        mask |= uint64_t{1} << 0;
+    } else if (states.I_L1 < 0.0) {
+        mask |= uint64_t{1} << 1;
+    }
+    return mask;
+}
+
+uint64_t completeTopologyMask(uint64_t external_closed_switch_mask, uint64_t solver_closed_diode_mask) {
+    uint64_t switch_mask = external_closed_switch_mask;
+    // The base mask is the external-closed topology. Solver closure
+    // can close additional diode switches, but it must not open a diode
+    // switch that is already external-closed.
+    switch_mask |= ((solver_closed_diode_mask >> 0) & uint64_t{1}) << 1;
+    return switch_mask;
+}
+
+bool diodeExternalClosed(size_t diode_idx, uint64_t external_closed_switch_mask) {
+    switch (diode_idx) {
+        case 0: return (external_closed_switch_mask & (uint64_t{1} << 1)) != 0;
+    default:
+        return false;
+    }
+}
+
+double diodeCurrent(size_t diode_idx, Model_input_current::Outputs const& outputs) {
+    switch (diode_idx) {
+        case 0: return outputs.I_R_D1;
+    default:
+        return 0.0;
+    }
+}
+
+double diodeForwardOverdrive(size_t diode_idx,
+                             Model_input_current::Outputs const& outputs,
+                             Model_input_current::Inputs const& inputs) {
+    // Positive overdrive means an open diode would be forward-biased
+    // for this instantaneous solution.
+    switch (diode_idx) {
+        case 0: return 0.0 - outputs.n2 - inputs.V_D1;
+    default:
+        return 0.0;
+    }
+}
+
+double inductorCurrentDiscontinuity(Model_input_current::Outputs const& outputs,
+                                    Model_input_current::States const& states) {
+    double discontinuity = 0.0;
+    // Inductor current is continuous. The generated state vector stores
+    // every inductor current, including dependent inductors, so continuity
+    // can be checked without topology-specific knowledge.
+    discontinuity = std::max(discontinuity, std::abs(outputs.data[0] - states.data[0]));
+    return discontinuity;
+}
+
+Model_input_current::Switches applySolverDiodeMask(Model_input_current::Switches switches, uint64_t solver_closed_diode_mask) {
+    // Generated diodes are represented as switches in the state-space
+    // matrices. Set bits solver-close diodes and clear bits release
+    // solver closure. External switch closure remains unchanged.
+    switches.S_D1.forceOutput((solver_closed_diode_mask & (uint64_t{1} << 0)) != 0 ? std::optional<bool>{true} : std::nullopt);
+    return switches;
+}
+
+Model_input_current::Switches releaseReverseCurrentDiodes(Model_input_current::Components const& components,
+                                                          Model_input_current::States const& states,
+                                                          Model_input_current::Inputs const& inputs,
+                                                          Model_input_current::Switches const& switches) {
+    uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
+    uint64_t solver_closed_diode_mask = solverClosedDiodeMask(switches);
+    if (solver_closed_diode_mask == 0) {
+        return switches;
+    }
+
+    // A controlled switch closing cannot fix an inductor-current
+    // discontinuity by opening diodes; it only gives existing current
+    // another path. The full continuity resolver is therefore reserved
+    // for switch openings. On a closing-only transition, only release
+    // solver-closed diodes carrying reverse current at t+0. Re-evaluate
+    // after each release because it can make another diode reverse-biased.
+    uint64_t updated_solver_closed_diode_mask = rlc2ss::releaseReverseCurrentDiodeMask(
+        solver_closed_diode_mask,
+        [&](uint64_t closed_diode_mask) {
+            uint64_t switch_mask = completeTopologyMask(external_closed_switch_mask, closed_diode_mask);
+            Model_input_current::Outputs instantaneous_outputs =
+                calcInstantaneousOutputs(components, states, inputs, switch_mask);
+            uint64_t reverse_current_mask = 0;
+            for (size_t diode_idx = 0; diode_idx < 1; ++diode_idx) {
+                uint64_t diode_bit = uint64_t{1} << diode_idx;
+                if ((closed_diode_mask & diode_bit) != 0 &&
+                    diodeCurrent(diode_idx, instantaneous_outputs) < -rlc2ss::DIODE_CONTINUITY_TOLERANCE) {
+                    reverse_current_mask |= diode_bit;
+                }
+            }
+            return reverse_current_mask;
+        });
+
+    return updated_solver_closed_diode_mask != solver_closed_diode_mask
+        ? applySolverDiodeMask(switches, updated_solver_closed_diode_mask)
+        : switches;
+}
+
+Model_input_current::Switches resolveDiodeContinuity(Model_input_current::Components const& components,
+                                                     Model_input_current::States const& states,
+                                                     Model_input_current::Inputs const& inputs,
+                                                     Model_input_current::Switches const& switches,
+                                                     uint64_t previous_topology_mask) {
+    static std::mutex cache_mutex;
+    static std::unordered_map<uint64_t, uint64_t> diode_continuity_cache;
+    uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
+    uint64_t initial_solver_closed_diode_mask = solverClosedDiodeMask(switches);
+
+    // Check the diode complementarity part of the candidate solution.
+    // Solver-closed diodes may conduct zero or positive current. A diode
+    // that is neither solver-closed nor external-closed must not be
+    // forward-biased.
+    auto diode_complementarity_violation = [&inputs, external_closed_switch_mask](
+        uint64_t solver_closed_diode_mask,
+        Model_input_current::Outputs const& outputs) {
+        double violation = 0.0;
+        for (size_t diode_idx = 0; diode_idx < 1; ++diode_idx) {
+            if ((solver_closed_diode_mask & (uint64_t{1} << diode_idx)) != 0) {
+                violation = std::max(violation, -diodeCurrent(diode_idx, outputs));
+            } else if (!diodeExternalClosed(diode_idx, external_closed_switch_mask)) {
+                violation = std::max(violation, diodeForwardOverdrive(diode_idx, outputs, inputs));
+            }
+        }
+        return violation;
+    };
+
+    double best_attempt_discontinuity = std::numeric_limits<double>::infinity();
+    double best_attempt_complementarity_violation = std::numeric_limits<double>::infinity();
+    // Evaluate one diode mask at t+0. The state vector is not advanced,
+    // so any mismatch between inductor outputs and stored states is the
+    // switching discontinuity caused by this topology.
+    auto evaluate_mask = [&](uint64_t solver_closed_diode_mask) {
+        uint64_t switch_mask = completeTopologyMask(external_closed_switch_mask, solver_closed_diode_mask);
+        Model_input_current::Outputs instantaneous_outputs =
+            calcInstantaneousOutputs(components, states, inputs, switch_mask);
+        double discontinuity = inductorCurrentDiscontinuity(instantaneous_outputs, states);
+        double complementarity_violation = diode_complementarity_violation(solver_closed_diode_mask, instantaneous_outputs);
+        best_attempt_discontinuity = std::min(best_attempt_discontinuity, discontinuity);
+        best_attempt_complementarity_violation = std::min(best_attempt_complementarity_violation, complementarity_violation);
+        return rlc2ss::DiodeContinuityMetrics{
+            .discontinuity = discontinuity,
+            .complementarity_violation = complementarity_violation,
+        };
+    };
+
+    // Cache only a warm-start set of solver-closed diodes. The same switch
+    // transition can need different diodes depending on current direction,
+    // so the key includes the inductor-current sign pattern. A cached mask
+    // is still fully revalidated before use.
+    uint64_t cache_key = 0;
+    rlc2ss::hash_combine(cache_key, previous_topology_mask);
+    rlc2ss::hash_combine(cache_key, external_closed_switch_mask);
+    rlc2ss::hash_combine(cache_key, initial_solver_closed_diode_mask);
+    rlc2ss::hash_combine(cache_key, inductorCurrentSignMask(states));
+
+    std::optional<uint64_t> cached_mask;
+    {
+        std::scoped_lock<std::mutex> lock(cache_mutex);
+        if (auto cached = diode_continuity_cache.find(cache_key); cached != diode_continuity_cache.end()) {
+            cached_mask = cached->second;
+        }
+    }
+    if (cached_mask) {
+        rlc2ss::DiodeContinuityMetrics cached_metrics = evaluate_mask(*cached_mask);
+        if (rlc2ss::diodeContinuityValid(cached_metrics, rlc2ss::DIODE_CONTINUITY_TOLERANCE)) {
+            return applySolverDiodeMask(switches, *cached_mask);
+        }
+    }
+
+    // Fall back to a complete mask search. The helper searches by
+    // increasing diode-state changes from the current diode mask, so the
+    // common one-diode freewheel case is found before wider combinations
+    // are evaluated.
+    rlc2ss::DiodeContinuitySelection selection = rlc2ss::selectDiodeContinuityMask(
+        1,
+        initial_solver_closed_diode_mask,
+        rlc2ss::DIODE_CONTINUITY_TOLERANCE,
+        evaluate_mask);
+
+    if (selection.found) {
+        {
+            std::scoped_lock<std::mutex> lock(cache_mutex);
+            diode_continuity_cache[cache_key] = selection.mask;
+        }
+        return applySolverDiodeMask(switches, selection.mask);
+    }
+
+    throw std::runtime_error(std::format(
+        "Diode continuity resolver could not find a diode mask satisfying continuity and complementarity; "
+        "switch combination {} initial diode mask {} best residual {} best complementarity violation {}",
+        external_closed_switch_mask,
+        initial_solver_closed_diode_mask,
+        best_attempt_discontinuity,
+        best_attempt_complementarity_violation));
+}
+
+
+
+} // namespace
+
+std::optional<rlc2ss::ZeroCrossingEvent> Model_input_current::checkZeroCrossingEvents(Model_input_current::Outputs const& prev_outputs) {
+    std::priority_queue<rlc2ss::ZeroCrossingEvent,
+                        std::vector<rlc2ss::ZeroCrossingEvent>,
+                        std::greater<rlc2ss::ZeroCrossingEvent>>
+        events;
+
+    // Diode D1
+    double V_D1 = 0 - outputs.n2;
+    if (V_D1 > inputs.V_D1 && !switches.S_D1) {
+        double V_D1_prev = 0 - prev_outputs.n2;
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(V_D1_prev, V_D1),
+            .event_callback = [this]() {
+                switches.S_D1.forceOutput(true);
+            }
+        });
+    }
+    if (outputs.I_R_D1 < -rlc2ss::DIODE_CONTINUITY_TOLERANCE && switches.S_D1.outputForced()) {
+        events.push(rlc2ss::ZeroCrossingEvent{
+            .time = rlc2ss::calcZeroCrossingTime(prev_outputs.I_R_D1, outputs.I_R_D1),
+            .event_callback = [this]() {
+                switches.S_D1.forceOutput(std::nullopt);
+            }
+        });
+    }
+
+    for (auto const& callback : m_zero_crossing_callbacks) {
+        std::optional<rlc2ss::ZeroCrossingEvent> event = callback(prev_outputs, outputs);
+        if (event) {
+            events.push(*event);
+        }
+    }
+
+    if (events.size() > 0) {
+        return events.top();
+    }
+    return std::nullopt;
+}
+
+Model_input_current::Model_input_current(Components const& c)
+    : components(c),
+      _M_components_DO_NOT_TOUCH(c) {
+}
+
+
+
+void Model_input_current::addInductorSaturation(double* inductor, std::vector<double> currents, std::vector<double> inductances) {
+    // Check that the currents are ascending and inductances are descending
+    assert(currents.size() == inductances.size());
+    for (int i = 1; i < currents.size(); ++i) {
+        assert(currents[i] >= currents[i - 1]);
+        assert(inductances[i] <= inductances[i - 1]);
+    }
+    int i_L_output_idx = -1;
+    if (inductor == &components.L1) {
+        i_L_output_idx = 0;
+    }
+    if (i_L_output_idx == -1) {
+        assert(("Invalid pointer to inductor", false));
+    }
+
+    // The inductance is checked against the saturation band of the current instead of only detecting
+    // the breakpoint crossings. A crossing can be stepped over undetected, e.g. when an event close to
+    // it is processed with a step rounded to the timestep resolution, and an edge-triggered check would
+    // then leave the inductance wrong until the next crossing in the opposite direction.
+    // Band k spans currents[k] <= abs(current) < currents[k + 1].
+    auto band_of = [currents](double current) {
+        double magnitude = std::abs(current);
+        int band = 0;
+        while (band + 1 < int(currents.size()) && magnitude >= currents[band + 1]) {
+            ++band;
+        }
+        return band;
+    };
+    auto set_inductance = [inductor](double time, double inductance) {
+        return rlc2ss::ZeroCrossingEvent{
+            .time = time,
+            .event_callback = [inductor, inductance]() {
+                *inductor = inductance;
+            }};
+    };
+    m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+        double i_prev = outputs_prev.data[i_L_output_idx];
+        double i_new = outputs_new.data[i_L_output_idx];
+        int band_prev = band_of(i_prev);
+        int band_new = band_of(i_new);
+        if (*inductor == inductances[band_new]) {
+            return std::nullopt;
+        }
+        // Correct an inductance that does not match the current at the start of the step
+        if (*inductor != inductances[band_prev]) {
+            return set_inductance(0.0, inductances[band_prev]);
+        }
+        // Find the first breakpoint crossed during the step. Check +threshold and -threshold
+        // separately. Interpolating abs(current) gives the wrong event time if current crosses
+        // through zero during a step, e.g. -50 A -> +150 A with a 100 A threshold.
+        std::optional<rlc2ss::ZeroCrossingEvent> first_crossing;
+        for (int k = 1; k < int(currents.size()); ++k) {
+            for (double level : {currents[k], -currents[k]}) {
+                if ((i_prev < level) == (i_new < level)) {
+                    continue;
+                }
+                bool magnitude_increasing = (level > 0) == (i_new > i_prev);
+                double time = rlc2ss::calcZeroCrossingTime(i_prev - level, i_new - level);
+                if (!first_crossing || time < first_crossing->time) {
+                    first_crossing = set_inductance(time, inductances[magnitude_increasing ? k : k - 1]);
+                }
+            }
+        }
+        if (!first_crossing) {
+            return set_inductance(0.0, inductances[band_new]);
+        }
+        return first_crossing;
+    });
+}
+
+void Model_input_current::step(double dt, Inputs const& inputs_) {
+    inputs.data = inputs_.data;
+
+    // Integrate each interval using the topology active before its delayed
+    // switch event, then apply the event at the end of that interval.
+    double smallest_dt = switches.smallestDelay();
+    // Match OnOffDelay::step() tolerance so a floating-point rounding at the
+    // timestep endpoint cannot make it apply an event that this loop misses.
+    while (smallest_dt <= dt + rlc2ss::EPSILON) {
+        double event_dt = std::min(smallest_dt, dt);
+        stepWithZeroCrossingDetection(event_dt);
+        switches.step(event_dt);
+        dt -= event_dt;
+        smallest_dt = switches.smallestDelay();
+    }
+
+    stepWithZeroCrossingDetection(dt);
+    switches.step(dt);
+}
+
+void Model_input_current::stepWithZeroCrossingDetection(double dt) {
+    if constexpr (NUM_DIODES > 0) {
+        uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
+        if (external_closed_switch_mask != m_last_external_closed_switch_mask) {
+            // Inputs may have changed since the last step. Refresh dependent
+            // states using the previous topology before checking the
+            // requested topology for continuity.
+            outputs.data = calcInstantaneousOutputs(components, states, inputs, _M_switches_DO_NOT_TOUCH.all()).data;
+            states.I_L1 = outputs.I_L1;
+            bool first_continuity_step = m_last_external_closed_switch_mask == ~uint64_t{0};
+            bool external_switch_opened = (m_last_external_closed_switch_mask & ~external_closed_switch_mask) != 0;
+
+            // Opening a controlled switch can remove the only path for an inductor
+            // current, so it may need a diode mask search. Closing a switch only
+            // adds a path; diode turn-off remains a complementarity/zero-crossing
+            // problem and does not need the expensive continuity resolver.
+            if (first_continuity_step || external_switch_opened) {
+                switches = resolveDiodeContinuity(components, states, inputs, switches, m_last_switch_mask);
+                m_last_switch_mask = switches.all();
+            } else {
+                switches = releaseReverseCurrentDiodes(components, states, inputs, switches);
+                m_last_switch_mask = switches.all();
+            }
+            m_last_external_closed_switch_mask = external_closed_switch_mask;
+        }
+    }
+
+    // A zero-size step applies the new topology and refreshes algebraic
+    // outputs at t+0 without integrating the state.
+    if (dt < rlc2ss::MINIMUM_TIMESTEP) {
+        stepModel(0.0);
+        return;
+    }
+
+    if constexpr (NUM_DIODES == 0) {
+        // Inductor saturation registers zero-crossing callbacks, so the fast
+        // path is used only when neither diodes nor saturation need checking.
+        if (m_zero_crossing_callbacks.empty()) {
+            stepModel(dt);
+            return;
+        }
+    }
+
+    // Copy previous state and outputs if step needs to be redone
+    Model_input_current::States prev_state;
+    Model_input_current::Outputs prev_outputs;
+    prev_state.data = states.data;
+    prev_outputs.data = outputs.data;
+
+    stepModel(dt);
+    std::optional<rlc2ss::ZeroCrossingEvent> zc_event = checkZeroCrossingEvents(prev_outputs);
+    int zc_event_count = 0;
+    while (zc_event && zc_event_count < MAX_ZERO_CROSS_EVENTS) {
+        zc_event_count++;
+        // Redo step
+        states.data = prev_state.data;
+        stepModel(zc_event->time * dt);
+        // Process event
+        zc_event->event_callback();
+        // Run remaining time
+        prev_state.data = states.data;
+        prev_outputs.data = outputs.data;
+        dt = dt * (1 - zc_event->time);
+        stepModel(dt);
+        // Check for new events
+        zc_event = checkZeroCrossingEvents(prev_outputs);
+    }
+}
+
+void Model_input_current::stepModel(double dt) {
+    // Update state-space matrices if needed
+    if (components != _M_components_DO_NOT_TOUCH || switches.all() != _M_switches_DO_NOT_TOUCH.all() || !m_solver.initialized()) {
+        assert(components.L1 != -1);
+        assert(components.R1 != -1);
+        assert(components.R_D1 != -1);
+        _M_components_DO_NOT_TOUCH = components;
+        _M_switches_DO_NOT_TOUCH = switches;
+        m_ss = calcStateSpaceMatrices(components, switches.all());
+        m_solver.updateSystem(m_ss.A, m_ss.B);
+        m_backward_euler_pending = true;
+    }
+
+    if (dt >= rlc2ss::MINIMUM_TIMESTEP) {
+        dt = std::max(dt, m_dt_resolution);
+        // Solve the first nonzero step after a topology change with backward
+        // Euler to reduce numerical oscillations.
+        if (m_backward_euler_pending) {
+            m_backward_euler_pending = false;
+            if (m_dt_resolution > 0) {
+                double multiple = std::round(dt / m_dt_resolution);
+                states.data = m_solver.stepLinearBackwardEuler(states.data, inputs.data, multiple * m_dt_resolution);
+            } else {
+                states.data = m_solver.stepLinearBackwardEuler(states.data, inputs.data, dt);
+            }
+        } else {
+            if (m_dt_resolution > 0) {
+                if (m_dt_correction_mode == TimestepErrorCorrectionMode::NONE) {
+                    // Solve with tustin as multiples of resolution and ignore any error
+                    double multiple = std::round(dt / m_dt_resolution);
+                    states.data = m_solver.stepLinearTustin(states.data, inputs.data, multiple * m_dt_resolution);
+                } else if (m_dt_correction_mode == TimestepErrorCorrectionMode::ACCUMULATE) {
+                    // Solve with tustin as multiples of resolution and accumulate error to correct the timestep length
+                    // on later steps
+                    double multiple = (dt + m_dt_error_accumulator) / m_dt_resolution;
+                    m_dt_error_accumulator += dt - std::round(multiple) * m_dt_resolution;
+                    states.data = m_solver.stepLinearTustin(states.data, inputs.data, std::round(multiple) * m_dt_resolution);
+                }
+            } else {
+                states.data = m_solver.stepLinearTustin(states.data, inputs.data, dt);
+            }
+        }
+    }
+
+    // Update output
+    outputs.data = m_ss.C * states.data + m_ss.D * inputs.data;
+
+    // Update states from outputs to have correct values for dependent states
+    states.I_L1 = outputs.I_L1;
+}
+
+bool Model_input_current::Components::operator==(Components const& other) const {
+    return
+        L1 == other.L1 &&
+        R1 == other.R1 &&
+        R_D1 == other.R_D1;
+}
+
+uint64_t Model_input_current::Components::hash() const {
+    uint64_t seed = 0;
+    rlc2ss::hash_combine(seed, L1);
+    rlc2ss::hash_combine(seed, R1);
+    rlc2ss::hash_combine(seed, R_D1);
+    return seed;
+}
+
+uint64_t Model_input_current::Switches::all() const {
+    return 0 |
+        (uint64_t{S1} << 0) |
+        (uint64_t{S_D1} << 1);
+}
+
+double Model_input_current::Switches::smallestDelay() {
+    return std::min({double(rlc2ss::OnOffDelay::MAX_DELAY),
+                    S1.pendingTime(),
+                    S_D1.pendingTime()});
+}
+
+void Model_input_current::Switches::step(double dt) {
+    S1.step(dt);
+    S_D1.step(dt);
+}

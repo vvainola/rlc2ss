@@ -242,6 +242,14 @@ void Model_mutual_inductor::stepWithZeroCrossingDetection(double dt) {
     if constexpr (NUM_DIODES > 0) {
         uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
         if (external_closed_switch_mask != m_last_external_closed_switch_mask) {
+            // Inputs may have changed since the last step. Refresh dependent
+            // states using the previous topology before checking the
+            // requested topology for continuity.
+            outputs.data = calcInstantaneousOutputs(components, states, inputs, _M_switches_DO_NOT_TOUCH.all()).data;
+            states.I_L1 = outputs.I_L1;
+            states.I_L2 = outputs.I_L2;
+            states.I_L3 = outputs.I_L3;
+            states.V_Cf = outputs.V_Cf;
             bool first_continuity_step = m_last_external_closed_switch_mask == ~uint64_t{0};
             bool external_switch_opened = (m_last_external_closed_switch_mask & ~external_closed_switch_mask) != 0;
 

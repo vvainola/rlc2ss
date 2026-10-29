@@ -669,6 +669,21 @@ void Model_converter::stepWithZeroCrossingDetection(double dt) {
     if constexpr (NUM_DIODES > 0) {
         uint64_t external_closed_switch_mask = externalClosedSwitchMask(switches);
         if (external_closed_switch_mask != m_last_external_closed_switch_mask) {
+            // Inputs may have changed since the last step. Refresh dependent
+            // states using the previous topology before checking the
+            // requested topology for continuity.
+            outputs.data = calcInstantaneousOutputs(components, states, inputs, _M_switches_DO_NOT_TOUCH.all()).data;
+            states.I_L_a = outputs.I_L_a;
+            states.I_L_b = outputs.I_L_b;
+            states.I_L_c = outputs.I_L_c;
+            states.I_L_g_a = outputs.I_L_g_a;
+            states.I_L_g_b = outputs.I_L_g_b;
+            states.I_L_g_c = outputs.I_L_g_c;
+            states.V_C_a = outputs.V_C_a;
+            states.V_C_b = outputs.V_C_b;
+            states.V_C_c = outputs.V_C_c;
+            states.V_C_n = outputs.V_C_n;
+            states.V_C_p = outputs.V_C_p;
             bool first_continuity_step = m_last_external_closed_switch_mask == ~uint64_t{0};
             bool external_switch_opened = (m_last_external_closed_switch_mask & ~external_closed_switch_mask) != 0;
 

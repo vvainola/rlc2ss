@@ -1,0 +1,5 @@
+I1 0 n1 DC 1
+L1 n1 n2 1
+R1 n2 0 1
+S1 n2 0 c1 c2
+D1 0 n2 DMOD_D1
