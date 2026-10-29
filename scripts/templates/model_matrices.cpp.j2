@@ -3,6 +3,7 @@
 #include "diode_continuity.hpp"
 #include "rlc2ss.h"
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <mutex>
@@ -98,54 +99,59 @@ void [[ class_name ]]::addInductorSaturation(double* inductor, std::vector<doubl
         assert(("Invalid pointer to inductor", false));
     }
 
-    for (int i = 1; i < currents.size(); ++i) {
-        double threshold = currents[i];
-        double inductance_prev = inductances[i - 1];
-        double inductance = inductances[i];
-        // Check +threshold and -threshold separately. Interpolating abs(current)
-        // gives the wrong event time if current crosses through zero during a
-        // step, e.g. -50 A -> +150 A with a 100 A threshold.
-        // Increase inductance when current goes below level
-        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = outputs_prev.data[i_L_output_idx];
-            double i_new = outputs_new.data[i_L_output_idx];
-            if (i_prev > threshold && i_new <= threshold) {
-                return rlc2ss::ZeroCrossingEvent{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [inductor, inductance_prev]() {
-                        *inductor = inductance_prev;
-                    }};
-            }
-            if (i_prev < -threshold && i_new >= -threshold) {
-                return rlc2ss::ZeroCrossingEvent{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
-                    .event_callback = [inductor, inductance_prev]() {
-                        *inductor = inductance_prev;
-                    }};
-            }
+    // The inductance is checked against the saturation band of the current instead of only detecting
+    // the breakpoint crossings. A crossing can be stepped over undetected, e.g. when an event close to
+    // it is processed with a step rounded to the timestep resolution, and an edge-triggered check would
+    // then leave the inductance wrong until the next crossing in the opposite direction.
+    // Band k spans currents[k] <= abs(current) < currents[k + 1].
+    auto band_of = [currents](double current) {
+        double magnitude = std::abs(current);
+        int band = 0;
+        while (band + 1 < int(currents.size()) && magnitude >= currents[band + 1]) {
+            ++band;
+        }
+        return band;
+    };
+    auto set_inductance = [inductor](double time, double inductance) {
+        return rlc2ss::ZeroCrossingEvent{
+            .time = time,
+            .event_callback = [inductor, inductance]() {
+                *inductor = inductance;
+            }};
+    };
+    m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+        double i_prev = outputs_prev.data[i_L_output_idx];
+        double i_new = outputs_new.data[i_L_output_idx];
+        int band_prev = band_of(i_prev);
+        int band_new = band_of(i_new);
+        if (*inductor == inductances[band_new]) {
             return std::nullopt;
-        });
-        // Decrease inductance when current goes above level
-        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = outputs_prev.data[i_L_output_idx];
-            double i_new = outputs_new.data[i_L_output_idx];
-            if (i_prev < threshold && i_new >= threshold) {
-                return rlc2ss::ZeroCrossingEvent{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [inductor, inductance]() {
-                        *inductor = inductance;
-                    }};
+        }
+        // Correct an inductance that does not match the current at the start of the step
+        if (*inductor != inductances[band_prev]) {
+            return set_inductance(0.0, inductances[band_prev]);
+        }
+        // Find the first breakpoint crossed during the step. Check +threshold and -threshold
+        // separately. Interpolating abs(current) gives the wrong event time if current crosses
+        // through zero during a step, e.g. -50 A -> +150 A with a 100 A threshold.
+        std::optional<rlc2ss::ZeroCrossingEvent> first_crossing;
+        for (int k = 1; k < int(currents.size()); ++k) {
+            for (double level : {currents[k], -currents[k]}) {
+                if ((i_prev < level) == (i_new < level)) {
+                    continue;
+                }
+                bool magnitude_increasing = (level > 0) == (i_new > i_prev);
+                double time = rlc2ss::calcZeroCrossingTime(i_prev - level, i_new - level);
+                if (!first_crossing || time < first_crossing->time) {
+                    first_crossing = set_inductance(time, inductances[magnitude_increasing ? k : k - 1]);
+                }
             }
-            if (i_prev > -threshold && i_new <= -threshold) {
-                return rlc2ss::ZeroCrossingEvent{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
-                    .event_callback = [inductor, inductance]() {
-                        *inductor = inductance;
-                    }};
-            }
-            return std::nullopt;
-        });
-    }
+        }
+        if (!first_crossing) {
+            return set_inductance(0.0, inductances[band_new]);
+        }
+        return first_crossing;
+    });
 }
 
 void [[ class_name ]]::step(double dt, Inputs const& inputs_) {
