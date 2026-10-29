@@ -452,10 +452,9 @@ Model_diode_bridge_3l::Switches resolveDiodeContinuity(Model_diode_bridge_3l::Co
         }
     }
 
-    // Fall back to a complete mask search. The helper searches by
-    // increasing diode-state changes from the current diode mask, so the
-    // common one-diode freewheel case is found before wider combinations
-    // are evaluated.
+    // Try greedy single-diode toggles first, then fall back to a
+    // complete search by increasing distance from the original mask
+    // if no improving toggle leads to a valid solution.
     rlc2ss::DiodeContinuitySelection selection = rlc2ss::selectDiodeContinuityMask(
         6,
         initial_solver_closed_diode_mask,

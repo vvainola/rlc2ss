@@ -115,3 +115,71 @@ TEST_CASE("Diode continuity selector stops at the first valid change distance") 
     CHECK(selection.mask == 0b001);
     CHECK(evaluations == 4);
 }
+
+TEST_CASE("Greedy diode continuity handles several simultaneous diode changes") {
+    size_t evaluations = 0;
+    auto evaluator = [&evaluations](uint64_t mask) {
+        ++evaluations;
+        return DiodeContinuityMetrics{
+            .discontinuity = double(std::popcount(mask ^ uint64_t{0b010101})),
+            .complementarity_violation = 0.0,
+        };
+    };
+
+    auto selection = rlc2ss::selectDiodeContinuityMask(6, 0, 1e-9, evaluator);
+
+    REQUIRE(selection.found);
+    CHECK(selection.mask == 0b010101);
+    // Distance enumeration would evaluate 42 masks before accepting three changes.
+    CHECK(evaluations == 19);
+}
+
+TEST_CASE("Greedy diode continuity improves complementarity once continuity passes") {
+    std::unordered_map<uint64_t, DiodeContinuityMetrics> metrics{
+        {0b00, {.discontinuity = 10.0, .complementarity_violation = 0.0}},
+        {0b01, {.discontinuity = 0.0, .complementarity_violation = 2.0}},
+        {0b10, {.discontinuity = 5.0, .complementarity_violation = 0.0}},
+        {0b11, {.discontinuity = 5e-10, .complementarity_violation = 0.0}},
+    };
+
+    auto selection = rlc2ss::tryGreedyDiodeMask(2, 0, 1e-9, mapEvaluator(metrics));
+
+    REQUIRE(selection.found);
+    CHECK(selection.mask == 0b11);
+}
+
+TEST_CASE("Diode continuity falls back when simultaneous toggles cross a residual plateau") {
+    std::unordered_map<uint64_t, DiodeContinuityMetrics> metrics{
+        {0b00, {.discontinuity = 10.0, .complementarity_violation = 0.0}},
+        {0b01, {.discontinuity = 10.0, .complementarity_violation = 0.0}},
+        {0b10, {.discontinuity = 10.0, .complementarity_violation = 0.0}},
+        {0b11, {.discontinuity = 0.0, .complementarity_violation = 0.0}},
+    };
+    auto evaluator = mapEvaluator(metrics);
+
+    CHECK_FALSE(rlc2ss::tryGreedyDiodeMask(2, 0, 1e-9, evaluator).found);
+
+    auto selection = rlc2ss::selectDiodeContinuityMask(2, 0, 1e-9, evaluator);
+
+    REQUIRE(selection.found);
+    CHECK(selection.mask == 0b11);
+}
+
+TEST_CASE("Diode continuity falls back from a greedy local minimum") {
+    auto evaluator = [](uint64_t mask) {
+        double residual = mask == 0 ? 10.0 : 5.0;
+        if (mask == 0b001) {
+            residual = 1.0;
+        } else if (mask == 0b110) {
+            residual = 0.0;
+        }
+        return DiodeContinuityMetrics{.discontinuity = residual, .complementarity_violation = 0.0};
+    };
+
+    CHECK_FALSE(rlc2ss::tryGreedyDiodeMask(3, 0, 1e-9, evaluator).found);
+
+    auto selection = rlc2ss::selectDiodeContinuityMask(3, 0, 1e-9, evaluator);
+
+    REQUIRE(selection.found);
+    CHECK(selection.mask == 0b110);
+}

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace rlc2ss {
 
@@ -50,20 +51,58 @@ uint64_t releaseReverseCurrentDiodeMask(uint64_t initial_closed_diode_mask,
     return closed_diode_mask;
 }
 
-// Search diode masks by increasing distance from the current diode state. This
-// keeps normal freewheel transitions fast: if one extra diode fixes continuity,
-// only masks with zero or one changed bit are evaluated. The search is still
-// complete because it continues to larger distances when no nearer mask is
-// valid.
+// Follow the best single-diode toggle while the residual strictly improves.
+// Continuity takes priority; residuals within tolerance score as zero.
 template <typename EvaluateMask>
-DiodeContinuitySelection selectDiodeContinuityMask(size_t diode_count,
-                                                   uint64_t initial_closed_diode_mask,
-                                                   double tolerance,
-                                                   EvaluateMask&& evaluate_mask) {
+DiodeContinuitySelection tryGreedyDiodeMask(size_t diode_count,
+                                           uint64_t mask,
+                                           double tolerance,
+                                           EvaluateMask&& evaluate_mask) {
     if (diode_count >= 64) {
         throw std::invalid_argument("Diode continuity mask enumeration supports fewer than 64 diodes");
     }
+    auto score = [tolerance](DiodeContinuityMetrics const& metrics) {
+        return std::pair{
+            metrics.discontinuity <= tolerance ? 0.0 : metrics.discontinuity,
+            metrics.complementarity_violation <= tolerance ? 0.0 : metrics.complementarity_violation,
+        };
+    };
+    auto metrics = evaluate_mask(mask);
+    for (size_t round = 0; !diodeContinuityValid(metrics, tolerance); ++round) {
+        if (round == diode_count) {
+            return {};
+        }
+        uint64_t best_mask = mask;
+        auto best_metrics = metrics;
+        for (size_t diode = 0; diode < diode_count; ++diode) {
+            uint64_t candidate_mask = mask ^ (uint64_t{1} << diode);
+            auto candidate_metrics = evaluate_mask(candidate_mask);
+            if (score(candidate_metrics) < score(best_metrics)) {
+                best_mask = candidate_mask;
+                best_metrics = candidate_metrics;
+            }
+        }
+        if (best_mask == mask) {
+            return {};
+        }
+        mask = best_mask;
+        metrics = best_metrics;
+    }
+    return {.found = true,
+            .mask = mask,
+            .discontinuity = metrics.discontinuity,
+            .complementarity_violation = metrics.complementarity_violation};
+}
 
+// Search every diode mask by increasing distance from the original diode state.
+template <typename EvaluateMask>
+DiodeContinuitySelection searchDiodeMasks(size_t diode_count,
+                                         uint64_t initial_closed_diode_mask,
+                                         double tolerance,
+                                         EvaluateMask&& evaluate_mask) {
+    if (diode_count >= 64) {
+        throw std::invalid_argument("Diode continuity mask enumeration supports fewer than 64 diodes");
+    }
     uint64_t const mask_count = uint64_t{1} << diode_count;
     for (uint64_t changes = 0; changes <= diode_count; ++changes) {
         DiodeContinuitySelection best;
@@ -100,6 +139,18 @@ DiodeContinuitySelection selectDiodeContinuityMask(size_t diode_count,
         }
     }
     return {};
+}
+
+template <typename EvaluateMask>
+DiodeContinuitySelection selectDiodeContinuityMask(size_t diode_count,
+                                                   uint64_t initial_closed_diode_mask,
+                                                   double tolerance,
+                                                   EvaluateMask&& evaluate_mask) {
+    auto selection = tryGreedyDiodeMask(diode_count, initial_closed_diode_mask, tolerance, evaluate_mask);
+    if (!selection.found) {
+        selection = searchDiodeMasks(diode_count, initial_closed_diode_mask, tolerance, evaluate_mask);
+    }
+    return selection;
 }
 
 } // namespace rlc2ss

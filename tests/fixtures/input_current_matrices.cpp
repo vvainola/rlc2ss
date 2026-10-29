@@ -300,10 +300,9 @@ Model_input_current::Switches resolveDiodeContinuity(Model_input_current::Compon
         }
     }
 
-    // Fall back to a complete mask search. The helper searches by
-    // increasing diode-state changes from the current diode mask, so the
-    // common one-diode freewheel case is found before wider combinations
-    // are evaluated.
+    // Try greedy single-diode toggles first, then fall back to a
+    // complete search by increasing distance from the original mask
+    // if no improving toggle leads to a valid solution.
     rlc2ss::DiodeContinuitySelection selection = rlc2ss::selectDiodeContinuityMask(
         1,
         initial_solver_closed_diode_mask,
