@@ -3,6 +3,7 @@
 #include "diode_continuity.hpp"
 #include "rlc2ss.h"
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <mutex>
@@ -98,54 +99,51 @@ void [[ class_name ]]::addInductorSaturation(double* inductor, std::vector<doubl
         assert(("Invalid pointer to inductor", false));
     }
 
-    for (int i = 1; i < currents.size(); ++i) {
-        double threshold = currents[i];
-        double inductance_prev = inductances[i - 1];
-        double inductance = inductances[i];
-        // Check +threshold and -threshold separately. Interpolating abs(current)
-        // gives the wrong event time if current crosses through zero during a
-        // step, e.g. -50 A -> +150 A with a 100 A threshold.
-        // Increase inductance when current goes below level
-        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = outputs_prev.data[i_L_output_idx];
-            double i_new = outputs_new.data[i_L_output_idx];
-            if (i_prev > threshold && i_new <= threshold) {
-                return rlc2ss::ZeroCrossingEvent{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [inductor, inductance_prev]() {
-                        *inductor = inductance_prev;
-                    }};
+    // Band k spans currents[k] <= abs(current) < currents[k + 1].
+    struct SaturationCurve {
+        std::vector<double> currents;
+        std::vector<double> inductances;
+
+        double inductanceAt(double current) const {
+            double magnitude = std::abs(current);
+            size_t band = 0;
+            while (band + 1 < currents.size() && magnitude >= currents[band + 1]) {
+                ++band;
             }
-            if (i_prev < -threshold && i_new >= -threshold) {
-                return rlc2ss::ZeroCrossingEvent{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
-                    .event_callback = [inductor, inductance_prev]() {
-                        *inductor = inductance_prev;
-                    }};
-            }
+            return inductances[band];
+        }
+    };
+    auto curve = std::make_shared<SaturationCurve const>(SaturationCurve{currents, inductances});
+    m_zero_crossing_callbacks.push_back([this, inductor, curve, i_L_output_idx](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
+        double i_prev = outputs_prev.data[i_L_output_idx];
+        double i_new = outputs_new.data[i_L_output_idx];
+        if (*inductor == curve->inductanceAt(i_new)) {
             return std::nullopt;
-        });
-        // Decrease inductance when current goes above level
-        m_zero_crossing_callbacks.push_back([=](Outputs const& outputs_prev, Outputs const& outputs_new) -> std::optional<rlc2ss::ZeroCrossingEvent> {
-            double i_prev = outputs_prev.data[i_L_output_idx];
-            double i_new = outputs_new.data[i_L_output_idx];
-            if (i_prev < threshold && i_new >= threshold) {
-                return rlc2ss::ZeroCrossingEvent{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev - threshold, i_new - threshold),
-                    .event_callback = [inductor, inductance]() {
-                        *inductor = inductance;
-                    }};
+        }
+        // An inductance that does not match the current at the start of the step is corrected at time 0.
+        // Otherwise the event is at the earliest point where the signed current passes +currents[k] or
+        // -currents[k]. Interpolating abs(current) against currents[k] misplaces the event when the current
+        // changes sign within the step, e.g. -50 A -> +150 A with a 100 A breakpoint.
+        double time = 0.0;
+        if (*inductor == curve->inductanceAt(i_prev)) {
+            time = 1.0;
+            for (size_t k = 1; k < curve->currents.size(); ++k) {
+                for (double level : {curve->currents[k], -curve->currents[k]}) {
+                    if ((i_prev < level) != (i_new < level)) {
+                        time = std::min(time, rlc2ss::calcZeroCrossingTime(i_prev - level, i_new - level));
+                    }
+                }
             }
-            if (i_prev > -threshold && i_new <= -threshold) {
-                return rlc2ss::ZeroCrossingEvent{
-                    .time = rlc2ss::calcZeroCrossingTime(i_prev + threshold, i_new + threshold),
-                    .event_callback = [inductor, inductance]() {
-                        *inductor = inductance;
-                    }};
-            }
-            return std::nullopt;
-        });
-    }
+        }
+        // The callback runs after the step is redone up to the event time and sets the inductance of the
+        // current at that point. If the redone step stops short of the breakpoint, the inductance is
+        // unchanged, and checking the rest of the step finds the same crossing again.
+        return rlc2ss::ZeroCrossingEvent{
+            .time = time,
+            .event_callback = [this, inductor, curve, i_L_output_idx]() {
+                *inductor = curve->inductanceAt(outputs.data[i_L_output_idx]);
+            }};
+    });
 }
 
 void [[ class_name ]]::step(double dt, Inputs const& inputs_) {
